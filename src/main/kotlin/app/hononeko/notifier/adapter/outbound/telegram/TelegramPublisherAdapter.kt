@@ -469,10 +469,19 @@ class TelegramPublisherAdapter(
         return sb.toString()
     }
 
+    private val allowedUrlSchemes = setOf("https", "http", "tg")
+
+    private fun isValidUrlScheme(url: String): Boolean {
+        val uri = runCatching { java.net.URI.create(url) }.getOrNull() ?: return false
+        val scheme = uri.scheme?.lowercase() ?: return false
+        return scheme in allowedUrlSchemes
+    }
+
     private fun buildKeyboard(actions: List<ActionLink>): InlineKeyboardMarkup? {
-        if (actions.isEmpty()) return null
+        val validActions = actions.filter { isValidUrlScheme(it.url) }
+        if (validActions.isEmpty()) return null
         val buttons =
-            actions.map { action ->
+            validActions.map { action ->
                 InlineKeyboardButton(text = action.label, url = action.url)
             }
         return InlineKeyboardMarkup(inlineKeyboard = listOf(buttons))

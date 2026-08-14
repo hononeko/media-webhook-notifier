@@ -80,7 +80,7 @@ class ApplicationBootstrapTest {
             // Test StatusPages error handling
             val errorRes = client.get("/test-error")
             assertEquals(HttpStatusCode.InternalServerError, errorRes.status)
-            assertTrue(errorRes.bodyAsText().contains("Intentional test failure"))
+            assertTrue(errorRes.bodyAsText().contains("An unexpected error occurred"))
 
             dependencies.close()
         }
