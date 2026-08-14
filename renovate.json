@@ -3,9 +3,14 @@
   "extends": [
     "config:recommended",
     ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    ":semanticCommitScope(deps)",
     "mergeConfidence:all-badges",
     "helpers:pinGitHubActionDigests"
   ],
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
   "dependencyDashboard": true,
   "timezone": "Europe/Chisinau",
   "rebaseWhen": "behind-base-branch",
