@@ -123,7 +123,11 @@ fun buildDependencies(
 
     val rateLimiter = InboundRateLimiter(limitPerMinute = config.server.rateLimitPerMinute)
     val providerRegistry = WebhookProviderRegistry()
-    val healthController = HealthController()
+    val healthController =
+        HealthController(
+            eventRail = eventRail,
+            downloadTracker = downloadTracker
+        )
 
     return AppDependencies(
         config = config,
