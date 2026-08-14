@@ -5,13 +5,18 @@ server:
 mediaServer:
   type: "plex"
   baseUrl: ""
-  jellyfinUrl: ""
+  plexPublicUrl: ""
+  jellyfinPublicUrl: ""
 
 qbittorrent:
   url: "http://localhost:8080"
+  username: ""
+  password: ""
   pollIntervalSeconds: 5
   maxPollingMinutes: 30
   stalledTimeoutMinutes: 15
+  missingGraceAttempts: 6
+  debounceSeconds: 5
   webuiPublicUrl: ""
 
 notifications:
@@ -19,5 +24,10 @@ notifications:
     enabled: true
     botToken: ""
     chatId: ""
+    topicId: null
     rateLimitPerMinute: 30
     timeoutSeconds: 5
+    sendPhotos: true
+  discord:
+    enabled: false
+    webhookUrl: ""
