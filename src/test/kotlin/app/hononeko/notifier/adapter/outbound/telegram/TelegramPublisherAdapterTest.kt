@@ -336,4 +336,42 @@ class TelegramPublisherAdapterTest {
             val result = adapter.updateProgress(handle, update)
             assertTrue(result.isRight())
         }
+
+    @Test
+    fun `should filter out unsafe URL schemes from action keyboard buttons`() =
+        runTest {
+            var capturedBody = ""
+            val mockEngine =
+                MockEngine { request ->
+                    val content = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+                    capturedBody = content?.bytes()?.decodeToString().orEmpty()
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":101}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123")
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val card =
+                NotificationCard(
+                    title = "Test Links",
+                    actions =
+                        listOf(
+                            ActionLink("Safe HTTPS", "https://example.com"),
+                            ActionLink("Safe TG", "tg://resolve?domain=test"),
+                            ActionLink("Unsafe JS", "javascript:alert(1)"),
+                            ActionLink("Unsafe File", "file:///etc/passwd")
+                        )
+                )
+
+            val result = adapter.sendCard(card)
+            assertTrue(result.isRight())
+            assertTrue(capturedBody.contains("Safe HTTPS"))
+            assertTrue(capturedBody.contains("Safe TG"))
+            assertTrue(!capturedBody.contains("javascript"))
+            assertTrue(!capturedBody.contains("file:///etc/passwd"))
+        }
 }

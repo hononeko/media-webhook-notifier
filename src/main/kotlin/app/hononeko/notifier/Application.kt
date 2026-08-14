@@ -30,6 +30,8 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.forwardedheaders.ForwardedHeaders
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import kotlinx.coroutines.CoroutineScope
@@ -148,6 +150,9 @@ fun buildDependencies(
 }
 
 fun Application.module(dependencies: AppDependencies) {
+    install(ForwardedHeaders)
+    install(XForwardedHeaders)
+
     install(CallLogging) {
         level = Level.INFO
     }
@@ -164,12 +169,12 @@ fun Application.module(dependencies: AppDependencies) {
 
     install(StatusPages) {
         exception<Throwable> { call, cause ->
-            logger.error("Unhandled exception processing request: ${cause.message}", cause)
+            logger.error("Unhandled exception processing request: {}", cause.message, cause)
             call.respond(
                 HttpStatusCode.InternalServerError,
                 WebhookReceiptDto(
                     status = "error",
-                    message = "Internal server error: ${cause.message}"
+                    message = "An unexpected error occurred while processing the request"
                 )
             )
         }
@@ -189,6 +194,12 @@ fun startServer(
     dependencies: AppDependencies = buildDependencies(config),
     wait: Boolean = true
 ): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> {
+    if (config.server.authToken.isBlank()) {
+        logger.warn(
+            "⚠️ SERVER_AUTH_TOKEN is not configured! Inbound webhook endpoints are operating in unauthenticated mode."
+        )
+    }
+
     val server =
         embeddedServer(Netty, port = config.server.port, host = "0.0.0.0") {
             module(dependencies)
