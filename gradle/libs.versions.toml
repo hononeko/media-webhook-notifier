@@ -7,7 +7,7 @@ arrow = "1.2.4"
 ktor = "3.0.1"
 graalvm-plugin = "0.10.3"
 logback = "1.5.12"
-hoplite = "2.8.2"
+hoplite = "2.9.0"
 mockk = "1.14.11"
 ktlint-plugin = "12.1.2"
 
