@@ -9,6 +9,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -90,6 +91,99 @@ class QBittorrentClientAdapterTest {
         }
 
     @Test
+    fun `should re-authenticate when receiving 403 Forbidden on expired session`() =
+        runTest {
+            val hash = "hash_reauth"
+            val loginAttempts = AtomicInteger(0)
+            val mockEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/api/v2/auth/login" -> {
+                            val attempt = loginAttempts.incrementAndGet()
+                            respond(
+                                content = "Ok.",
+                                status = HttpStatusCode.OK,
+                                headers =
+                                    headersOf(
+                                        HttpHeaders.SetCookie,
+                                        "SID=reauth_cookie_$attempt; HttpOnly; path=/"
+                                    )
+                            )
+                        }
+                        "/api/v2/torrents/info" -> {
+                            val cookie = request.headers[HttpHeaders.Cookie]
+                            if (cookie == "SID=reauth_cookie_2") {
+                                respond(
+                                    content = """[{"hash":"$hash","name":"Test","progress":1.0,"state":"uploading"}]""",
+                                    status = HttpStatusCode.OK,
+                                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                                )
+                            } else {
+                                respond("Forbidden", HttpStatusCode.Forbidden)
+                            }
+                        }
+                        else -> respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val config =
+                QBittorrentConfig(
+                    url = "http://localhost:8080",
+                    username = "admin",
+                    password = "password"
+                )
+            val adapter = QBittorrentClientAdapter(config, mockEngine)
+
+            val result = adapter.getTorrentProgress(hash)
+            assertTrue(result.isRight())
+            val progress = (result as Either.Right).value
+            assertNotNull(progress)
+            assertEquals(TorrentState.COMPLETED, progress.state)
+        }
+
+    @Test
+    fun `should map various torrent states correctly`() =
+        runTest {
+            val states =
+                mapOf(
+                    "stalledDL" to TorrentState.STALLED,
+                    "metaDL" to TorrentState.ALLOCATING_METADATA,
+                    "pausedDL" to TorrentState.PAUSED,
+                    "queuedDL" to TorrentState.QUEUED,
+                    "checkingDL" to TorrentState.CHECKING,
+                    "someOther" to TorrentState.UNKNOWN
+                )
+
+            for ((stateStr, expectedState) in states) {
+                val mockEngine =
+                    MockEngine {
+                        respond(
+                            content =
+                                """
+                                [{"hash":"test_hash","name":"StateTest","progress":0.2,"state":"$stateStr"}]
+                                """.trimIndent(),
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    }
+
+                val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
+                val result = adapter.getTorrentProgress("test_hash")
+                assertTrue(result.isRight())
+                assertEquals(expectedState, (result as Either.Right).value?.state)
+            }
+        }
+
+    @Test
+    fun `should return null when torrent hash is blank`() =
+        runTest {
+            val adapter = QBittorrentClientAdapter(QBittorrentConfig())
+            val result = adapter.getTorrentProgress("   ")
+            assertTrue(result.isRight())
+            assertNull((result as Either.Right).value)
+        }
+
+    @Test
     fun `should return null when torrent not found in client`() =
         runTest {
             val mockEngine =
@@ -107,6 +201,19 @@ class QBittorrentClientAdapterTest {
             val result = adapter.getTorrentProgress("nonexistent")
             assertTrue(result.isRight())
             assertNull((result as Either.Right).value)
+        }
+
+    @Test
+    fun `should return InvalidResponse on malformed json`() =
+        runTest {
+            val mockEngine =
+                MockEngine {
+                    respond("not json", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+
+            val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
+            val result = adapter.getTorrentProgress("hash123")
+            assertTrue(result.isLeft())
         }
 
     @Test

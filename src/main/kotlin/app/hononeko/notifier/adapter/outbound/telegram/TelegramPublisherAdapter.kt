@@ -32,6 +32,10 @@ class TelegramPublisherAdapter(
     private val config: TelegramConfig,
     engine: HttpClientEngine? = null
 ) : NotificationPublisherPort {
+    companion object {
+        private const val NETWORK_ERROR_MSG = "Network error"
+    }
+
     override val providerId: String = "telegram"
     private val logger = LoggerFactory.getLogger(TelegramPublisherAdapter::class.java)
 
@@ -261,7 +265,7 @@ class TelegramPublisherAdapter(
             handleSendResponse(response)
         } catch (e: Exception) {
             logger.warn("Network error sending Telegram photo: {}", e.message)
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: "Network error"))
+            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }
 
@@ -286,7 +290,7 @@ class TelegramPublisherAdapter(
             handleSendResponse(response)
         } catch (e: Exception) {
             logger.warn("Network error sending Telegram text: {}", e.message)
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: "Network error"))
+            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }
 
@@ -312,7 +316,7 @@ class TelegramPublisherAdapter(
                 }
             handleEditResponse(response)
         } catch (e: Exception) {
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: "Network error"))
+            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }
 
@@ -338,7 +342,7 @@ class TelegramPublisherAdapter(
                 }
             handleEditResponse(response)
         } catch (e: Exception) {
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: "Network error"))
+            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }
 

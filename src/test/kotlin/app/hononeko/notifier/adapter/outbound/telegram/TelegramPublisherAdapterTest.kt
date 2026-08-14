@@ -7,6 +7,7 @@ import app.hononeko.notifier.domain.model.ActionStyle
 import app.hononeko.notifier.domain.model.CardField
 import app.hononeko.notifier.domain.model.MediaSpecs
 import app.hononeko.notifier.domain.model.NotificationCard
+import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.NotificationLevel
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import arrow.core.Either
@@ -61,9 +62,10 @@ class TelegramPublisherAdapterTest {
                 NotificationCard(
                     title = "🎬 Grabbed: Severance",
                     subtitle = "Sonarr",
+                    overview = "A very interesting thriller about work-life balance.",
                     level = NotificationLevel.INFO,
                     fields = listOf(CardField("Quality", "1080p")),
-                    mediaSpecs = MediaSpecs(video = "H.264", resolution = "1080p"),
+                    mediaSpecs = MediaSpecs(video = "H.264", resolution = "1080p", score = "8.7", duration = "55m"),
                     actions = listOf(ActionLink("Open WebUI", "http://localhost:8080", ActionStyle.PRIMARY))
                 )
 
@@ -74,6 +76,43 @@ class TelegramPublisherAdapterTest {
             assertEquals("telegram", handle.providerId)
             assertEquals("-1001234567890", handle.channelOrChatId)
             assertEquals("9988", handle.messageReferenceId)
+        }
+
+    @Test
+    fun `should send photo card successfully when artwork is present`() =
+        runTest {
+            val mockEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/bot12345:TOKEN/sendPhoto" -> {
+                            respond(
+                                content = """{"ok":true,"result":{"message_id":7777}}""",
+                                status = HttpStatusCode.OK,
+                                headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                        else -> respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val config =
+                TelegramConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "123",
+                    sendPhotos = true
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val card =
+                NotificationCard(
+                    title = "🎬 Grabbed: Severance",
+                    artworkUrl = "https://example.com/poster.jpg",
+                    overview = "A".repeat(1500) // Tests truncation
+                )
+
+            val result = adapter.startLiveProgress(card)
+            assertTrue(result.isRight())
+            assertEquals("7777", (result as Either.Right).value.messageReferenceId)
         }
 
     @Test
@@ -147,7 +186,7 @@ class TelegramPublisherAdapterTest {
         }
 
     @Test
-    fun `should update and complete live progress successfully`() =
+    fun `should update, complete, and cancel live progress successfully`() =
         runTest {
             val mockEngine =
                 MockEngine { request ->
@@ -194,11 +233,47 @@ class TelegramPublisherAdapterTest {
                 )
             assertTrue(updateResult.isRight())
 
-            val completeResult =
-                adapter.completeProgress(
+            val cancelResult =
+                adapter.cancelProgress(
                     handle,
-                    NotificationCard(title = "Completed", level = NotificationLevel.SUCCESS)
+                    NotificationCard(title = "Stalled", level = NotificationLevel.WARNING)
                 )
-            assertTrue(completeResult.isRight())
+            assertTrue(cancelResult.isRight())
+        }
+
+    @Test
+    fun `should tolerate message is not modified response`() =
+        runTest {
+            val mockEngine =
+                MockEngine {
+                    respond(
+                        content =
+                            """
+                            {"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}
+                            """.trimIndent(),
+                        status = HttpStatusCode.BadRequest,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123")
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val handle = NotificationHandle("telegram", "123", "100")
+            val update =
+                ProgressUpdate(
+                    trackingKey = "key1",
+                    title = "Severance",
+                    percent = 50,
+                    progressBar = "█████░░░░░",
+                    speedFormatted = "10 MB/s",
+                    etaFormatted = "1m",
+                    sizeFormatted = "500 MB / 1 GB",
+                    peersInfo = "10 seeds",
+                    stateText = "Downloading"
+                )
+
+            val result = adapter.updateProgress(handle, update)
+            assertTrue(result.isRight())
         }
 }
