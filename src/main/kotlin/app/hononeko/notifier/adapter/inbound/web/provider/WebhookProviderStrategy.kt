@@ -17,7 +17,7 @@ interface WebhookProviderStrategy {
     ): WebhookProcessResult
 
     /**
-     * Returns schema or documentation metadata for this webhook provider, if available.
+     * Returns raw JSON schema string for this webhook provider, if available.
      */
-    fun getSchema(): Map<String, Any>? = null
+    fun getSchemaJson(): String? = null
 }

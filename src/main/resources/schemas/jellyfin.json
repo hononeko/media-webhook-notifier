@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Jellyfin Webhook Payload",
+  "type": "object",
+  "properties": {
+    "NotificationType": {
+      "type": "string",
+      "enum": ["ItemAdded"]
+    },
+    "ItemId": { "type": "string" },
+    "ItemType": { "type": "string" },
+    "Name": { "type": "string" },
+    "SeriesName": { "type": "string" },
+    "SeasonNumber": { "type": "integer" },
+    "EpisodeNumber": { "type": "integer" },
+    "Year": { "type": "integer" },
+    "Overview": { "type": "string" },
+    "ServerId": { "type": "string" },
+    "ServerName": { "type": "string" },
+    "ServerUrl": { "type": "string" },
+    "VideoCodec": { "type": "string" },
+    "AudioCodec": { "type": "string" },
+    "Resolution": { "type": "string" },
+    "PosterUrl": { "type": "string" }
+  },
+  "required": ["NotificationType", "ItemId"]
+}

@@ -3,11 +3,11 @@ package app.hononeko.notifier.adapter.inbound.web
 import app.hononeko.notifier.adapter.inbound.web.provider.JellyfinWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.PlexWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.RadarrWebhookProvider
+import app.hononeko.notifier.adapter.inbound.web.provider.SchemaLoader
 import app.hononeko.notifier.adapter.inbound.web.provider.ServarrWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.SonarrWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -77,30 +77,36 @@ class WebhookProviderRegistryTest {
     }
 
     @Test
-    fun `should return schema definitions from providers`() {
+    fun `should return externalized JSON schema definitions from providers`() {
         val sonarr = SonarrWebhookProvider()
-        val sonarrSchema = sonarr.getSchema()
+        val sonarrSchema = sonarr.getSchemaJson()
         assertNotNull(sonarrSchema)
-        assertEquals("Sonarr", sonarrSchema["service"])
+        assertTrue(sonarrSchema.contains("Sonarr Webhook Payload"))
 
         val radarr = RadarrWebhookProvider()
-        val radarrSchema = radarr.getSchema()
+        val radarrSchema = radarr.getSchemaJson()
         assertNotNull(radarrSchema)
-        assertEquals("Radarr", radarrSchema["service"])
+        assertTrue(radarrSchema.contains("Radarr Webhook Payload"))
 
         val servarr = ServarrWebhookProvider()
-        val servarrSchema = servarr.getSchema()
+        val servarrSchema = servarr.getSchemaJson()
         assertNotNull(servarrSchema)
-        assertEquals("Servarr", servarrSchema["service"])
+        assertTrue(servarrSchema.contains("Servarr Generic Webhook Payload"))
 
         val plex = PlexWebhookProvider()
-        val plexSchema = plex.getSchema()
+        val plexSchema = plex.getSchemaJson()
         assertNotNull(plexSchema)
-        assertEquals("Plex Media Server", plexSchema["service"])
+        assertTrue(plexSchema.contains("Plex Webhook Payload"))
 
         val jellyfin = JellyfinWebhookProvider()
-        val jellyfinSchema = jellyfin.getSchema()
+        val jellyfinSchema = jellyfin.getSchemaJson()
         assertNotNull(jellyfinSchema)
-        assertEquals("Jellyfin / Emby", jellyfinSchema["service"])
+        assertTrue(jellyfinSchema.contains("Jellyfin Webhook Payload"))
+    }
+
+    @Test
+    fun `should handle missing schema gracefully in SchemaLoader`() {
+        val missing = SchemaLoader.loadSchema("schemas/non-existent.json")
+        assertNull(missing)
     }
 }

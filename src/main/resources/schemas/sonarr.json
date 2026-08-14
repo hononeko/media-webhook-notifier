@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sonarr Webhook Payload",
+  "type": "object",
+  "properties": {
+    "eventType": {
+      "type": "string",
+      "enum": ["Grab", "Download", "Test"]
+    },
+    "instanceName": {
+      "type": "string"
+    },
+    "applicationUrl": {
+      "type": "string"
+    },
+    "series": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "title": { "type": "string" },
+        "path": { "type": "string" },
+        "tvdbId": { "type": "integer" },
+        "year": { "type": "integer" },
+        "overview": { "type": "string" },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "coverType": { "type": "string" },
+              "url": { "type": "string" },
+              "remoteUrl": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "episodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "episodeNumber": { "type": "integer" },
+          "seasonNumber": { "type": "integer" },
+          "title": { "type": "string" },
+          "overview": { "type": "string" },
+          "episodeFile": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "relativePath": { "type": "string" },
+              "path": { "type": "string" },
+              "quality": { "type": "string" },
+              "qualityVersion": { "type": "integer" },
+              "size": { "type": "integer" },
+              "videoCodec": { "type": "string" },
+              "audioCodec": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "properties": {
+        "quality": { "type": "string" },
+        "qualityVersion": { "type": "integer" },
+        "releaseGroup": { "type": "string" },
+        "releaseTitle": { "type": "string" },
+        "indexer": { "type": "string" },
+        "size": { "type": "integer" }
+      }
+    },
+    "downloadId": {
+      "type": "string"
+    },
+    "isUpgrade": {
+      "type": "boolean"
+    }
+  },
+  "required": ["eventType"]
+}

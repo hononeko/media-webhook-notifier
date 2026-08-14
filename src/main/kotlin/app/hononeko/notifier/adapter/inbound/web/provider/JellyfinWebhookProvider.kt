@@ -42,12 +42,7 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
         }
     }
 
-    override fun getSchema(): Map<String, Any> =
-        mapOf(
-            "service" to "Jellyfin / Emby",
-            "supportedEvents" to listOf("ItemAdded"),
-            "format" to "JSON"
-        )
+    override fun getSchemaJson(): String? = SchemaLoader.loadSchema("schemas/jellyfin.json")
 
     private fun mapToJellyfinItemAdded(dto: JellyfinWebhookDto): MediaPayload.JellyfinItemAdded =
         MediaPayload.JellyfinItemAdded(

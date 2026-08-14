@@ -59,12 +59,7 @@ class PlexWebhookProvider(
         }
     }
 
-    override fun getSchema(): Map<String, Any> =
-        mapOf(
-            "service" to "Plex Media Server",
-            "supportedEvents" to listOf("library.new"),
-            "format" to "JSON or multipart/form-data (payload part)"
-        )
+    override fun getSchemaJson(): String? = SchemaLoader.loadSchema("schemas/plex.json")
 
     private suspend fun parseMultipartPayload(call: ApplicationCall): PlexWebhookDto? {
         val multipart = call.receiveMultipart()

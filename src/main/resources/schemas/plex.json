@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plex Webhook Payload",
+  "type": "object",
+  "properties": {
+    "event": {
+      "type": "string",
+      "enum": ["library.new"]
+    },
+    "user": { "type": "boolean" },
+    "owner": { "type": "boolean" },
+    "Server": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "uuid": { "type": "string" }
+      }
+    },
+    "Metadata": {
+      "type": "object",
+      "properties": {
+        "librarySectionType": { "type": "string" },
+        "ratingKey": { "type": "string" },
+        "key": { "type": "string" },
+        "parentRatingKey": { "type": "string" },
+        "grandparentRatingKey": { "type": "string" },
+        "title": { "type": "string" },
+        "parentTitle": { "type": "string" },
+        "grandparentTitle": { "type": "string" },
+        "type": { "type": "string" },
+        "summary": { "type": "string" },
+        "year": { "type": "integer" },
+        "duration": { "type": "integer" },
+        "rating": { "type": "number" },
+        "thumb": { "type": "string" },
+        "art": { "type": "string" },
+        "Media": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "videoCodec": { "type": "string" },
+              "audioCodec": { "type": "string" },
+              "videoResolution": { "type": "string" },
+              "container": { "type": "string" },
+              "duration": { "type": "integer" },
+              "bitrate": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "required": ["title"]
+    }
+  },
+  "required": ["event", "Metadata"]
+}

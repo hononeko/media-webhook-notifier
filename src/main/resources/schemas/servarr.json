@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Servarr Generic Webhook Payload",
+  "type": "object",
+  "properties": {
+    "eventType": {
+      "type": "string",
+      "enum": ["Grab", "Download", "Test"]
+    },
+    "instanceName": { "type": "string" },
+    "applicationUrl": { "type": "string" },
+    "series": { "type": "object" },
+    "movie": { "type": "object" },
+    "episodes": { "type": "array" },
+    "release": { "type": "object" },
+    "downloadId": { "type": "string" },
+    "isUpgrade": { "type": "boolean" }
+  },
+  "required": ["eventType"]
+}

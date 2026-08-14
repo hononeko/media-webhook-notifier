@@ -1,16 +1,18 @@
 package app.hononeko.notifier.adapter.inbound.web
 
-import app.hononeko.notifier.adapter.inbound.web.controller.SchemaController
+import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProcessResult
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import app.hononeko.notifier.config.ServerConfig
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -21,30 +23,30 @@ fun Application.configureWebhookRouting(
     eventRail: EventRail,
     serverConfig: ServerConfig,
     providerRegistry: WebhookProviderRegistry = WebhookProviderRegistry(),
-    schemaController: SchemaController = SchemaController(),
+    healthController: HealthController = HealthController(),
     rateLimiter: InboundRateLimiter = InboundRateLimiter(serverConfig.rateLimitPerMinute)
 ) {
     routing {
         // Public health & metrics endpoints
-        get("/health") { schemaController.handleHealth(call) }
-        get("/metrics") { schemaController.handleHealth(call) }
+        get("/health") { healthController.handleHealth(call) }
+        get("/metrics") { healthController.handleHealth(call) }
 
+        // Dynamic JSON schema retrieval: /schema/{provider}
         route("/schema") {
             get("/{provider}") {
                 val providerKey = call.parameters["provider"]
-                when (providerKey?.lowercase()) {
-                    "sonarr" -> schemaController.handleSonarrSchema(call)
-                    "radarr" -> schemaController.handleRadarrSchema(call)
-                    "plex" -> schemaController.handlePlexSchema(call)
-                    "jellyfin" -> schemaController.handleJellyfinSchema(call)
-                    else ->
-                        call.respond(
-                            HttpStatusCode.NotFound,
-                            WebhookReceiptDto(
-                                status = "error",
-                                message = "Unknown schema for provider '$providerKey'"
-                            )
+                val schemaJson = providerKey?.let { providerRegistry.get(it)?.getSchemaJson() }
+
+                if (schemaJson != null) {
+                    call.respondText(schemaJson, ContentType.Application.Json)
+                } else {
+                    call.respond(
+                        HttpStatusCode.NotFound,
+                        WebhookReceiptDto(
+                            status = "error",
+                            message = "Unknown schema for provider '$providerKey'"
                         )
+                    )
                 }
             }
         }
