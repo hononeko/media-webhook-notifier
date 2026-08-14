@@ -56,7 +56,7 @@ class PlexWebhookController(
         logger.info(
             "Ingesting Plex webhook event: {} (server: {}, caller: {})",
             event,
-            dto.Server?.title ?: "unknown",
+            dto.server?.title ?: "unknown",
             callerName ?: "default"
         )
 
@@ -106,8 +106,8 @@ class PlexWebhookController(
     }
 
     private fun mapToPlexLibraryNew(dto: PlexWebhookDto): MediaPayload.PlexLibraryNew {
-        val meta = dto.Metadata
-        val stream = meta?.Media?.firstOrNull()
+        val meta = dto.metadata
+        val stream = meta?.media?.firstOrNull()
         val durationSec = meta?.duration?.let { it / 1000 }
 
         return MediaPayload.PlexLibraryNew(
@@ -125,7 +125,7 @@ class PlexWebhookController(
             resolution = stream?.videoResolution,
             posterUrl = meta?.thumb,
             ratingKey = meta?.ratingKey,
-            serverMachineIdentifier = dto.Server?.uuid
+            serverMachineIdentifier = dto.server?.uuid
         )
     }
 }

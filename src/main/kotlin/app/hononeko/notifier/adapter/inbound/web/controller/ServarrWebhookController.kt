@@ -65,12 +65,8 @@ class ServarrWebhookController(
                 else -> defaultSource
             }
 
-        logger.info(
-            "Ingesting {} webhook for {} (caller: {})",
-            eventType,
-            source,
-            callerName ?: dto.instanceName ?: "default"
-        )
+        val effectiveCaller = callerName ?: dto.instanceName ?: "default"
+        logger.info("Ingesting {} webhook for {} (caller: {})", eventType, source, effectiveCaller)
 
         val payload: MediaPayload? =
             when (eventType?.lowercase()) {
@@ -116,31 +112,9 @@ class ServarrWebhookController(
         source: AppSource,
         callerName: String?
     ): MediaPayload.ArrGrab {
-        val title =
-            dto.movie?.title
-                ?: dto.series?.title
-                ?: dto.release?.releaseTitle
-                ?: "Unknown Media"
-
+        val title = extractTitle(dto)
         val seriesOrMovieTitle = dto.series?.title ?: dto.movie?.title ?: title
-        val poster =
-            dto.series
-                ?.images
-                ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                ?.remoteUrl
-                ?: dto.series
-                    ?.images
-                    ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                    ?.url
-                ?: dto.movie
-                    ?.images
-                    ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                    ?.remoteUrl
-                ?: dto.movie
-                    ?.images
-                    ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                    ?.url
-
+        val poster = extractPosterUrl(dto)
         val effectiveInstanceName = dto.instanceName ?: callerName
 
         return MediaPayload.ArrGrab(
@@ -164,32 +138,11 @@ class ServarrWebhookController(
         source: AppSource,
         callerName: String?
     ): MediaPayload.ArrDownload {
-        val title =
-            dto.movie?.title
-                ?: dto.series?.title
-                ?: dto.release?.releaseTitle
-                ?: "Unknown Media"
-
+        val title = extractTitle(dto)
         val seriesOrMovieTitle = dto.series?.title ?: dto.movie?.title ?: title
-        val poster =
-            dto.series
-                ?.images
-                ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                ?.remoteUrl
-                ?: dto.series
-                    ?.images
-                    ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                    ?.url
-                ?: dto.movie
-                    ?.images
-                    ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                    ?.remoteUrl
-                ?: dto.movie
-                    ?.images
-                    ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
-                    ?.url
-
+        val poster = extractPosterUrl(dto)
         val isUpgrade = dto.isUpgrade == true || dto.upgrade?.isUpgrade == true
+
         val videoCodec =
             dto.movie?.movieFile?.videoCodec ?: dto.episodes
                 .firstOrNull()
@@ -200,17 +153,8 @@ class ServarrWebhookController(
                 .firstOrNull()
                 ?.episodeFile
                 ?.audioCodec
-        val quality =
-            dto.movie?.movieFile?.quality ?: dto.episodes
-                .firstOrNull()
-                ?.episodeFile
-                ?.quality ?: dto.release?.quality
-        val sizeBytes =
-            dto.movie?.movieFile?.size ?: dto.episodes
-                .firstOrNull()
-                ?.episodeFile
-                ?.size ?: dto.release?.size
-
+        val quality = extractDownloadQuality(dto)
+        val sizeBytes = extractDownloadSizeBytes(dto)
         val effectiveInstanceName = dto.instanceName ?: callerName
 
         return MediaPayload.ArrDownload(
@@ -233,4 +177,39 @@ class ServarrWebhookController(
             webUrl = dto.applicationUrl
         )
     }
+
+    private fun extractTitle(dto: ServarrWebhookDto): String =
+        dto.movie?.title
+            ?: dto.series?.title
+            ?: dto.release?.releaseTitle
+            ?: "Unknown Media"
+
+    private fun extractPosterUrl(dto: ServarrWebhookDto): String? {
+        val seriesImages = dto.series?.images
+        val movieImages = dto.movie?.images
+
+        val seriesPoster = seriesImages?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
+        val moviePoster = movieImages?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
+
+        return seriesPoster?.remoteUrl
+            ?: seriesPoster?.url
+            ?: moviePoster?.remoteUrl
+            ?: moviePoster?.url
+    }
+
+    private fun extractDownloadQuality(dto: ServarrWebhookDto): String? =
+        dto.movie?.movieFile?.quality
+            ?: dto.episodes
+                .firstOrNull()
+                ?.episodeFile
+                ?.quality
+            ?: dto.release?.quality
+
+    private fun extractDownloadSizeBytes(dto: ServarrWebhookDto): Long? =
+        dto.movie?.movieFile?.size
+            ?: dto.episodes
+                .firstOrNull()
+                ?.episodeFile
+                ?.size
+            ?: dto.release?.size
 }

@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.inbound.web.dto
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -7,8 +8,8 @@ data class PlexWebhookDto(
     val event: String? = null,
     val user: Boolean? = null,
     val owner: Boolean? = null,
-    val Server: PlexServerDto? = null,
-    val Metadata: PlexMetadataDto? = null
+    @SerialName("Server") val server: PlexServerDto? = null,
+    @SerialName("Metadata") val metadata: PlexMetadataDto? = null
 )
 
 @Serializable
@@ -34,7 +35,7 @@ data class PlexMetadataDto(
     val rating: Double? = null,
     val thumb: String? = null,
     val art: String? = null,
-    val Media: List<PlexMediaStreamDto> = emptyList()
+    @SerialName("Media") val media: List<PlexMediaStreamDto> = emptyList()
 )
 
 @Serializable

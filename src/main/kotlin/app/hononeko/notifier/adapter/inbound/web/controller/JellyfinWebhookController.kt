@@ -32,11 +32,11 @@ class JellyfinWebhookController(
             }
 
         val callerName = AuthGuard.extractCallerName(call)
-        val notificationType = dto.NotificationType?.trim()
+        val notificationType = dto.notificationType?.trim()
         logger.info(
             "Ingesting Jellyfin webhook event: {} (server: {}, caller: {})",
             notificationType,
-            dto.ServerName ?: dto.ServerId ?: "unknown",
+            dto.serverName ?: dto.serverId ?: "unknown",
             callerName ?: "default"
         )
 
@@ -75,17 +75,17 @@ class JellyfinWebhookController(
         MediaPayload.JellyfinItemAdded(
             source = AppSource.JELLYFIN,
             eventType = EventType.MEDIA_AVAILABLE,
-            itemId = dto.ItemId ?: "",
-            serverId = dto.ServerId,
-            title = dto.Name ?: "Unknown Media",
-            seriesName = dto.SeriesName,
-            seasonNumber = dto.SeasonNumber,
-            episodeNumber = dto.EpisodeNumber,
-            year = dto.Year,
-            overview = dto.Overview,
-            videoCodec = dto.VideoCodec,
-            audioCodec = dto.AudioCodec,
-            resolution = dto.Resolution,
-            posterUrl = dto.PosterUrl
+            itemId = dto.itemId ?: "",
+            serverId = dto.serverId,
+            title = dto.name ?: "Unknown Media",
+            seriesName = dto.seriesName,
+            seasonNumber = dto.seasonNumber,
+            episodeNumber = dto.episodeNumber,
+            year = dto.year,
+            overview = dto.overview,
+            videoCodec = dto.videoCodec,
+            audioCodec = dto.audioCodec,
+            resolution = dto.resolution,
+            posterUrl = dto.posterUrl
         )
 }
