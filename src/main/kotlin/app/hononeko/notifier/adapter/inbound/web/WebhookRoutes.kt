@@ -27,9 +27,16 @@ fun Application.configureWebhookRouting(
     rateLimiter: InboundRateLimiter = InboundRateLimiter(serverConfig.rateLimitPerMinute)
 ) {
     routing {
-        // Public health & metrics endpoints
+        // Public health, probe & metrics endpoints
         get("/health") { healthController.handleHealth(call) }
-        get("/metrics") { healthController.handleHealth(call) }
+        get("/healthz") { healthController.handleHealth(call) }
+        get("/livez") { healthController.handleLiveness(call) }
+        get("/health/live") { healthController.handleLiveness(call) }
+        get("/readyz") { healthController.handleReadiness(call) }
+        get("/health/ready") { healthController.handleReadiness(call) }
+        get("/startupz") { healthController.handleStartup(call) }
+        get("/health/startup") { healthController.handleStartup(call) }
+        get("/metrics") { healthController.handleMetrics(call) }
 
         // Dynamic JSON schema retrieval: /schema/{provider}
         route("/schema") {

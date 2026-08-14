@@ -16,6 +16,12 @@ class EventRail(
     private val channel = Channel<MediaPayload>(capacity)
     private var consumerJob: Job? = null
 
+    val isClosed: Boolean
+        get() = channel.isClosedForSend
+
+    val isRunning: Boolean
+        get() = consumerJob?.isActive == true
+
     fun publish(payload: MediaPayload): Boolean {
         val result = channel.trySend(payload)
         if (result.isFailure) {

@@ -350,6 +350,18 @@ class WebhookRoutesTest {
             val healthRes = client.get("/health")
             assertEquals(HttpStatusCode.OK, healthRes.status)
 
+            val healthzRes = client.get("/healthz")
+            assertEquals(HttpStatusCode.OK, healthzRes.status)
+
+            val livezRes = client.get("/livez")
+            assertEquals(HttpStatusCode.OK, livezRes.status)
+
+            val readyzRes = client.get("/readyz")
+            assertEquals(HttpStatusCode.OK, readyzRes.status)
+
+            val startupzRes = client.get("/startupz")
+            assertEquals(HttpStatusCode.OK, startupzRes.status)
+
             val metricsRes = client.get("/metrics")
             assertEquals(HttpStatusCode.OK, metricsRes.status)
 
