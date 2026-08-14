@@ -9,7 +9,7 @@ graalvm-plugin = "0.11.5"
 logback = "1.6.3"
 hoplite = "2.9.0"
 mockk = "1.14.11"
-ktlint-plugin = "12.1.2"
+ktlint-plugin = "12.3.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
