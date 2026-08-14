@@ -12,17 +12,21 @@ class HealthController(
     private val downloadTracker: DownloadTrackerEngine? = null,
     private val startTimeMillis: Long = System.currentTimeMillis()
 ) {
+    companion object {
+        const val SERVICE_NAME = "media-webhook-notifier"
+    }
+
     @Serializable
     data class HealthStatusDto(
         val status: String,
-        val service: String = "media-webhook-notifier",
+        val service: String = SERVICE_NAME,
         val timestamp: Long = System.currentTimeMillis()
     )
 
     @Serializable
     data class ProbeStatusDto(
         val status: String,
-        val service: String = "media-webhook-notifier",
+        val service: String = SERVICE_NAME,
         val probe: String,
         val checks: Map<String, String>? = null,
         val timestamp: Long = System.currentTimeMillis()
@@ -44,7 +48,7 @@ class HealthController(
 
     @Serializable
     data class MetricsDto(
-        val service: String = "media-webhook-notifier",
+        val service: String = SERVICE_NAME,
         val status: String = "UP",
         val uptimeMillis: Long,
         val activeTrackersCount: Int,
@@ -58,7 +62,7 @@ class HealthController(
             HttpStatusCode.OK,
             HealthStatusDto(
                 status = "UP",
-                service = "media-webhook-notifier",
+                service = SERVICE_NAME,
                 timestamp = System.currentTimeMillis()
             )
         )
@@ -69,7 +73,7 @@ class HealthController(
             HttpStatusCode.OK,
             ProbeStatusDto(
                 status = "UP",
-                service = "media-webhook-notifier",
+                service = SERVICE_NAME,
                 probe = "liveness",
                 timestamp = System.currentTimeMillis()
             )
@@ -93,7 +97,7 @@ class HealthController(
             httpStatus,
             ProbeStatusDto(
                 status = status,
-                service = "media-webhook-notifier",
+                service = SERVICE_NAME,
                 probe = "readiness",
                 checks = checks,
                 timestamp = System.currentTimeMillis()
@@ -106,7 +110,7 @@ class HealthController(
             HttpStatusCode.OK,
             ProbeStatusDto(
                 status = "UP",
-                service = "media-webhook-notifier",
+                service = SERVICE_NAME,
                 probe = "startup",
                 timestamp = System.currentTimeMillis()
             )
@@ -125,7 +129,7 @@ class HealthController(
 
         val metrics =
             MetricsDto(
-                service = "media-webhook-notifier",
+                service = SERVICE_NAME,
                 status = "UP",
                 uptimeMillis = uptime,
                 activeTrackersCount = activeTrackers,

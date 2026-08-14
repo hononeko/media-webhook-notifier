@@ -10,6 +10,6 @@ object SchemaLoader {
                 val stream =
                     Thread.currentThread().contextClassLoader.getResourceAsStream(cleanPath)
                         ?: SchemaLoader::class.java.classLoader.getResourceAsStream(cleanPath)
-                stream?.bufferedReader()?.use { it.readText() } ?: ""
+                stream?.use { it.bufferedReader().readText() } ?: ""
             }.takeIf { it.isNotBlank() }
 }

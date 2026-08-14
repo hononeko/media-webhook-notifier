@@ -35,21 +35,20 @@ The service exposes a unified, self-documenting HTTP API with OpenAPI 3.1 / JSON
              ┌─────────────────────────────────┼─────────────────────────────────┐
              ▼                                 ▼                                 ▼
    [Servarr Ingest Port]              [Plex Ingest Port]               [Jellyfin Ingest Port]
-  /api/v1/webhooks/arr              /api/v1/webhooks/plex             /api/v1/webhooks/jellyfin
-  - Header: Authorization           - Query / Header Token            - Header: X-Emby-Token / API
-  - Formats: Sonarr, Radarr,        - Form: multipart/form-data       - Format: JSON (Webhook plugin)
-    Lidarr, Readarr, Bazarr           with payload JSON
+  /api/v1/webhook/sonarr             /api/v1/webhook/plex             /api/v1/webhook/jellyfin
+  /api/v1/webhook/radarr             /api/v1/webhook/{token}/plex     /api/v1/webhook/{token}/jellyfin
+  - Formats: Sonarr, Radarr, Servarr  - Form: multipart / JSON         - Format: JSON (Webhook plugin)
 ```
 
-### 2.1 Servarr Ingest (`/api/v1/webhooks/arr`)
-* **Supported Apps:** Sonarr (TV & Anime), Radarr (Movies), Lidarr (Music), Readarr (Books), Bazarr (Subtitles).
+### 2.1 Servarr Ingest (`/api/v1/webhook/sonarr`, `/api/v1/webhook/radarr`, `/api/v1/webhook/servarr`)
+* **Supported Apps:** Sonarr (TV & Anime), Radarr (Movies), Servarr generic, Lidarr, Readarr.
 * **Events Handled:**
   - `Grab`: Extracts torrent hash (`downloadId`), media title, release metadata, size, and dispatches the **Live Download Tracking Job**.
-  - `Download` / `Upgrade` (Import): Extracts file details, codecs, resolutions, artwork URLs, and dispatches **Media Ready Event** (if media server integration is disabled or bypassed).
-  - `Rename` / `Health` / `Test`: Diagnostic and health reporting.
-* **Authentication:** HTTP Header (`Authorization: <token>` or `X-Api-Key: <token>`).
+  - `Download` / `Upgrade` (Import): Extracts file details, codecs, resolutions, artwork URLs, and dispatches **Media Ready Event**.
+  - `Rename` / `Test`: Diagnostic and health reporting.
+* **Authentication:** HTTP Header (`Authorization: Bearer <token>` or `X-Api-Key: <token>`) or Query Parameter (`?token=<token>`).
 
-### 2.2 Plex Ingest (`/api/v1/webhooks/plex`)
+### 2.2 Plex Ingest (`/api/v1/webhook/plex`)
 * **Ingest Mechanism:** Plex sends `multipart/form-data` with a stringified JSON parameter `payload` and optional binary thumbnail.
 * **Events Handled:**
   - `library.new`: Native Plex notification when a movie or episode scan finishes and metadata is indexed.
