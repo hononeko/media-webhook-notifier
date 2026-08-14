@@ -17,8 +17,6 @@ jobs:
     permissions:
       contents: read
       packages: read
-    with:
-      build_image: false
 
   release:
     name: Build, Tag & Release

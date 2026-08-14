@@ -2,21 +2,6 @@ name: Validate
 
 on:
   workflow_call:
-    inputs:
-      build_image:
-        description: "Whether to build the native binary and docker image"
-        required: false
-        default: false
-        type: boolean
-      image_tag:
-        description: "Tag for the docker image to build and scan"
-        required: false
-        default: "latest"
-        type: string
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: media-webhook-notifier
 
 jobs:
   test:
@@ -46,53 +31,3 @@ jobs:
         run: |
           echo "### Test Execution Summary" >> $GITHUB_STEP_SUMMARY
           echo "Ktlint formatting and Gradle unit/integration tests completed successfully." >> $GITHUB_STEP_SUMMARY
-
-  build-scan:
-    name: Build & Scan
-    if: inputs.build_image
-    runs-on: ubuntu-latest
-    needs: test
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Setup GraalVM (Java 25)
-        uses: graalvm/setup-graalvm@5298d94fb55a4f185c602eeac5de1b553882abe2 # v1
-        with:
-          java-version: "25"
-          distribution: "graalvm-community"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
-
-      - name: Setup Musl Toolchain & Static zlib
-        run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools
-          export MUSL_HOME=/opt/musl
-          sudo mkdir -p $MUSL_HOME
-          curl -sL https://more.musl.cc/10/x86_64-linux-musl/x86_64-linux-musl-native.tgz | sudo tar -xz --strip-components=1 -C $MUSL_HOME
-          sudo ln -sf $MUSL_HOME/bin/x86_64-linux-musl-gcc $MUSL_HOME/bin/musl-gcc
-          echo "$MUSL_HOME/bin" >> $GITHUB_PATH
-          curl -sL https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz | tar -xz
-          cd zlib-1.3.1
-          CC=$MUSL_HOME/bin/x86_64-linux-musl-gcc ./configure --prefix=$MUSL_HOME --static
-          sudo make install
-          cd .. && rm -rf zlib-1.3.1
-
-      - name: Compile Native Binary (Static QuickBuild)
-        run: ./gradlew nativeCompile -Pstatic -PquickBuild --no-daemon
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-
-      - name: Build Distroless Docker image (Dry Run)
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          load: true
-          push: false
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
