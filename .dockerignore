@@ -1,6 +1,9 @@
 .git
 .gradle
-build
 .idea
 *.log
 docs
+build/*
+!build/native
+!build/native/nativeCompile
+!build/native/nativeCompile/media-webhook-notifier
