@@ -1,0 +1,53 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "mergeConfidence:all-badges",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "dependencyDashboard": true,
+  "timezone": "Europe/Chisinau",
+  "rebaseWhen": "behind-base-branch",
+  "labels": [
+    "renovate",
+    "dependencies"
+  ],
+  "automergeType": "pr",
+  "prHeader": "## 🤖 Renovate: Dependency Maintenance",
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "org.jetbrains.kotlin/**",
+        "org.jetbrains.kotlinx/**"
+      ],
+      "groupName": "Kotlin & Kotlinx"
+    },
+    {
+      "matchPackageNames": [
+        "io.ktor/**"
+      ],
+      "groupName": "Ktor"
+    },
+    {
+      "matchPackageNames": [
+        "io.arrow-kt/**"
+      ],
+      "groupName": "Arrow-kt"
+    },
+    {
+      "matchPackageNames": [
+        "ghcr.io/graalvm/**",
+        "org.graalvm.buildtools/**"
+      ],
+      "groupName": "GraalVM"
+    },
+    {
+      "matchPackageNames": [
+        "gradle",
+        "org.gradle/**"
+      ],
+      "groupName": "Gradle"
+    }
+  ]
+}
