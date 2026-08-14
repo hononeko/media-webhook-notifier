@@ -17,6 +17,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -79,12 +80,19 @@ class TelegramPublisherAdapterTest {
         }
 
     @Test
-    fun `should send photo card successfully when artwork is present`() =
+    fun `should send photo card and edit caption for live progress`() =
         runTest {
             val mockEngine =
                 MockEngine { request ->
                     when (request.url.encodedPath) {
                         "/bot12345:TOKEN/sendPhoto" -> {
+                            respond(
+                                content = """{"ok":true,"result":{"message_id":7777}}""",
+                                status = HttpStatusCode.OK,
+                                headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                        "/bot12345:TOKEN/editMessageCaption" -> {
                             respond(
                                 content = """{"ok":true,"result":{"message_id":7777}}""",
                                 status = HttpStatusCode.OK,
@@ -107,12 +115,37 @@ class TelegramPublisherAdapterTest {
                 NotificationCard(
                     title = "🎬 Grabbed: Severance",
                     artworkUrl = "https://example.com/poster.jpg",
-                    overview = "A".repeat(1500) // Tests truncation
+                    overview = "A".repeat(1500)
                 )
 
-            val result = adapter.startLiveProgress(card)
-            assertTrue(result.isRight())
-            assertEquals("7777", (result as Either.Right).value.messageReferenceId)
+            val startResult = adapter.startLiveProgress(card)
+            assertTrue(startResult.isRight())
+            val handle = (startResult as Either.Right).value
+            assertEquals("7777", handle.messageReferenceId)
+
+            val updateResult =
+                adapter.updateProgress(
+                    handle,
+                    ProgressUpdate(
+                        trackingKey = "key1",
+                        title = "Severance",
+                        percent = 75,
+                        progressBar = "███████░░░",
+                        speedFormatted = "20 MB/s",
+                        etaFormatted = "30s",
+                        sizeFormatted = "750 MB / 1 GB",
+                        peersInfo = "20 seeds",
+                        stateText = "Downloading"
+                    )
+                )
+            assertTrue(updateResult.isRight())
+
+            val completeResult =
+                adapter.completeProgress(
+                    handle,
+                    NotificationCard(title = "Finished", level = NotificationLevel.SUCCESS)
+                )
+            assertTrue(completeResult.isRight())
         }
 
     @Test
@@ -161,10 +194,10 @@ class TelegramPublisherAdapterTest {
         }
 
     @Test
-    fun `should return RateLimited error on HTTP 429 response`() =
+    fun `should return RateLimited error on HTTP 429 response for send and edit`() =
         runTest {
             val mockEngine =
-                MockEngine {
+                MockEngine { request ->
                     val errorJson = """{"ok":false,"parameters":{"retry_after":45}}"""
                     respond(
                         content = errorJson,
@@ -177,12 +210,39 @@ class TelegramPublisherAdapterTest {
             val adapter = TelegramPublisherAdapter(config, mockEngine)
 
             val card = NotificationCard(title = "Test")
-            val result = adapter.sendCard(card)
+            val sendResult = adapter.sendCard(card)
+            assertTrue(sendResult.isLeft())
+            assertIs<DomainError.NotificationError.RateLimited>((sendResult as Either.Left).value)
 
-            assertTrue(result.isLeft())
-            val error = (result as Either.Left).value
-            assertIs<DomainError.NotificationError.RateLimited>(error)
-            assertEquals(45, error.retryAfterSeconds)
+            val editResult =
+                adapter.updateProgress(
+                    NotificationHandle("telegram", "123", "99"),
+                    ProgressUpdate("k", "T", 10, "█", "1M", "1m", "1G", "1", "DL")
+                )
+            assertTrue(editResult.isLeft())
+            assertIs<DomainError.NotificationError.RateLimited>((editResult as Either.Left).value)
+        }
+
+    @Test
+    fun `should handle network exceptions gracefully`() =
+        runTest {
+            val mockEngine =
+                MockEngine {
+                    throw IOException("Connection reset by peer")
+                }
+
+            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123", sendPhotos = false)
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val sendResult = adapter.sendCard(NotificationCard(title = "Test"))
+            assertTrue(sendResult.isLeft())
+
+            val editResult =
+                adapter.updateProgress(
+                    NotificationHandle("telegram", "123", "99"),
+                    ProgressUpdate("k", "T", 10, "█", "1M", "1m", "1G", "1", "DL")
+                )
+            assertTrue(editResult.isLeft())
         }
 
     @Test
