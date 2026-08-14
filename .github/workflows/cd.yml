@@ -43,11 +43,12 @@ jobs:
           minor_pattern: "/feat(\\(.+\\))?:/"
           version_format: "${major}.${minor}.${patch}"
 
-      - name: Setup GraalVM (Community 25)
-        uses: actions/setup-java@v4
+      - name: Setup GraalVM (Java 25)
+        uses: graalvm/setup-graalvm@v1
         with:
-          distribution: "graalvm-community"
           java-version: "25"
+          distribution: "graalvm-community"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
