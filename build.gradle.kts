@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.graalvm.native)
     alias(libs.plugins.ktlint)
-    alias(libs.plugins.sonar)
     application
 }
 
@@ -82,17 +81,8 @@ ktlint {
     }
 }
 
-sonar {
-    properties {
-        property("sonar.projectKey", "hononeko_media-webhook-notifier")
-        property("sonar.organization", "hononeko")
-        property("sonar.host.url", "https://sonarcloud.io")
-        property("sonar.sources", "src/main/kotlin")
-        property("sonar.tests", "src/test/kotlin")
-    }
-}
-
 graalvmNative {
+
     binaries {
         named("main") {
             imageName.set("media-webhook-notifier")

@@ -10,9 +10,9 @@ logback = "1.5.12"
 hoplite = "2.8.2"
 mockk = "1.13.13"
 ktlint-plugin = "12.1.2"
-sonarqube-plugin = "6.0.1.5171"
 
 [libraries]
+
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
@@ -47,6 +47,6 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-plugin" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-plugin" }
-sonar = { id = "org.sonarqube", version.ref = "sonarqube-plugin" }
+
 
 
