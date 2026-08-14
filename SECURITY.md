@@ -6,8 +6,8 @@ The following table lists the release branches and versions of **`media-webhook-
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1.0 | :x:                |
+| 1.x     | :white_check_mark: |
+| < 1.0.0 | :x:                |
 
 ---
 
