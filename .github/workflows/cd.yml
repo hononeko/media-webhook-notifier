@@ -3,6 +3,10 @@ name: Continuous Delivery & Release
 on:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: media-webhook-notifier
@@ -14,7 +18,7 @@ jobs:
       contents: read
       packages: read
     with:
-      image_tag: cd-test
+      build_image: false
 
   release:
     name: Build, Tag & Release

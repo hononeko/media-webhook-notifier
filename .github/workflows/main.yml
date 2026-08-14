@@ -4,6 +4,10 @@ on:
   push:
     branches: ["master", "main"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     uses: ./.github/workflows/validate.yml
@@ -11,4 +15,5 @@ jobs:
       contents: read
       packages: read
     with:
+      build_image: true
       image_tag: main-test

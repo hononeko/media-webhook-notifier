@@ -5,7 +5,7 @@ on:
     branches: ["master", "main"]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -15,4 +15,4 @@ jobs:
       contents: read
       packages: read
     with:
-      image_tag: pr-test
+      build_image: false
