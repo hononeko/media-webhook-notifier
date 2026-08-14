@@ -33,7 +33,7 @@ abstract class AbstractServarrWebhookProvider(
         }
 
         val source = resolveSource(dto)
-        val effectiveCaller = callerName ?: dto.instanceName ?: "default"
+        val effectiveCaller = resolveCaller(callerName, dto.instanceName)
         logger.info("Ingesting {} webhook for {} (caller: {})", eventType, source, effectiveCaller)
 
         val payload: MediaPayload? =
@@ -165,4 +165,13 @@ abstract class AbstractServarrWebhookProvider(
                 ?.episodeFile
                 ?.size
             ?: dto.release?.size
+
+    private fun resolveCaller(
+        callerName: String?,
+        instanceName: String?
+    ): String {
+        if (!callerName.isNullOrBlank()) return callerName
+        if (!instanceName.isNullOrBlank()) return instanceName
+        return "default"
+    }
 }
