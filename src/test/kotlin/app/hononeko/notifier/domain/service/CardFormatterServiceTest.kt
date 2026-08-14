@@ -221,4 +221,34 @@ class CardFormatterServiceTest {
         assertEquals("Jellyfin Media Server", jellyfinCard.subtitle)
         assertEquals("🍿 Watch on Jellyfin", jellyfinCard.actions.first().label)
     }
+
+    @Test
+    fun `should build import and upgrade cards correctly`() {
+        val importPayload =
+            MediaPayload.ArrDownload(
+                source = AppSource.SONARR,
+                title = "Severance - S02E01 - Hello World",
+                seriesOrMovieTitle = "Severance",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1),
+                videoCodec = "HEVC",
+                audioCodec = "EAC3",
+                resolution = "2160p",
+                isUpgrade = false,
+                instanceName = "Sonarr 4K"
+            )
+
+        val importCard = CardFormatterService.buildImportCard(importPayload)
+        assertEquals("📁 File Imported: Severance (S02E01)", importCard.title)
+        assertEquals("Sonarr 4K • Library Import", importCard.subtitle)
+        assertEquals(NotificationLevel.SUCCESS, importCard.level)
+
+        val upgradePayload =
+            importPayload.copy(
+                isUpgrade = true
+            )
+        val upgradeCard = CardFormatterService.buildImportCard(upgradePayload)
+        assertEquals("⬆️ File Upgraded: Severance (S02E01)", upgradeCard.title)
+        assertEquals("Sonarr 4K • Quality Upgrade", upgradeCard.subtitle)
+    }
 }

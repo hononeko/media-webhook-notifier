@@ -250,6 +250,59 @@ object CardFormatterService {
         )
     }
 
+    fun buildImportCard(payload: MediaPayload.ArrDownload): NotificationCard {
+        val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
+        val fullTitle =
+            when {
+                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
+                payload.year != null -> "${payload.title} (${payload.year})"
+                else -> payload.title
+            }
+
+        val title =
+            if (payload.isUpgrade) {
+                "⬆️ File Upgraded: $fullTitle"
+            } else {
+                "📁 File Imported: $fullTitle"
+            }
+
+        val subtitle =
+            if (payload.isUpgrade) {
+                "${payload.instanceName ?: payload.source.displayName} • Quality Upgrade"
+            } else {
+                "${payload.instanceName ?: payload.source.displayName} • Library Import"
+            }
+
+        val specs =
+            MediaSpecs(
+                video = payload.videoCodec,
+                audio = payload.audioCodec,
+                resolution = payload.resolution,
+                sizeFormatted = payload.sizeBytes?.let { formatBytes(it) }
+            )
+
+        val actions = mutableListOf<ActionLink>()
+        if (!payload.webUrl.isNullOrBlank()) {
+            actions.add(
+                ActionLink(
+                    label = "📁 Open in ${payload.source.displayName}",
+                    url = payload.webUrl,
+                    style = ActionStyle.DEFAULT
+                )
+            )
+        }
+
+        return NotificationCard(
+            title = title,
+            subtitle = subtitle,
+            overview = truncateOverview(payload.overview),
+            level = NotificationLevel.SUCCESS,
+            mediaSpecs = specs,
+            artworkUrl = payload.posterUrl,
+            actions = actions
+        )
+    }
+
     fun buildAvailableCard(
         payload: MediaPayload,
         mediaServerPort: MediaServerPort? = null
@@ -257,7 +310,7 @@ object CardFormatterService {
         when (payload) {
             is MediaPayload.PlexLibraryNew -> buildPlexCard(payload, mediaServerPort)
             is MediaPayload.JellyfinItemAdded -> buildJellyfinCard(payload, mediaServerPort)
-            is MediaPayload.ArrDownload -> buildArrDownloadCard(payload)
+            is MediaPayload.ArrDownload -> buildImportCard(payload)
             is MediaPayload.ArrGrab -> buildGrabInitialCard(payload, null)
         }
 
