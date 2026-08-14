@@ -1,4 +1,4 @@
-# Minimal Distroless Runtime for GraalVM Native Executable
+# Minimal Distroless Static Runtime for GraalVM Fully Static Native Executable
 FROM gcr.io/distroless/static-debian12:nonroot
 
 LABEL org.opencontainers.image.source="https://github.com/hononeko/media-webhook-notifier"
@@ -7,7 +7,7 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
-# Copy native binary compiled by GraalVM
+# Copy statically linked native binary compiled with GraalVM + musl
 COPY build/native/nativeCompile/media-webhook-notifier /app/media-webhook-notifier
 
 # Expose HTTP Ingestion Port

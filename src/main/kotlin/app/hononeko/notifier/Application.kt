@@ -3,7 +3,12 @@ package app.hononeko.notifier
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.InboundRateLimiter
 import app.hononeko.notifier.adapter.inbound.web.configureWebhookRouting
+import app.hononeko.notifier.adapter.inbound.web.controller.EventRailMetricsDto
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
+import app.hononeko.notifier.adapter.inbound.web.controller.HealthStatusDto
+import app.hononeko.notifier.adapter.inbound.web.controller.MemoryMetricsDto
+import app.hononeko.notifier.adapter.inbound.web.controller.MetricsDto
+import app.hononeko.notifier.adapter.inbound.web.controller.ProbeStatusDto
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerAdapter
@@ -40,6 +45,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.modules.SerializersModule
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
 
@@ -163,6 +169,15 @@ fun Application.module(dependencies: AppDependencies) {
                 ignoreUnknownKeys = true
                 encodeDefaults = true
                 isLenient = true
+                serializersModule =
+                    SerializersModule {
+                        contextual(WebhookReceiptDto::class, WebhookReceiptDto.serializer())
+                        contextual(HealthStatusDto::class, HealthStatusDto.serializer())
+                        contextual(ProbeStatusDto::class, ProbeStatusDto.serializer())
+                        contextual(MetricsDto::class, MetricsDto.serializer())
+                        contextual(EventRailMetricsDto::class, EventRailMetricsDto.serializer())
+                        contextual(MemoryMetricsDto::class, MemoryMetricsDto.serializer())
+                    }
             }
         )
     }
@@ -170,7 +185,7 @@ fun Application.module(dependencies: AppDependencies) {
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             logger.error("Unhandled exception processing request: {}", cause.message, cause)
-            call.respond(
+            call.respond<WebhookReceiptDto>(
                 HttpStatusCode.InternalServerError,
                 WebhookReceiptDto(
                     status = "error",

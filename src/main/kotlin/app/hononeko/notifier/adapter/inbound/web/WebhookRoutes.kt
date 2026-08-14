@@ -23,19 +23,21 @@ fun Application.configureWebhookRouting(
     eventRail: EventRail,
     serverConfig: ServerConfig,
     providerRegistry: WebhookProviderRegistry = WebhookProviderRegistry(),
-    healthController: HealthController = HealthController(),
-    rateLimiter: InboundRateLimiter = InboundRateLimiter(serverConfig.rateLimitPerMinute)
+    healthController: HealthController = HealthController(eventRail = eventRail),
+    rateLimiter: InboundRateLimiter = InboundRateLimiter(limitPerMinute = serverConfig.rateLimitPerMinute)
 ) {
     routing {
-        // Public health, probe & metrics endpoints
-        get("/health") { healthController.handleHealth(call) }
-        get("/healthz") { healthController.handleHealth(call) }
+        // Health and Kubernetes Probes
         get("/livez") { healthController.handleLiveness(call) }
         get("/health/live") { healthController.handleLiveness(call) }
         get("/readyz") { healthController.handleReadiness(call) }
         get("/health/ready") { healthController.handleReadiness(call) }
         get("/startupz") { healthController.handleStartup(call) }
         get("/health/startup") { healthController.handleStartup(call) }
+        get("/health") { healthController.handleHealth(call) }
+        get("/healthz") { healthController.handleHealth(call) }
+
+        // Metrics & Telemetry
         get("/metrics") { healthController.handleMetrics(call) }
 
         // Dynamic JSON schema retrieval: /schema/{provider}
@@ -47,7 +49,7 @@ fun Application.configureWebhookRouting(
                 if (schemaJson != null) {
                     call.respondText(schemaJson, ContentType.Application.Json)
                 } else {
-                    call.respond(
+                    call.respond<WebhookReceiptDto>(
                         HttpStatusCode.NotFound,
                         WebhookReceiptDto(
                             status = "error",
@@ -61,7 +63,7 @@ fun Application.configureWebhookRouting(
         // Webhook ingestion endpoints: /api/v1/webhook/{provider} and /api/v1/webhook/{token}/{provider}
         route("/api/v1/webhook") {
             post {
-                call.respond(
+                call.respond<WebhookReceiptDto>(
                     HttpStatusCode.BadRequest,
                     WebhookReceiptDto(
                         status = "error",
@@ -103,7 +105,7 @@ private fun Route.registerDynamicWebhookEndpoint(
         val provider = providerKey?.let { providerRegistry.get(it) }
 
         if (provider == null) {
-            call.respond(
+            call.respond<WebhookReceiptDto>(
                 HttpStatusCode.NotFound,
                 WebhookReceiptDto(
                     status = "error",
@@ -121,7 +123,7 @@ private fun Route.registerDynamicWebhookEndpoint(
                 is WebhookProcessResult.Queued -> {
                     val published = eventRail.publish(result.payload)
                     if (published) {
-                        call.respond(
+                        call.respond<WebhookReceiptDto>(
                             HttpStatusCode.Accepted,
                             WebhookReceiptDto(
                                 status = "accepted",
@@ -130,7 +132,7 @@ private fun Route.registerDynamicWebhookEndpoint(
                             )
                         )
                     } else {
-                        call.respond(
+                        call.respond<WebhookReceiptDto>(
                             HttpStatusCode.ServiceUnavailable,
                             WebhookReceiptDto(
                                 status = "error",
@@ -141,7 +143,7 @@ private fun Route.registerDynamicWebhookEndpoint(
                 }
 
                 is WebhookProcessResult.TestOk -> {
-                    call.respond(
+                    call.respond<WebhookReceiptDto>(
                         HttpStatusCode.OK,
                         WebhookReceiptDto(
                             status = "ok",
@@ -152,7 +154,7 @@ private fun Route.registerDynamicWebhookEndpoint(
                 }
 
                 is WebhookProcessResult.Ignored -> {
-                    call.respond(
+                    call.respond<WebhookReceiptDto>(
                         HttpStatusCode.OK,
                         WebhookReceiptDto(
                             status = "ignored",
@@ -163,7 +165,7 @@ private fun Route.registerDynamicWebhookEndpoint(
                 }
 
                 is WebhookProcessResult.InvalidPayload -> {
-                    call.respond(
+                    call.respond<WebhookReceiptDto>(
                         HttpStatusCode.BadRequest,
                         WebhookReceiptDto(
                             status = "error",
@@ -184,7 +186,7 @@ private suspend inline fun withAuthAndRateLimit(
 ) {
     if (!rateLimiter.tryAcquire(call)) {
         call.response.header(HttpHeaders.RetryAfter, "60")
-        call.respond(
+        call.respond<WebhookReceiptDto>(
             HttpStatusCode.TooManyRequests,
             WebhookReceiptDto(
                 status = "rate_limited",
@@ -195,7 +197,7 @@ private suspend inline fun withAuthAndRateLimit(
     }
 
     if (!AuthGuard.isAuthorized(call, expectedToken)) {
-        call.respond(
+        call.respond<WebhookReceiptDto>(
             HttpStatusCode.Unauthorized,
             WebhookReceiptDto(
                 status = "unauthorized",
