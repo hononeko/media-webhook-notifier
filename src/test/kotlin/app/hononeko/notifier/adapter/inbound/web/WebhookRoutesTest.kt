@@ -577,7 +577,36 @@ class WebhookRoutesTest {
                 }
             assertEquals(HttpStatusCode.NotFound, response.status)
             val body = response.bodyAsText()
-            assertTrue(body.contains("Unsupported webhook provider"))
+            assertTrue(body.contains("Unsupported webhook provider 'unknown-service'"))
+
+            val pathTokenResponse =
+                client.post("/api/v1/webhook/secret-token/unknown-service") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"test": true}""")
+                }
+            assertEquals(HttpStatusCode.NotFound, pathTokenResponse.status)
+            assertTrue(pathTokenResponse.bodyAsText().contains("Unsupported webhook provider 'unknown-service'"))
+        }
+
+    @Test
+    fun `should return 400 Bad Request when calling webhook root without provider parameter`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = ""))
+            }
+
+            val response =
+                client.post("/api/v1/webhook") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"test": true}""")
+                }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            val body = response.bodyAsText()
+            assertTrue(body.contains("Missing webhook provider in URL path"))
         }
 
     @Test

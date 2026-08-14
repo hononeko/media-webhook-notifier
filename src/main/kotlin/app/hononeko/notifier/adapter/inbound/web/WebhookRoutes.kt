@@ -51,8 +51,21 @@ fun Application.configureWebhookRouting(
             }
         }
 
-        // Dynamic webhook ingestion endpoints: /api/v1/webhook/{provider} and /api/v1/webhook/{token}/{provider}
+        // Webhook ingestion endpoints: /api/v1/webhook/{provider} and /api/v1/webhook/{token}/{provider}
         route("/api/v1/webhook") {
+            post {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    WebhookReceiptDto(
+                        status = "error",
+                        message =
+                            "Missing webhook provider in URL path. " +
+                                "Usage: /api/v1/webhook/{provider} or /api/v1/webhook/{token}/{provider}. " +
+                                "Supported providers: ${providerRegistry.supportedProviders().sorted()}"
+                    )
+                )
+            }
+
             registerDynamicWebhookEndpoint(
                 serverConfig = serverConfig,
                 rateLimiter = rateLimiter,
@@ -89,7 +102,7 @@ private fun Route.registerDynamicWebhookEndpoint(
                     status = "error",
                     message =
                         "Unsupported webhook provider '$providerKey'. " +
-                            "Supported providers: ${providerRegistry.supportedProviders()}"
+                            "Supported providers: ${providerRegistry.supportedProviders().sorted()}"
                 )
             )
             return@post
