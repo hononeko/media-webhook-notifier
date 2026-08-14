@@ -30,6 +30,12 @@ class DownloadTrackerEngine(
     private val logger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
     private val activeTrackers = ConcurrentHashMap<String, Job>()
 
+    private data class TrackerStep(
+        val isTerminal: Boolean,
+        val newStalledDurationSeconds: Long,
+        val newDownloadedBytes: Long
+    )
+
     override suspend fun track(
         hash: String,
         initialPayload: MediaPayload.ArrGrab
@@ -82,98 +88,38 @@ class DownloadTrackerEngine(
         var lastKnownProgress: TorrentProgress? = null
 
         val maxPollingSeconds = maxPollingMinutes * 60
-        val maxStalledSeconds = stalledTimeoutMinutes * 60
 
         try {
             while (elapsedSeconds < maxPollingSeconds) {
                 delay(pollIntervalSeconds * 1000)
                 elapsedSeconds += pollIntervalSeconds
 
-                when (val progressResult = torrentClient.getTorrentProgress(hash)) {
-                    is Either.Left -> {
-                        missingCount++
-                        logger.debug(
-                            "Fetch error ({}/{}): {}",
-                            missingCount,
-                            missingGraceAttempts,
-                            progressResult.value
+                val progress = fetchTorrentProgress(hash)
+                if (progress == null) {
+                    missingCount++
+                    if (handleMissingTorrent(hash, payload, handle, lastKnownProgress, missingCount)) {
+                        break
+                    }
+                } else {
+                    missingCount = 0
+                    lastKnownProgress = progress
+
+                    val step =
+                        processActiveProgress(
+                            hash = hash,
+                            payload = payload,
+                            handle = handle,
+                            progress = progress,
+                            lastDownloadedBytes = lastDownloadedBytes,
+                            stalledDurationSeconds = stalledDurationSeconds
                         )
-                        if (missingCount >= missingGraceAttempts) {
-                            logger.warn("Torrent {} not found after {} attempts. Halting.", hash, missingCount)
-                            val stalledCard =
-                                CardFormatterService.buildStalledCard(
-                                    payload,
-                                    lastKnownProgress,
-                                    webuiPublicUrl
-                                )
-                            notificationPublisher.cancelProgress(handle, stalledCard)
-                            break
-                        }
+
+                    if (step.isTerminal) {
+                        break
                     }
-                    is Either.Right -> {
-                        val progress = progressResult.value
-                        if (progress == null) {
-                            missingCount++
-                            if (missingCount >= missingGraceAttempts) {
-                                logger.warn("Torrent {} returned null after {} attempts.", hash, missingCount)
-                                val stalledCard =
-                                    CardFormatterService.buildStalledCard(
-                                        payload,
-                                        lastKnownProgress,
-                                        webuiPublicUrl
-                                    )
-                                notificationPublisher.cancelProgress(handle, stalledCard)
-                                break
-                            }
-                        } else {
-                            missingCount = 0
-                            lastKnownProgress = progress
 
-                            if (progress.progressPercent >= 100 || progress.state.isComplete) {
-                                logger.info("Torrent {} reached 100%. Dispatching completion card.", hash)
-                                val completionCard =
-                                    CardFormatterService.buildCompletionCard(
-                                        payload,
-                                        progress,
-                                        webuiPublicUrl
-                                    )
-                                notificationPublisher.completeProgress(handle, completionCard)
-                                break
-                            }
-
-                            val isStalled =
-                                progress.state.isStalled ||
-                                    (
-                                        progress.downloadSpeedBytesPerSec == 0L &&
-                                            progress.downloadedBytes == lastDownloadedBytes
-                                    )
-
-                            if (isStalled) {
-                                stalledDurationSeconds += pollIntervalSeconds
-                                if (stalledDurationSeconds >= maxStalledSeconds) {
-                                    logger.warn("Torrent {} stalled for {}s. Halting.", hash, stalledDurationSeconds)
-                                    val stalledCard =
-                                        CardFormatterService.buildStalledCard(
-                                            payload,
-                                            progress,
-                                            webuiPublicUrl
-                                        )
-                                    notificationPublisher.cancelProgress(handle, stalledCard)
-                                    break
-                                }
-                            } else {
-                                stalledDurationSeconds = 0L
-                            }
-
-                            lastDownloadedBytes = progress.downloadedBytes
-
-                            val update = CardFormatterService.buildProgressUpdate(payload, progress, webuiPublicUrl)
-                            val updateResult = notificationPublisher.updateProgress(handle, update)
-                            if (updateResult is Either.Left) {
-                                logger.debug("Dropped progress tick for {}: {}", hash, updateResult.value)
-                            }
-                        }
-                    }
+                    stalledDurationSeconds = step.newStalledDurationSeconds
+                    lastDownloadedBytes = step.newDownloadedBytes
                 }
             }
 
@@ -186,6 +132,90 @@ class DownloadTrackerEngine(
             logger.error("Unexpected error in tracking loop for {}", hash, e)
         } finally {
             activeTrackers.remove(hash)
+        }
+    }
+
+    private suspend fun fetchTorrentProgress(hash: String): TorrentProgress? =
+        when (val result = torrentClient.getTorrentProgress(hash)) {
+            is Either.Right -> result.value
+            is Either.Left -> {
+                logger.debug("Fetch error for {}: {}", hash, result.value)
+                null
+            }
+        }
+
+    private suspend fun handleMissingTorrent(
+        hash: String,
+        payload: MediaPayload.ArrGrab,
+        handle: NotificationHandle,
+        lastKnownProgress: TorrentProgress?,
+        missingCount: Int
+    ): Boolean {
+        if (missingCount < missingGraceAttempts) {
+            return false
+        }
+
+        logger.warn("Torrent {} missing after {} attempts. Halting.", hash, missingCount)
+        val stalledCard = CardFormatterService.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
+        notificationPublisher.cancelProgress(handle, stalledCard)
+        return true
+    }
+
+    private suspend fun processActiveProgress(
+        hash: String,
+        payload: MediaPayload.ArrGrab,
+        handle: NotificationHandle,
+        progress: TorrentProgress,
+        lastDownloadedBytes: Long,
+        stalledDurationSeconds: Long
+    ): TrackerStep {
+        if (progress.progressPercent >= 100 || progress.state.isComplete) {
+            logger.info("Torrent {} reached 100%. Dispatching completion card.", hash)
+            val completionCard = CardFormatterService.buildCompletionCard(payload, progress, webuiPublicUrl)
+            notificationPublisher.completeProgress(handle, completionCard)
+            return TrackerStep(
+                isTerminal = true,
+                newStalledDurationSeconds = 0L,
+                newDownloadedBytes = progress.downloadedBytes
+            )
+        }
+
+        val maxStalledSeconds = stalledTimeoutMinutes * 60
+        val isStalled =
+            progress.state.isStalled ||
+                (progress.downloadSpeedBytesPerSec == 0L && progress.downloadedBytes == lastDownloadedBytes)
+
+        val updatedStalledSeconds = if (isStalled) stalledDurationSeconds + pollIntervalSeconds else 0L
+
+        if (updatedStalledSeconds >= maxStalledSeconds) {
+            logger.warn("Torrent {} stalled for {}s. Halting.", hash, updatedStalledSeconds)
+            val stalledCard = CardFormatterService.buildStalledCard(payload, progress, webuiPublicUrl)
+            notificationPublisher.cancelProgress(handle, stalledCard)
+            return TrackerStep(
+                isTerminal = true,
+                newStalledDurationSeconds = updatedStalledSeconds,
+                newDownloadedBytes = progress.downloadedBytes
+            )
+        }
+
+        dispatchProgressUpdate(hash, payload, handle, progress)
+        return TrackerStep(
+            isTerminal = false,
+            newStalledDurationSeconds = updatedStalledSeconds,
+            newDownloadedBytes = progress.downloadedBytes
+        )
+    }
+
+    private suspend fun dispatchProgressUpdate(
+        hash: String,
+        payload: MediaPayload.ArrGrab,
+        handle: NotificationHandle,
+        progress: TorrentProgress
+    ) {
+        val update = CardFormatterService.buildProgressUpdate(payload, progress, webuiPublicUrl)
+        val updateResult = notificationPublisher.updateProgress(handle, update)
+        if (updateResult is Either.Left) {
+            logger.debug("Dropped progress tick for {}: {}", hash, updateResult.value)
         }
     }
 

@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.graalvm.native)
     alias(libs.plugins.ktlint)
     application
+    jacoco
 }
 
 group = "app.hononeko.notifier"
@@ -68,6 +69,15 @@ tasks.test {
     testLogging {
         events("passed", "skipped", "failed")
     }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
 }
 
 ktlint {
@@ -82,7 +92,6 @@ ktlint {
 }
 
 graalvmNative {
-
     binaries {
         named("main") {
             imageName.set("media-webhook-notifier")

@@ -14,6 +14,8 @@ import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import java.util.Locale
 
 object CardFormatterService {
+    private const val OPEN_WEBUI_LABEL = "🌐 Open WebUI"
+
     fun drawProgressBar(
         percent: Int,
         length: Int = 10
@@ -113,7 +115,7 @@ object CardFormatterService {
 
         val actions = mutableListOf<ActionLink>()
         if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = "🌐 Open WebUI", url = webUiUrl, style = ActionStyle.PRIMARY))
+            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.PRIMARY))
         }
 
         return NotificationCard(
@@ -151,7 +153,7 @@ object CardFormatterService {
 
         val actions = mutableListOf<ActionLink>()
         if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = "🌐 Open WebUI", url = webUiUrl, style = ActionStyle.PRIMARY))
+            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.PRIMARY))
         }
 
         val stateLabel =
@@ -201,7 +203,7 @@ object CardFormatterService {
 
         val actions = mutableListOf<ActionLink>()
         if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = "🌐 Open WebUI", url = webUiUrl, style = ActionStyle.SUCCESS))
+            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.SUCCESS))
         }
 
         return NotificationCard(
@@ -237,7 +239,7 @@ object CardFormatterService {
 
         val actions = mutableListOf<ActionLink>()
         if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = "🌐 Open WebUI", url = webUiUrl, style = ActionStyle.DANGER))
+            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.DANGER))
         }
 
         return NotificationCard(
@@ -378,52 +380,6 @@ object CardFormatterService {
         return NotificationCard(
             title = "🍿 Now Available: $fullTitle",
             subtitle = "Jellyfin Media Server",
-            overview = truncateOverview(payload.overview),
-            level = NotificationLevel.SUCCESS,
-            mediaSpecs = specs,
-            artworkUrl = payload.posterUrl,
-            actions = actions
-        )
-    }
-
-    private fun buildArrDownloadCard(payload: MediaPayload.ArrDownload): NotificationCard {
-        val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
-        val fullTitle =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                payload.year != null -> "${payload.title} (${payload.year})"
-                else -> payload.title
-            }
-
-        val subtitle =
-            if (payload.isUpgrade) {
-                "${payload.instanceName ?: payload.source.displayName} • Quality Upgrade ⬆️"
-            } else {
-                payload.instanceName ?: payload.source.displayName
-            }
-
-        val specs =
-            MediaSpecs(
-                video = payload.videoCodec,
-                audio = payload.audioCodec,
-                resolution = payload.resolution,
-                sizeFormatted = payload.sizeBytes?.let { formatBytes(it) }
-            )
-
-        val actions = mutableListOf<ActionLink>()
-        if (!payload.webUrl.isNullOrBlank()) {
-            actions.add(
-                ActionLink(
-                    label = "📁 Open in ${payload.source.displayName}",
-                    url = payload.webUrl,
-                    style = ActionStyle.DEFAULT
-                )
-            )
-        }
-
-        return NotificationCard(
-            title = "🍿 Imported: $fullTitle",
-            subtitle = subtitle,
             overview = truncateOverview(payload.overview),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
