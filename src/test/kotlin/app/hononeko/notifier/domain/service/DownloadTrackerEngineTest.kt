@@ -20,11 +20,14 @@ import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadTrackerEngineTest {
-    private class FakeNotificationPublisher : NotificationPublisherPort {
+    private class FakeNotificationPublisher(
+        private val shouldFailStart: Boolean = false
+    ) : NotificationPublisherPort {
         override val providerId: String = "fake"
 
         val sentCards = Collections.synchronizedList(mutableListOf<NotificationCard>())
@@ -42,6 +45,9 @@ class DownloadTrackerEngineTest {
         override suspend fun startLiveProgress(
             initialCard: NotificationCard
         ): Either<DomainError.NotificationError, NotificationHandle> {
+            if (shouldFailStart) {
+                return Either.Left(DomainError.NotificationError.RateLimited("fake", 30))
+            }
             sentCards.add(initialCard)
             return Either.Right(NotificationHandle("fake", "chat123", "msg_live"))
         }
@@ -165,7 +171,11 @@ class DownloadTrackerEngineTest {
             val trackResult = engine.track("hash123", grab)
             assertTrue(trackResult.isRight())
             assertEquals(1, publisher.sentCards.size)
-            assertEquals(1, engine.activeTrackerCount())
+            assertTrue(engine.isTracking("hash123"))
+
+            // Duplicate tracking call should be no-op
+            val dupResult = engine.track("hash123", grab)
+            assertTrue(dupResult.isRight())
 
             // Tick 1 (50%)
             testScope.advanceTimeBy(2100L)
@@ -215,5 +225,67 @@ class DownloadTrackerEngineTest {
 
             assertEquals(1, publisher.cancelledCards.size)
             assertEquals(0, engine.activeTrackerCount())
+        }
+
+    @Test
+    fun `should fail track when publisher returns error`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val failingPublisher = FakeNotificationPublisher(shouldFailStart = true)
+            val torrentClient = TorrentClientPort { Either.Right(null) }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = torrentClient,
+                    notificationPublisher = failingPublisher,
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hashFail",
+                    title = "Test",
+                    seriesOrMovieTitle = "Test"
+                )
+
+            val result = engine.track("hashFail", grab)
+            assertTrue(result.isLeft())
+            assertFalse(engine.isTracking("hashFail"))
+        }
+
+    @Test
+    fun `should cancel trackers on stopAll`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            val torrentClient = TorrentClientPort { Either.Right(null) }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = torrentClient,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 10,
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hashStop",
+                    title = "Test",
+                    seriesOrMovieTitle = "Test"
+                )
+
+            engine.track("hashStop", grab)
+            assertTrue(engine.isTracking("hashStop"))
+
+            engine.stopAll()
+            assertEquals(0, engine.activeTrackerCount())
+            assertFalse(engine.isTracking("hashStop"))
         }
 }
