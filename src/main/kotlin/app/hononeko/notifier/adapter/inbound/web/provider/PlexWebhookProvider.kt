@@ -1,31 +1,30 @@
-package app.hononeko.notifier.adapter.inbound.web.controller
+package app.hononeko.notifier.adapter.inbound.web.provider
 
-import app.hononeko.notifier.adapter.inbound.web.AuthGuard
-import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.dto.PlexWebhookDto
-import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.contentType
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveMultipart
-import io.ktor.server.response.respond
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
-class PlexWebhookController(
-    private val eventRail: EventRail,
+class PlexWebhookProvider(
     private val json: Json = Json { ignoreUnknownKeys = true }
-) {
-    private val logger = LoggerFactory.getLogger(PlexWebhookController::class.java)
+) : WebhookProviderStrategy {
+    private val logger = LoggerFactory.getLogger(PlexWebhookProvider::class.java)
 
-    suspend fun handlePlex(call: ApplicationCall) {
+    override val providerKeys: Set<String> = setOf("plex")
+
+    override suspend fun process(
+        call: ApplicationCall,
+        callerName: String?
+    ): WebhookProcessResult {
         val dto =
             try {
                 val contentType = call.request.contentType()
@@ -36,22 +35,13 @@ class PlexWebhookController(
                 }
             } catch (e: Exception) {
                 logger.warn("Failed to parse Plex webhook payload: ${e.message}")
-                call.respond(
-                    HttpStatusCode.BadRequest,
-                    WebhookReceiptDto(status = "error", message = "Invalid Plex payload: ${e.message}")
-                )
-                return
+                return WebhookProcessResult.InvalidPayload("Invalid Plex payload: ${e.message}")
             }
 
         if (dto == null) {
-            call.respond(
-                HttpStatusCode.BadRequest,
-                WebhookReceiptDto(status = "error", message = "Missing payload in multipart request")
-            )
-            return
+            return WebhookProcessResult.InvalidPayload("Missing payload in multipart request")
         }
 
-        val callerName = AuthGuard.extractCallerName(call)
         val event = dto.event?.trim()
         logger.info(
             "Ingesting Plex webhook event: {} (server: {}, caller: {})",
@@ -60,36 +50,21 @@ class PlexWebhookController(
             callerName ?: "default"
         )
 
-        if (event.equals("library.new", ignoreCase = true)) {
+        return if (event.equals("library.new", ignoreCase = true)) {
             val payload = mapToPlexLibraryNew(dto)
-            val published = eventRail.publish(payload)
-            if (published) {
-                call.respond(
-                    HttpStatusCode.Accepted,
-                    WebhookReceiptDto(
-                        status = "accepted",
-                        message = "Plex library item queued for processing",
-                        eventType = event
-                    )
-                )
-            } else {
-                call.respond(
-                    HttpStatusCode.ServiceUnavailable,
-                    WebhookReceiptDto(status = "error", message = "Event rail queue buffer full")
-                )
-            }
+            WebhookProcessResult.Queued(payload, event)
         } else {
             logger.debug("Ignoring unsupported Plex event: {}", event)
-            call.respond(
-                HttpStatusCode.OK,
-                WebhookReceiptDto(
-                    status = "ignored",
-                    message = "Plex event '$event' is ignored",
-                    eventType = event
-                )
-            )
+            WebhookProcessResult.Ignored("Plex event '$event' is ignored", event)
         }
     }
+
+    override fun getSchema(): Map<String, Any> =
+        mapOf(
+            "service" to "Plex Media Server",
+            "supportedEvents" to listOf("library.new"),
+            "format" to "JSON or multipart/form-data (payload part)"
+        )
 
     private suspend fun parseMultipartPayload(call: ApplicationCall): PlexWebhookDto? {
         val multipart = call.receiveMultipart()
