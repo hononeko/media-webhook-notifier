@@ -1,20 +1,26 @@
+# syntax=docker/dockerfile:1.7
 # Stage 1: Build Native Binary with GraalVM
 FROM ghcr.io/graalvm/native-image-community:25-ol9 AS builder
 
 WORKDIR /build
 
+ARG GRADLE_ARGS=""
+ENV GRADLE_ARGS=${GRADLE_ARGS}
+
 # Copy Gradle wrapper and definition files for dependency caching
 COPY gradlew gradlew
 COPY gradle gradle
-COPY build.gradle.kts settings.gradle.kts ./
+COPY build.gradle.kts settings.gradle.kts gradle.properties ./
 
-RUN ./gradlew dependencies --no-daemon
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew dependencies --no-daemon
 
 # Copy application source code
 COPY src src
 
-# Build native binary with optimization flags
-RUN ./gradlew nativeCompile --no-daemon
+# Build native binary with optimization flags and BuildKit cache
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew nativeCompile --no-daemon ${GRADLE_ARGS}
 
 # Stage 2: Minimal Distroless Runtime
 FROM gcr.io/distroless/static-debian12:nonroot

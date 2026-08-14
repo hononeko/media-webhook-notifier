@@ -104,6 +104,9 @@ graalvmNative {
                 "--enable-http",
                 "--enable-https"
             )
+            if (project.hasProperty("quickBuild") || System.getenv("GRAALVM_QUICK_BUILD") == "true") {
+                buildArgs.add("-Ob")
+            }
         }
     }
 }

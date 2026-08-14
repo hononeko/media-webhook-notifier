@@ -76,6 +76,13 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Generate Build Attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
       - name: Generate Changelog
         if: steps.version.outputs.version_tag
         run: |
