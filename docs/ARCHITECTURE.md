@@ -12,11 +12,11 @@ This guarantees that business rules (media tracking, card generation, notificati
 ```
                                ┌─────────────────────────────────────────┐
                                │           Driving Adapters              │
-                               │  (HTTP Inbound / Webhook Controllers)   │
-                               │  - ServarrWebhookController             │
-                               │  - PlexWebhookController                │
-                               │  - JellyfinWebhookController            │
-                               │  - SchemaDocumentationController        │
+                               │  (HTTP Inbound / Strategy Registry)     │
+                               │  - WebhookProviderRegistry              │
+                               │  - Sonarr / Radarr / Servarr Providers  │
+                               │  - Plex / Jellyfin Providers            │
+                               │  - SchemaController / Health            │
                                └────────────────────┬────────────────────┘
                                                     │
                                                     ▼
@@ -112,10 +112,21 @@ media-webhook-notifier/
     │   │       └── adapter/                      # Adapters (Framework & Vendor specific)
     │   │           ├── inbound/
     │   │           │   └── web/                  # Ktor HTTP Handlers
-    │   │           │       ├── Routing.kt
-    │   │           │       ├── ServarrWebhookController.kt
-    │   │           │       ├── PlexWebhookController.kt
-    │   │           │       └── JellyfinWebhookController.kt
+    │   │           │       ├── WebhookRoutes.kt
+    │   │           │       ├── AuthGuard.kt
+    │   │           │       ├── InboundRateLimiter.kt
+    │   │           │       ├── EventRail.kt
+    │   │           │       ├── provider/             # Extensible Webhook Provider Strategies
+    │   │           │       │   ├── WebhookProviderStrategy.kt
+    │   │           │       │   ├── WebhookProviderRegistry.kt
+    │   │           │       │   ├── AbstractServarrWebhookProvider.kt
+    │   │           │       │   ├── SonarrWebhookProvider.kt
+    │   │           │       │   ├── RadarrWebhookProvider.kt
+    │   │           │       │   ├── ServarrWebhookProvider.kt
+    │   │           │       │   ├── PlexWebhookProvider.kt
+    │   │           │       │   └── JellyfinWebhookProvider.kt
+    │   │           │       └── controller/
+    │   │           │           └── SchemaController.kt
     │   │           └── outbound/
     │   │               ├── qbittorrent/
     │   │               │   └── QBittorrentClientAdapter.kt

@@ -1,70 +1,38 @@
-package app.hononeko.notifier.adapter.inbound.web.controller
+package app.hononeko.notifier.adapter.inbound.web.provider
 
-import app.hononeko.notifier.adapter.inbound.web.AuthGuard
-import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.dto.ServarrWebhookDto
-import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.MediaPayload
-import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
-import io.ktor.server.response.respond
 import org.slf4j.LoggerFactory
 
-class ServarrWebhookController(
-    private val eventRail: EventRail
-) {
-    private val logger = LoggerFactory.getLogger(ServarrWebhookController::class.java)
+abstract class AbstractServarrWebhookProvider(
+    private val defaultSource: AppSource
+) : WebhookProviderStrategy {
+    private val logger = LoggerFactory.getLogger(javaClass)
 
-    suspend fun handleSonarr(call: ApplicationCall) {
-        handleServarr(call, defaultSource = AppSource.SONARR)
-    }
-
-    suspend fun handleRadarr(call: ApplicationCall) {
-        handleServarr(call, defaultSource = AppSource.RADARR)
-    }
-
-    suspend fun handleServarr(
+    override suspend fun process(
         call: ApplicationCall,
-        defaultSource: AppSource = AppSource.SONARR
-    ) {
+        callerName: String?
+    ): WebhookProcessResult {
         val dto =
             try {
                 call.receive<ServarrWebhookDto>()
             } catch (e: Exception) {
                 logger.warn("Failed to parse Servarr webhook payload: ${e.message}")
-                call.respond(
-                    HttpStatusCode.BadRequest,
-                    WebhookReceiptDto(status = "error", message = "Invalid JSON payload: ${e.message}")
-                )
-                return
+                return WebhookProcessResult.InvalidPayload("Invalid JSON payload: ${e.message}")
             }
 
-        val callerName = AuthGuard.extractCallerName(call)
         val eventType = dto.eventType?.trim()
 
         if (eventType.equals("Test", ignoreCase = true)) {
             val instance = dto.instanceName ?: callerName ?: defaultSource.name
             logger.info("Received Test webhook from Servarr instance: {}", instance)
-            call.respond(
-                HttpStatusCode.OK,
-                WebhookReceiptDto(
-                    status = "ok",
-                    message = "Test webhook received successfully",
-                    eventType = "Test"
-                )
-            )
-            return
+            return WebhookProcessResult.TestOk(instance)
         }
 
-        val source =
-            when {
-                dto.series != null -> AppSource.SONARR
-                dto.movie != null -> AppSource.RADARR
-                else -> defaultSource
-            }
-
+        val source = resolveSource(dto)
         val effectiveCaller = callerName ?: dto.instanceName ?: "default"
         logger.info("Ingesting {} webhook for {} (caller: {})", eventType, source, effectiveCaller)
 
@@ -78,34 +46,19 @@ class ServarrWebhookController(
                 }
             }
 
-        if (payload != null) {
-            val published = eventRail.publish(payload)
-            if (published) {
-                call.respond(
-                    HttpStatusCode.Accepted,
-                    WebhookReceiptDto(
-                        status = "accepted",
-                        message = "Webhook received and queued for processing",
-                        eventType = eventType
-                    )
-                )
-            } else {
-                call.respond(
-                    HttpStatusCode.ServiceUnavailable,
-                    WebhookReceiptDto(status = "error", message = "Event rail queue buffer full")
-                )
-            }
+        return if (payload != null) {
+            WebhookProcessResult.Queued(payload, eventType)
         } else {
-            call.respond(
-                HttpStatusCode.OK,
-                WebhookReceiptDto(
-                    status = "ignored",
-                    message = "Event type '$eventType' is ignored",
-                    eventType = eventType
-                )
-            )
+            WebhookProcessResult.Ignored("Event type '$eventType' is ignored", eventType)
         }
     }
+
+    protected open fun resolveSource(dto: ServarrWebhookDto): AppSource =
+        when {
+            dto.series != null -> AppSource.SONARR
+            dto.movie != null -> AppSource.RADARR
+            else -> defaultSource
+        }
 
     private fun mapToArrGrab(
         dto: ServarrWebhookDto,

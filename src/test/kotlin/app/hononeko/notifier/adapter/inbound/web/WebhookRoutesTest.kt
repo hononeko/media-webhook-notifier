@@ -558,4 +558,83 @@ class WebhookRoutesTest {
             val body = secondReq.bodyAsText()
             assertTrue(body.contains("rate_limited"))
         }
+
+    @Test
+    fun `should return 404 for unsupported webhook provider`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = ""))
+            }
+
+            val response =
+                client.post("/api/v1/webhook/unknown-service") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"test": true}""")
+                }
+            assertEquals(HttpStatusCode.NotFound, response.status)
+            val body = response.bodyAsText()
+            assertTrue(body.contains("Unsupported webhook provider 'unknown-service'"))
+
+            val pathTokenResponse =
+                client.post("/api/v1/webhook/secret-token/unknown-service") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"test": true}""")
+                }
+            assertEquals(HttpStatusCode.NotFound, pathTokenResponse.status)
+            assertTrue(pathTokenResponse.bodyAsText().contains("Unsupported webhook provider 'unknown-service'"))
+        }
+
+    @Test
+    fun `should return 400 Bad Request when calling webhook root without provider parameter`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = ""))
+            }
+
+            val response =
+                client.post("/api/v1/webhook") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"test": true}""")
+                }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            val body = response.bodyAsText()
+            assertTrue(body.contains("Missing webhook provider in URL path"))
+        }
+
+    @Test
+    fun `should support provider aliases and return 404 for unknown schema`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = ""))
+            }
+
+            val embyRes =
+                client.post("/api/v1/webhook/emby") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"NotificationType": "ItemAdded", "ItemId": "e1"}""")
+                }
+            assertEquals(HttpStatusCode.Accepted, embyRes.status)
+
+            val arrRes =
+                client.post("/api/v1/webhook/arr") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"eventType": "Test"}""")
+                }
+            assertEquals(HttpStatusCode.OK, arrRes.status)
+
+            val unknownSchemaRes = client.get("/schema/unknown-schema")
+            assertEquals(HttpStatusCode.NotFound, unknownSchemaRes.status)
+        }
 }

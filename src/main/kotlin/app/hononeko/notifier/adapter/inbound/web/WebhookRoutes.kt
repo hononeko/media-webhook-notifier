@@ -1,17 +1,18 @@
 package app.hononeko.notifier.adapter.inbound.web
 
-import app.hononeko.notifier.adapter.inbound.web.controller.JellyfinWebhookController
-import app.hononeko.notifier.adapter.inbound.web.controller.PlexWebhookController
-import app.hononeko.notifier.adapter.inbound.web.controller.SchemaController
-import app.hononeko.notifier.adapter.inbound.web.controller.ServarrWebhookController
+import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
+import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProcessResult
+import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import app.hononeko.notifier.config.ServerConfig
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -21,78 +22,149 @@ import io.ktor.server.routing.routing
 fun Application.configureWebhookRouting(
     eventRail: EventRail,
     serverConfig: ServerConfig,
-    servarrController: ServarrWebhookController = ServarrWebhookController(eventRail),
-    plexController: PlexWebhookController = PlexWebhookController(eventRail),
-    jellyfinController: JellyfinWebhookController = JellyfinWebhookController(eventRail),
-    schemaController: SchemaController = SchemaController(),
+    providerRegistry: WebhookProviderRegistry = WebhookProviderRegistry(),
+    healthController: HealthController = HealthController(),
     rateLimiter: InboundRateLimiter = InboundRateLimiter(serverConfig.rateLimitPerMinute)
 ) {
     routing {
-        // Public health & schema endpoints
-        get("/health") { schemaController.handleHealth(call) }
-        get("/metrics") { schemaController.handleHealth(call) }
+        // Public health & metrics endpoints
+        get("/health") { healthController.handleHealth(call) }
+        get("/metrics") { healthController.handleHealth(call) }
 
+        // Dynamic JSON schema retrieval: /schema/{provider}
         route("/schema") {
-            get("/sonarr") { schemaController.handleSonarrSchema(call) }
-            get("/radarr") { schemaController.handleRadarrSchema(call) }
-            get("/plex") { schemaController.handlePlexSchema(call) }
-            get("/jellyfin") { schemaController.handleJellyfinSchema(call) }
+            get("/{provider}") {
+                val providerKey = call.parameters["provider"]
+                val schemaJson = providerKey?.let { providerRegistry.get(it)?.getSchemaJson() }
+
+                if (schemaJson != null) {
+                    call.respondText(schemaJson, ContentType.Application.Json)
+                } else {
+                    call.respond(
+                        HttpStatusCode.NotFound,
+                        WebhookReceiptDto(
+                            status = "error",
+                            message = "Unknown schema for provider '$providerKey'"
+                        )
+                    )
+                }
+            }
         }
 
-        // Standard webhook ingestion endpoints
+        // Webhook ingestion endpoints: /api/v1/webhook/{provider} and /api/v1/webhook/{token}/{provider}
         route("/api/v1/webhook") {
-            registerWebhookEndpoints(
+            post {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    WebhookReceiptDto(
+                        status = "error",
+                        message =
+                            "Missing webhook provider in URL path. " +
+                                "Usage: /api/v1/webhook/{provider} or /api/v1/webhook/{token}/{provider}. " +
+                                "Supported providers: ${providerRegistry.supportedProviders().sorted()}"
+                    )
+                )
+            }
+
+            registerDynamicWebhookEndpoint(
                 serverConfig = serverConfig,
                 rateLimiter = rateLimiter,
-                servarrController = servarrController,
-                plexController = plexController,
-                jellyfinController = jellyfinController
+                eventRail = eventRail,
+                providerRegistry = providerRegistry
             )
 
-            // Flexible path-based token endpoints: /api/v1/webhook/{token}/*
             route("/{token}") {
-                registerWebhookEndpoints(
+                registerDynamicWebhookEndpoint(
                     serverConfig = serverConfig,
                     rateLimiter = rateLimiter,
-                    servarrController = servarrController,
-                    plexController = plexController,
-                    jellyfinController = jellyfinController
+                    eventRail = eventRail,
+                    providerRegistry = providerRegistry
                 )
             }
         }
     }
 }
 
-private fun Route.registerWebhookEndpoints(
+private fun Route.registerDynamicWebhookEndpoint(
     serverConfig: ServerConfig,
     rateLimiter: InboundRateLimiter,
-    servarrController: ServarrWebhookController,
-    plexController: PlexWebhookController,
-    jellyfinController: JellyfinWebhookController
+    eventRail: EventRail,
+    providerRegistry: WebhookProviderRegistry
 ) {
-    post("/sonarr") {
-        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
-            servarrController.handleSonarr(call)
+    post("/{provider}") {
+        val providerKey = call.parameters["provider"]
+        val provider = providerKey?.let { providerRegistry.get(it) }
+
+        if (provider == null) {
+            call.respond(
+                HttpStatusCode.NotFound,
+                WebhookReceiptDto(
+                    status = "error",
+                    message =
+                        "Unsupported webhook provider '$providerKey'. " +
+                            "Supported providers: ${providerRegistry.supportedProviders().sorted()}"
+                )
+            )
+            return@post
         }
-    }
-    post("/radarr") {
+
         withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
-            servarrController.handleRadarr(call)
-        }
-    }
-    post("/servarr") {
-        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
-            servarrController.handleServarr(call)
-        }
-    }
-    post("/plex") {
-        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
-            plexController.handlePlex(call)
-        }
-    }
-    post("/jellyfin") {
-        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
-            jellyfinController.handleJellyfin(call)
+            val callerName = AuthGuard.extractCallerName(call)
+            when (val result = provider.process(call, callerName)) {
+                is WebhookProcessResult.Queued -> {
+                    val published = eventRail.publish(result.payload)
+                    if (published) {
+                        call.respond(
+                            HttpStatusCode.Accepted,
+                            WebhookReceiptDto(
+                                status = "accepted",
+                                message = "Webhook received and queued for processing",
+                                eventType = result.eventType
+                            )
+                        )
+                    } else {
+                        call.respond(
+                            HttpStatusCode.ServiceUnavailable,
+                            WebhookReceiptDto(
+                                status = "error",
+                                message = "Event rail queue buffer full"
+                            )
+                        )
+                    }
+                }
+
+                is WebhookProcessResult.TestOk -> {
+                    call.respond(
+                        HttpStatusCode.OK,
+                        WebhookReceiptDto(
+                            status = "ok",
+                            message = "Test webhook received successfully",
+                            eventType = "Test"
+                        )
+                    )
+                }
+
+                is WebhookProcessResult.Ignored -> {
+                    call.respond(
+                        HttpStatusCode.OK,
+                        WebhookReceiptDto(
+                            status = "ignored",
+                            message = result.reason,
+                            eventType = result.eventType
+                        )
+                    )
+                }
+
+                is WebhookProcessResult.InvalidPayload -> {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        WebhookReceiptDto(
+                            status = "error",
+                            message = result.errorMessage
+                        )
+                    )
+                }
+            }
         }
     }
 }

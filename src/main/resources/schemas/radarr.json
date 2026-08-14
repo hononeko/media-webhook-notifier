@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Radarr Webhook Payload",
+  "type": "object",
+  "properties": {
+    "eventType": {
+      "type": "string",
+      "enum": ["Grab", "Download", "Test"]
+    },
+    "instanceName": {
+      "type": "string"
+    },
+    "applicationUrl": {
+      "type": "string"
+    },
+    "movie": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "title": { "type": "string" },
+        "year": { "type": "integer" },
+        "filePath": { "type": "string" },
+        "tmdbId": { "type": "integer" },
+        "imdbId": { "type": "string" },
+        "overview": { "type": "string" },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "coverType": { "type": "string" },
+              "url": { "type": "string" },
+              "remoteUrl": { "type": "string" }
+            }
+          }
+        },
+        "movieFile": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer" },
+            "relativePath": { "type": "string" },
+            "path": { "type": "string" },
+            "quality": { "type": "string" },
+            "qualityVersion": { "type": "integer" },
+            "size": { "type": "integer" },
+            "videoCodec": { "type": "string" },
+            "audioCodec": { "type": "string" }
+          }
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "properties": {
+        "quality": { "type": "string" },
+        "qualityVersion": { "type": "integer" },
+        "releaseGroup": { "type": "string" },
+        "releaseTitle": { "type": "string" },
+        "indexer": { "type": "string" },
+        "size": { "type": "integer" }
+      }
+    },
+    "downloadId": {
+      "type": "string"
+    },
+    "isUpgrade": {
+      "type": "boolean"
+    }
+  },
+  "required": ["eventType"]
+}
