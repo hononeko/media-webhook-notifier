@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
 env:
-
   REGISTRY: ghcr.io
   IMAGE_NAME: media-webhook-notifier
 
@@ -44,6 +43,18 @@ jobs:
           minor_pattern: "/feat(\\(.+\\))?:/"
           version_format: "${major}.${minor}.${patch}"
 
+      - name: Setup GraalVM (Community 25)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "graalvm-community"
+          java-version: "25"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Production Native Binary
+        run: ./gradlew nativeCompile --no-daemon
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
@@ -71,8 +82,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
 
