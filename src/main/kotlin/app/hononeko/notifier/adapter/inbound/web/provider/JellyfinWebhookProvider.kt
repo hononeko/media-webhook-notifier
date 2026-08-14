@@ -5,11 +5,17 @@ import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
+import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
 class JellyfinWebhookProvider : WebhookProviderStrategy {
     private val logger = LoggerFactory.getLogger(JellyfinWebhookProvider::class.java)
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
 
     override val providerKeys: Set<String> = setOf("jellyfin", "emby")
 
@@ -17,9 +23,17 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
         call: ApplicationCall,
         callerName: String?
     ): WebhookProcessResult {
+        val rawText =
+            try {
+                call.receiveText()
+            } catch (e: Exception) {
+                logger.warn("Failed to read Jellyfin webhook request body: ${e.message}")
+                return WebhookProcessResult.InvalidPayload("Invalid request body: ${e.message}")
+            }
+
         val dto =
             try {
-                call.receive<JellyfinWebhookDto>()
+                json.decodeFromString(JellyfinWebhookDto.serializer(), rawText)
             } catch (e: Exception) {
                 logger.warn("Failed to parse Jellyfin webhook payload: ${e.message}")
                 return WebhookProcessResult.InvalidPayload("Invalid Jellyfin payload: ${e.message}")

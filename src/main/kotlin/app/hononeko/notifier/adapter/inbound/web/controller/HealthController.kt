@@ -7,58 +7,60 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 import kotlinx.serialization.Serializable
 
+const val SERVICE_NAME = "media-webhook-notifier"
+
+@Serializable
+data class HealthStatusDto(
+    val status: String,
+    val service: String = SERVICE_NAME,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Serializable
+data class ProbeStatusDto(
+    val status: String,
+    val service: String = SERVICE_NAME,
+    val probe: String,
+    val checks: Map<String, String>? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Serializable
+data class EventRailMetricsDto(
+    val closed: Boolean,
+    val running: Boolean
+)
+
+@Serializable
+data class MemoryMetricsDto(
+    val usedBytes: Long,
+    val freeBytes: Long,
+    val totalBytes: Long,
+    val maxBytes: Long
+)
+
+@Serializable
+data class MetricsDto(
+    val service: String = SERVICE_NAME,
+    val status: String = "UP",
+    val uptimeMillis: Long,
+    val activeTrackersCount: Int,
+    val eventRail: EventRailMetricsDto,
+    val memory: MemoryMetricsDto,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 class HealthController(
     private val eventRail: EventRail? = null,
     private val downloadTracker: DownloadTrackerEngine? = null,
     private val startTimeMillis: Long = System.currentTimeMillis()
 ) {
     companion object {
-        const val SERVICE_NAME = "media-webhook-notifier"
+        const val SERVICE_NAME = app.hononeko.notifier.adapter.inbound.web.controller.SERVICE_NAME
     }
 
-    @Serializable
-    data class HealthStatusDto(
-        val status: String,
-        val service: String = SERVICE_NAME,
-        val timestamp: Long = System.currentTimeMillis()
-    )
-
-    @Serializable
-    data class ProbeStatusDto(
-        val status: String,
-        val service: String = SERVICE_NAME,
-        val probe: String,
-        val checks: Map<String, String>? = null,
-        val timestamp: Long = System.currentTimeMillis()
-    )
-
-    @Serializable
-    data class EventRailMetricsDto(
-        val closed: Boolean,
-        val running: Boolean
-    )
-
-    @Serializable
-    data class MemoryMetricsDto(
-        val usedBytes: Long,
-        val freeBytes: Long,
-        val totalBytes: Long,
-        val maxBytes: Long
-    )
-
-    @Serializable
-    data class MetricsDto(
-        val service: String = SERVICE_NAME,
-        val status: String = "UP",
-        val uptimeMillis: Long,
-        val activeTrackersCount: Int,
-        val eventRail: EventRailMetricsDto,
-        val memory: MemoryMetricsDto,
-        val timestamp: Long = System.currentTimeMillis()
-    )
-
     suspend fun handleHealth(call: ApplicationCall) {
-        call.respond(
+        call.respond<HealthStatusDto>(
             HttpStatusCode.OK,
             HealthStatusDto(
                 status = "UP",
@@ -69,7 +71,7 @@ class HealthController(
     }
 
     suspend fun handleLiveness(call: ApplicationCall) {
-        call.respond(
+        call.respond<ProbeStatusDto>(
             HttpStatusCode.OK,
             ProbeStatusDto(
                 status = "UP",
@@ -93,7 +95,7 @@ class HealthController(
                 "server" to if (isReady) "READY" else "DRAINING"
             )
 
-        call.respond(
+        call.respond<ProbeStatusDto>(
             httpStatus,
             ProbeStatusDto(
                 status = status,
@@ -106,7 +108,7 @@ class HealthController(
     }
 
     suspend fun handleStartup(call: ApplicationCall) {
-        call.respond(
+        call.respond<ProbeStatusDto>(
             HttpStatusCode.OK,
             ProbeStatusDto(
                 status = "UP",
@@ -148,6 +150,6 @@ class HealthController(
                 timestamp = System.currentTimeMillis()
             )
 
-        call.respond(HttpStatusCode.OK, metrics)
+        call.respond<MetricsDto>(HttpStatusCode.OK, metrics)
     }
 }

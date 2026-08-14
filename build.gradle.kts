@@ -41,8 +41,6 @@ dependencies {
 
     // Logging & Configuration
     implementation(libs.logback.classic)
-    implementation(libs.hoplite.core)
-    implementation(libs.hoplite.yaml)
 
     // Testing
     testImplementation(libs.kotlin.test)
@@ -103,8 +101,13 @@ graalvmNative {
                 "-H:+ReportExceptionStackTraces",
                 "--initialize-at-build-time=ch.qos.logback",
                 "--enable-http",
-                "--enable-https"
+                "--enable-https",
+                "-H:IncludeResources=schemas/.*\\.json",
+                "-H:IncludeResources=logback.xml"
             )
+            if (project.hasProperty("static") || System.getenv("GRAALVM_STATIC") == "true") {
+                buildArgs.addAll("--static", "--libc=musl")
+            }
             if (project.hasProperty("quickBuild") || System.getenv("GRAALVM_QUICK_BUILD") == "true") {
                 buildArgs.add("-Ob")
             }

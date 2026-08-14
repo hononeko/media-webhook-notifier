@@ -4,21 +4,35 @@ import app.hononeko.notifier.adapter.inbound.web.dto.ServarrWebhookDto
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.MediaPayload
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
+import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
 abstract class AbstractServarrWebhookProvider(
     private val defaultSource: AppSource
 ) : WebhookProviderStrategy {
     private val logger = LoggerFactory.getLogger(javaClass)
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
 
     override suspend fun process(
         call: ApplicationCall,
         callerName: String?
     ): WebhookProcessResult {
+        val rawText =
+            try {
+                call.receiveText()
+            } catch (e: Exception) {
+                logger.warn("Failed to read Servarr webhook request body: ${e.message}")
+                return WebhookProcessResult.InvalidPayload("Invalid request body: ${e.message}")
+            }
+
         val dto =
             try {
-                call.receive<ServarrWebhookDto>()
+                json.decodeFromString(ServarrWebhookDto.serializer(), rawText)
             } catch (e: Exception) {
                 logger.warn("Failed to parse Servarr webhook payload: ${e.message}")
                 return WebhookProcessResult.InvalidPayload("Invalid JSON payload: ${e.message}")

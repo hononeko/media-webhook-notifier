@@ -1,8 +1,5 @@
 package app.hononeko.notifier.config
 
-import com.sksamuel.hoplite.ConfigLoaderBuilder
-import com.sksamuel.hoplite.addMapSource
-import com.sksamuel.hoplite.addResourceSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -11,13 +8,14 @@ import kotlin.test.assertTrue
 
 class ConfigLoaderTest {
     @Test
-    fun `should load default configuration from application yaml`() {
-        val config = ConfigLoader.load()
+    fun `should load default configuration when environment is empty`() {
+        val config = ConfigLoader.load(emptyMap())
         assertNotNull(config)
 
         // Server
         assertEquals(8080, config.server.port)
         assertEquals("", config.server.authToken)
+        assertEquals(120, config.server.rateLimitPerMinute)
 
         // Media Server
         assertEquals("plex", config.mediaServer.type)
@@ -52,23 +50,25 @@ class ConfigLoaderTest {
 
     @Test
     fun `should override configuration with environment variables and custom property sources`() {
-        val config =
-            ConfigLoaderBuilder
-                .default()
-                .addMapSource(
-                    mapOf(
-                        "server.authToken" to "env-supplied-token",
-                        "server.port" to "9090",
-                        "notifications.telegram.botToken" to "tg-bot-12345",
-                        "notifications.telegram.chatId" to "-100123456"
-                    )
-                ).addResourceSource("/application.yaml", optional = true)
-                .build()
-                .loadConfigOrThrow<AppConfig>()
+        val env =
+            mapOf(
+                "SERVER_AUTH_TOKEN" to "env-supplied-token",
+                "SERVER_PORT" to "9090",
+                "TELEGRAM_BOT_TOKEN" to "tg-bot-12345",
+                "TELEGRAM_CHAT_ID" to "-100123456",
+                "TELEGRAM_TOPIC_ID" to "42",
+                "QBITTORRENT_URL" to "http://qbittorrent:8080",
+                "MEDIA_SERVER_TYPE" to "jellyfin"
+            )
+
+        val config = ConfigLoader.load(env)
 
         assertEquals("env-supplied-token", config.server.authToken)
         assertEquals(9090, config.server.port)
         assertEquals("tg-bot-12345", config.notifications.telegram.botToken)
         assertEquals("-100123456", config.notifications.telegram.chatId)
+        assertEquals(42L, config.notifications.telegram.topicId)
+        assertEquals("http://qbittorrent:8080", config.qbittorrent.url)
+        assertEquals("jellyfin", config.mediaServer.type)
     }
 }
