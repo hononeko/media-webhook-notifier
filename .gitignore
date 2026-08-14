@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Eclipse / VS Code
+.classpath
+.project
+.settings/
+.vscode/
+
+# OS / Misc
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+.env
+.env.*
+!.env.example
+
+# Native Image outputs
+media-webhook-notifier

@@ -1,0 +1,14 @@
+name: Main Validation
+
+on:
+  push:
+    branches: ["master", "main"]
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+      packages: read
+    with:
+      image_tag: main-test

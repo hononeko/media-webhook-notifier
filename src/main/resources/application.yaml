@@ -1,0 +1,23 @@
+server:
+  port: 8080
+  authToken: ""
+
+mediaServer:
+  type: "plex"
+  baseUrl: ""
+  jellyfinUrl: ""
+
+qbittorrent:
+  url: "http://localhost:8080"
+  pollIntervalSeconds: 5
+  maxPollingMinutes: 30
+  stalledTimeoutMinutes: 15
+  webuiPublicUrl: ""
+
+notifications:
+  telegram:
+    enabled: true
+    botToken: ""
+    chatId: ""
+    rateLimitPerMinute: 30
+    timeoutSeconds: 5
