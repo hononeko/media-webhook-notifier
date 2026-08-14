@@ -4,6 +4,6 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.MediaPayload
 import arrow.core.Either
 
-interface AnnounceMediaAvailableUseCase {
+fun interface AnnounceMediaAvailableUseCase {
     suspend fun announce(payload: MediaPayload): Either<DomainError, Unit>
 }

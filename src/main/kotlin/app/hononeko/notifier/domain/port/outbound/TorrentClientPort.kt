@@ -4,6 +4,6 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.TorrentProgress
 import arrow.core.Either
 
-interface TorrentClientPort {
+fun interface TorrentClientPort {
     suspend fun getTorrentProgress(hash: String): Either<DomainError.TorrentClientError, TorrentProgress?>
 }

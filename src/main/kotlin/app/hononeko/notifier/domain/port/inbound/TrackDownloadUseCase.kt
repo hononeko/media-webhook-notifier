@@ -4,7 +4,7 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.MediaPayload
 import arrow.core.Either
 
-interface TrackDownloadUseCase {
+fun interface TrackDownloadUseCase {
     suspend fun track(
         hash: String,
         initialPayload: MediaPayload.ArrGrab

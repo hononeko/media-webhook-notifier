@@ -4,6 +4,6 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.MediaPayload
 import arrow.core.Either
 
-interface IngestWebhookUseCase {
+fun interface IngestWebhookUseCase {
     suspend fun execute(payload: MediaPayload): Either<DomainError, Unit>
 }
