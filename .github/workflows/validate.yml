@@ -2,15 +2,6 @@ name: Validate
 
 on:
   workflow_call:
-    inputs:
-      image_tag:
-        description: "Tag for the docker image to build and scan"
-        required: true
-        type: string
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: media-webhook-notifier
 
 jobs:
   test:
@@ -40,38 +31,3 @@ jobs:
         run: |
           echo "### Test Execution Summary" >> $GITHUB_STEP_SUMMARY
           echo "Ktlint formatting and Gradle unit/integration tests completed successfully." >> $GITHUB_STEP_SUMMARY
-
-  build-scan:
-    name: Build & Scan
-    runs-on: ubuntu-latest
-    needs: test
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Setup GraalVM (Java 25)
-        uses: graalvm/setup-graalvm@5298d94fb55a4f185c602eeac5de1b553882abe2 # v1
-        with:
-          java-version: "25"
-          distribution: "graalvm-community"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
-
-      - name: Compile Native Binary (QuickBuild)
-        run: ./gradlew nativeCompile -PquickBuild --no-daemon
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-
-      - name: Build Distroless Docker image (Dry Run)
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          load: true
-          push: false
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
