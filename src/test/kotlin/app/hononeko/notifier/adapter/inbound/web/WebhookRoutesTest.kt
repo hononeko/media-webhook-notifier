@@ -486,4 +486,76 @@ class WebhookRoutesTest {
                 }
             assertEquals(HttpStatusCode.OK, servarrIgnored.status)
         }
+
+    @Test
+    fun `should ingest webhooks with path-based token and caller query param`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = testToken))
+            }
+
+            val pathSonarr =
+                client.post("/api/v1/webhook/$testToken/sonarr?caller=sonarr-anime") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"eventType": "Grab", "downloadId": "hash-path-1"}""")
+                }
+            assertEquals(HttpStatusCode.Accepted, pathSonarr.status)
+
+            val pathRadarr =
+                client.post("/api/v1/webhook/$testToken/radarr?caller=radarr-4k") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"eventType": "Grab", "downloadId": "hash-path-2"}""")
+                }
+            assertEquals(HttpStatusCode.Accepted, pathRadarr.status)
+
+            val pathPlex =
+                client.post("/api/v1/webhook/$testToken/plex") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"event": "library.new", "Metadata": {"title": "Movie"}}""")
+                }
+            assertEquals(HttpStatusCode.Accepted, pathPlex.status)
+
+            val pathJellyfin =
+                client.post("/api/v1/webhook/$testToken/jellyfin") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"NotificationType": "ItemAdded", "ItemId": "j-path-1"}""")
+                }
+            assertEquals(HttpStatusCode.Accepted, pathJellyfin.status)
+        }
+
+    @Test
+    fun `should return 429 Too Many Requests with Retry-After when rate limit is exceeded`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(
+                    eventRail = eventRail,
+                    serverConfig = ServerConfig(authToken = "", rateLimitPerMinute = 1)
+                )
+            }
+
+            val firstReq =
+                client.post("/api/v1/webhook/sonarr") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"eventType": "Test"}""")
+                }
+            assertEquals(HttpStatusCode.OK, firstReq.status)
+
+            val secondReq =
+                client.post("/api/v1/webhook/sonarr") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"eventType": "Test"}""")
+                }
+            assertEquals(HttpStatusCode.TooManyRequests, secondReq.status)
+            assertEquals("60", secondReq.headers[io.ktor.http.HttpHeaders.RetryAfter])
+            val body = secondReq.bodyAsText()
+            assertTrue(body.contains("rate_limited"))
+        }
 }

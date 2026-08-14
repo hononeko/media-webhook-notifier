@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.inbound.web.controller
 
+import app.hononeko.notifier.adapter.inbound.web.AuthGuard
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.dto.JellyfinWebhookDto
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
@@ -30,7 +31,15 @@ class JellyfinWebhookController(
                 return
             }
 
+        val callerName = AuthGuard.extractCallerName(call)
         val notificationType = dto.NotificationType?.trim()
+        logger.info(
+            "Ingesting Jellyfin webhook event: {} (server: {}, caller: {})",
+            notificationType,
+            dto.ServerName ?: dto.ServerId ?: "unknown",
+            callerName ?: "default"
+        )
+
         if (notificationType.equals("ItemAdded", ignoreCase = true)) {
             val payload = mapToJellyfinItemAdded(dto)
             val published = eventRail.publish(payload)

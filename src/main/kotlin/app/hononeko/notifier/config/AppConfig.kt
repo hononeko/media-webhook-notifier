@@ -9,7 +9,8 @@ data class AppConfig(
 
 data class ServerConfig(
     val port: Int = 8080,
-    val authToken: String = ""
+    val authToken: String = "",
+    val rateLimitPerMinute: Int = 120
 )
 
 data class MediaServerConfig(

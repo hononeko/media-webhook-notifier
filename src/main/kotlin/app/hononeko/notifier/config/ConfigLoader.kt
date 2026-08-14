@@ -8,8 +8,8 @@ object ConfigLoader {
     fun load(): AppConfig =
         ConfigLoaderBuilder
             .default()
-            .addResourceSource("/application.yaml", optional = true)
             .addEnvironmentSource()
+            .addResourceSource("/application.yaml", optional = true)
             .build()
             .loadConfigOrThrow<AppConfig>()
 }

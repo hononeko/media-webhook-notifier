@@ -1,5 +1,8 @@
 package app.hononeko.notifier.config
 
+import com.sksamuel.hoplite.ConfigLoaderBuilder
+import com.sksamuel.hoplite.addMapSource
+import com.sksamuel.hoplite.addResourceSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -45,5 +48,27 @@ class ConfigLoaderTest {
         // Discord
         assertEquals(false, config.notifications.discord.enabled)
         assertEquals("", config.notifications.discord.webhookUrl)
+    }
+
+    @Test
+    fun `should override configuration with environment variables and custom property sources`() {
+        val config =
+            ConfigLoaderBuilder
+                .default()
+                .addMapSource(
+                    mapOf(
+                        "server.authToken" to "env-supplied-token",
+                        "server.port" to "9090",
+                        "notifications.telegram.botToken" to "tg-bot-12345",
+                        "notifications.telegram.chatId" to "-100123456"
+                    )
+                ).addResourceSource("/application.yaml", optional = true)
+                .build()
+                .loadConfigOrThrow<AppConfig>()
+
+        assertEquals("env-supplied-token", config.server.authToken)
+        assertEquals(9090, config.server.port)
+        assertEquals("tg-bot-12345", config.notifications.telegram.botToken)
+        assertEquals("-100123456", config.notifications.telegram.chatId)
     }
 }

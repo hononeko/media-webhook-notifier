@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.inbound.web.controller
 
+import app.hononeko.notifier.adapter.inbound.web.AuthGuard
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.dto.ServarrWebhookDto
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
@@ -40,9 +41,12 @@ class ServarrWebhookController(
                 return
             }
 
+        val callerName = AuthGuard.extractCallerName(call)
         val eventType = dto.eventType?.trim()
+
         if (eventType.equals("Test", ignoreCase = true)) {
-            logger.info("Received Test webhook from Servarr instance: {}", dto.instanceName ?: defaultSource.name)
+            val instance = dto.instanceName ?: callerName ?: defaultSource.name
+            logger.info("Received Test webhook from Servarr instance: {}", instance)
             call.respond(
                 HttpStatusCode.OK,
                 WebhookReceiptDto(
@@ -61,10 +65,17 @@ class ServarrWebhookController(
                 else -> defaultSource
             }
 
+        logger.info(
+            "Ingesting {} webhook for {} (caller: {})",
+            eventType,
+            source,
+            callerName ?: dto.instanceName ?: "default"
+        )
+
         val payload: MediaPayload? =
             when (eventType?.lowercase()) {
-                "grab" -> mapToArrGrab(dto, source)
-                "download" -> mapToArrDownload(dto, source)
+                "grab" -> mapToArrGrab(dto, source, callerName)
+                "download" -> mapToArrDownload(dto, source, callerName)
                 else -> {
                     logger.debug("Ignoring unsupported Servarr event type: {}", eventType)
                     null
@@ -102,7 +113,8 @@ class ServarrWebhookController(
 
     private fun mapToArrGrab(
         dto: ServarrWebhookDto,
-        source: AppSource
+        source: AppSource,
+        callerName: String?
     ): MediaPayload.ArrGrab {
         val title =
             dto.movie?.title
@@ -129,6 +141,8 @@ class ServarrWebhookController(
                     ?.firstOrNull { it.coverType.equals("poster", ignoreCase = true) }
                     ?.url
 
+        val effectiveInstanceName = dto.instanceName ?: callerName
+
         return MediaPayload.ArrGrab(
             source = source,
             downloadId = dto.downloadId ?: dto.release?.releaseTitle ?: "",
@@ -141,13 +155,14 @@ class ServarrWebhookController(
             sizeBytes = dto.release?.size,
             indexer = dto.release?.indexer,
             posterUrl = poster,
-            instanceName = dto.instanceName
+            instanceName = effectiveInstanceName
         )
     }
 
     private fun mapToArrDownload(
         dto: ServarrWebhookDto,
-        source: AppSource
+        source: AppSource,
+        callerName: String?
     ): MediaPayload.ArrDownload {
         val title =
             dto.movie?.title
@@ -196,6 +211,8 @@ class ServarrWebhookController(
                 ?.episodeFile
                 ?.size ?: dto.release?.size
 
+        val effectiveInstanceName = dto.instanceName ?: callerName
+
         return MediaPayload.ArrDownload(
             source = source,
             downloadId = dto.downloadId,
@@ -212,7 +229,7 @@ class ServarrWebhookController(
             posterUrl = poster,
             overview = dto.movie?.overview ?: dto.series?.overview,
             year = dto.movie?.year ?: dto.series?.year,
-            instanceName = dto.instanceName,
+            instanceName = effectiveInstanceName,
             webUrl = dto.applicationUrl
         )
     }

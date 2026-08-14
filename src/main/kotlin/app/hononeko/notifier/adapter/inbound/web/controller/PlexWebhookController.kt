@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.inbound.web.controller
 
+import app.hononeko.notifier.adapter.inbound.web.AuthGuard
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.dto.PlexWebhookDto
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
@@ -50,7 +51,15 @@ class PlexWebhookController(
             return
         }
 
+        val callerName = AuthGuard.extractCallerName(call)
         val event = dto.event?.trim()
+        logger.info(
+            "Ingesting Plex webhook event: {} (server: {}, caller: {})",
+            event,
+            dto.Server?.title ?: "unknown",
+            callerName ?: "default"
+        )
+
         if (event.equals("library.new", ignoreCase = true)) {
             val payload = mapToPlexLibraryNew(dto)
             val published = eventRail.publish(payload)

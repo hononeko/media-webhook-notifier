@@ -6,10 +6,13 @@ import app.hononeko.notifier.adapter.inbound.web.controller.SchemaController
 import app.hononeko.notifier.adapter.inbound.web.controller.ServarrWebhookController
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.config.ServerConfig
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
@@ -21,10 +24,11 @@ fun Application.configureWebhookRouting(
     servarrController: ServarrWebhookController = ServarrWebhookController(eventRail),
     plexController: PlexWebhookController = PlexWebhookController(eventRail),
     jellyfinController: JellyfinWebhookController = JellyfinWebhookController(eventRail),
-    schemaController: SchemaController = SchemaController()
+    schemaController: SchemaController = SchemaController(),
+    rateLimiter: InboundRateLimiter = InboundRateLimiter(serverConfig.rateLimitPerMinute)
 ) {
     routing {
-        // Public endpoints
+        // Public health & schema endpoints
         get("/health") { schemaController.handleHealth(call) }
         get("/metrics") { schemaController.handleHealth(call) }
 
@@ -35,48 +39,92 @@ fun Application.configureWebhookRouting(
             get("/jellyfin") { schemaController.handleJellyfinSchema(call) }
         }
 
-        // Webhook ingestion endpoints with AuthGuard
+        // Standard webhook ingestion endpoints
         route("/api/v1/webhook") {
-            post("/sonarr") {
-                withAuth(call, serverConfig.authToken) {
-                    servarrController.handleSonarr(call)
-                }
-            }
-            post("/radarr") {
-                withAuth(call, serverConfig.authToken) {
-                    servarrController.handleRadarr(call)
-                }
-            }
-            post("/servarr") {
-                withAuth(call, serverConfig.authToken) {
-                    servarrController.handleServarr(call)
-                }
-            }
-            post("/plex") {
-                withAuth(call, serverConfig.authToken) {
-                    plexController.handlePlex(call)
-                }
-            }
-            post("/jellyfin") {
-                withAuth(call, serverConfig.authToken) {
-                    jellyfinController.handleJellyfin(call)
-                }
+            registerWebhookEndpoints(
+                serverConfig = serverConfig,
+                rateLimiter = rateLimiter,
+                servarrController = servarrController,
+                plexController = plexController,
+                jellyfinController = jellyfinController
+            )
+
+            // Flexible path-based token endpoints: /api/v1/webhook/{token}/*
+            route("/{token}") {
+                registerWebhookEndpoints(
+                    serverConfig = serverConfig,
+                    rateLimiter = rateLimiter,
+                    servarrController = servarrController,
+                    plexController = plexController,
+                    jellyfinController = jellyfinController
+                )
             }
         }
     }
 }
 
-private suspend inline fun withAuth(
+private fun Route.registerWebhookEndpoints(
+    serverConfig: ServerConfig,
+    rateLimiter: InboundRateLimiter,
+    servarrController: ServarrWebhookController,
+    plexController: PlexWebhookController,
+    jellyfinController: JellyfinWebhookController
+) {
+    post("/sonarr") {
+        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
+            servarrController.handleSonarr(call)
+        }
+    }
+    post("/radarr") {
+        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
+            servarrController.handleRadarr(call)
+        }
+    }
+    post("/servarr") {
+        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
+            servarrController.handleServarr(call)
+        }
+    }
+    post("/plex") {
+        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
+            plexController.handlePlex(call)
+        }
+    }
+    post("/jellyfin") {
+        withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
+            jellyfinController.handleJellyfin(call)
+        }
+    }
+}
+
+private suspend inline fun withAuthAndRateLimit(
     call: ApplicationCall,
     expectedToken: String?,
+    rateLimiter: InboundRateLimiter,
     crossinline block: suspend () -> Unit
 ) {
-    if (!AuthGuard.isAuthorized(call, expectedToken)) {
+    if (!rateLimiter.tryAcquire(call)) {
+        call.response.header(HttpHeaders.RetryAfter, "60")
         call.respond(
-            HttpStatusCode.Unauthorized,
-            WebhookReceiptDto(status = "unauthorized", message = "Invalid or missing authentication token")
+            HttpStatusCode.TooManyRequests,
+            WebhookReceiptDto(
+                status = "rate_limited",
+                message = "Rate limit exceeded. Please try again later."
+            )
         )
         return
     }
+
+    if (!AuthGuard.isAuthorized(call, expectedToken)) {
+        call.respond(
+            HttpStatusCode.Unauthorized,
+            WebhookReceiptDto(
+                status = "unauthorized",
+                message = "Invalid or missing authentication token"
+            )
+        )
+        return
+    }
+
     block()
 }
