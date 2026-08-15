@@ -8,14 +8,10 @@ object SchemaLoader {
     fun loadSchema(resourcePath: String): String? =
         schemaCache
             .computeIfAbsent(resourcePath) { path ->
-                val cleanPath = path.removePrefix("/")
-                val stream =
-                    Thread.currentThread().contextClassLoader.getResourceAsStream(cleanPath)
-                        ?: SchemaLoader::class.java.classLoader.getResourceAsStream(cleanPath)
-                if (stream == null) {
-                    ""
-                } else {
-                    stream.bufferedReader().use { it.readText() }
-                }
+                val cleanPath = "/" + path.removePrefix("/")
+                SchemaLoader::class.java
+                    .getResource(cleanPath)
+                    ?.readText()
+                    .orEmpty()
             }.takeIf { it.isNotBlank() }
 }
