@@ -43,6 +43,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          cache-disabled: true
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -52,7 +54,7 @@ jobs:
 
       - name: Build Java & Kotlin Code
         if: matrix.build-mode == 'manual'
-        run: ./gradlew compileKotlin --no-daemon
+        run: ./gradlew clean compileKotlin --no-build-cache --no-daemon --rerun-tasks
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
