@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 
 class SeasonDebouncer(
     private val debounceMillis: Long = 5000L,
@@ -67,7 +68,10 @@ class SeasonDebouncer(
                 buffers.remove(normalizedHash)
             }
         buffer?.let {
-            it.timerJob.cancel()
+            val currentJob = coroutineContext[Job]
+            if (it.timerJob != currentJob) {
+                it.timerJob.cancel()
+            }
             onDebouncedGrab(it.payload)
         }
     }
@@ -79,8 +83,11 @@ class SeasonDebouncer(
                 buffers.clear()
                 copy
             }
+        val currentJob = coroutineContext[Job]
         for (buffer in allBuffers) {
-            buffer.timerJob.cancel()
+            if (buffer.timerJob != currentJob) {
+                buffer.timerJob.cancel()
+            }
             onDebouncedGrab(buffer.payload)
         }
     }

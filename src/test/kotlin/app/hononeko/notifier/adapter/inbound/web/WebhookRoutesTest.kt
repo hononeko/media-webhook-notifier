@@ -1,6 +1,10 @@
 package app.hononeko.notifier.adapter.inbound.web
 
 import app.hononeko.notifier.config.ServerConfig
+import app.hononeko.notifier.domain.model.MediaPayload
+import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
+import arrow.core.Either
+import arrow.core.right
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.get
@@ -16,6 +20,7 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.cancel
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -500,7 +505,7 @@ class WebhookRoutesTest {
         }
 
     @Test
-    fun `should ingest webhooks with path-based token and caller query param`() =
+    fun `should ingest webhooks with path-based token and instance query param`() =
         testApplication {
             val eventRail = EventRail(capacity = 50)
             application {
@@ -511,14 +516,14 @@ class WebhookRoutesTest {
             }
 
             val pathSonarr =
-                client.post("/api/v1/webhook/$testToken/sonarr?caller=sonarr-anime") {
+                client.post("/api/v1/webhook/$testToken/sonarr?instance=sonarr-anime") {
                     contentType(ContentType.Application.Json)
                     setBody("""{"eventType": "Grab", "downloadId": "hash-path-1"}""")
                 }
             assertEquals(HttpStatusCode.Accepted, pathSonarr.status)
 
             val pathRadarr =
-                client.post("/api/v1/webhook/$testToken/radarr?caller=radarr-4k") {
+                client.post("/api/v1/webhook/$testToken/radarr?instance=radarr-4k") {
                     contentType(ContentType.Application.Json)
                     setBody("""{"eventType": "Grab", "downloadId": "hash-path-2"}""")
                 }
@@ -648,5 +653,97 @@ class WebhookRoutesTest {
 
             val unknownSchemaRes = client.get("/schema/unknown-schema")
             assertEquals(HttpStatusCode.NotFound, unknownSchemaRes.status)
+        }
+
+    @Test
+    fun `should resolve instanceName with query param precedence over payload and defaults`() =
+        testApplication {
+            val testScope =
+                kotlinx.coroutines.CoroutineScope(
+                    kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default
+                )
+            val eventRail = EventRail(capacity = 50)
+            val capturedPayloads = mutableListOf<MediaPayload>()
+            val capturingService =
+                object : IngestWebhookUseCase {
+                    override suspend fun execute(
+                        payload: MediaPayload
+                    ): Either<app.hononeko.notifier.domain.error.DomainError, Unit> {
+                        capturedPayloads.add(payload)
+                        return Unit.right()
+                    }
+                }
+            val job = eventRail.start(testScope, capturingService)
+
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = ""))
+            }
+
+            // 1. Query parameter overrides payload instanceName
+            val queryOverrideRes =
+                client.post("/api/v1/webhook/sonarr?instance=Sonarr-Anime-Override") {
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        """
+                        {
+                          "eventType": "Grab",
+                          "instanceName": "Sonarr-Payload-Default",
+                          "series": { "id": 1, "title": "Frieren" },
+                          "release": { "quality": "1080p", "size": 1000 },
+                          "downloadId": "hash-frieren"
+                        }
+                        """.trimIndent()
+                    )
+                }
+            assertEquals(HttpStatusCode.Accepted, queryOverrideRes.status)
+
+            // 2. Payload instanceName used when query param omitted
+            val payloadRes =
+                client.post("/api/v1/webhook/sonarr") {
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        """
+                        {
+                          "eventType": "Grab",
+                          "instanceName": "Sonarr-Payload-Default",
+                          "series": { "id": 1, "title": "Frieren" },
+                          "release": { "quality": "1080p", "size": 1000 },
+                          "downloadId": "hash-frieren-2"
+                        }
+                        """.trimIndent()
+                    )
+                }
+            assertEquals(HttpStatusCode.Accepted, payloadRes.status)
+
+            // 3. Fallback to default display name when neither is provided
+            val defaultRes =
+                client.post("/api/v1/webhook/sonarr") {
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        """
+                        {
+                          "eventType": "Grab",
+                          "series": { "id": 1, "title": "Frieren" },
+                          "release": { "quality": "1080p", "size": 1000 },
+                          "downloadId": "hash-frieren-3"
+                        }
+                        """.trimIndent()
+                    )
+                }
+            assertEquals(HttpStatusCode.Accepted, defaultRes.status)
+
+            // Wait for coroutine channel consumption
+            kotlinx.coroutines.delay(50)
+
+            assertEquals(3, capturedPayloads.size)
+            assertEquals("Sonarr-Anime-Override", capturedPayloads[0].instanceName)
+            assertEquals("Sonarr-Payload-Default", capturedPayloads[1].instanceName)
+            assertEquals("Sonarr", capturedPayloads[2].instanceName)
+
+            job.cancel()
+            testScope.cancel()
         }
 }

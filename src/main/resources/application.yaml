@@ -5,9 +5,8 @@ server:
 
 mediaServer:
   type: "plex"
-  baseUrl: ""
-  plexPublicUrl: ""
-  jellyfinPublicUrl: ""
+  url: ""
+  publicUrl: ""
 
 qbittorrent:
   url: "http://localhost:8080"

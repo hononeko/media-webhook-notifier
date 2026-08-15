@@ -33,12 +33,14 @@ docker run -d \
   -p 8080:8080 \
   -e SERVER_PORT=8080 \
   -e SERVER_AUTH_TOKEN="your-secure-secret-token" \
-  -e NOTIFICATIONS_TELEGRAM_BOT_TOKEN="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" \
-  -e NOTIFICATIONS_TELEGRAM_CHAT_ID="-1001234567890" \
+  -e TELEGRAM_BOT_TOKEN="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" \
+  -e TELEGRAM_CHAT_ID="-1001234567890" \
   -e QBITTORRENT_URL="http://qbittorrent:8080" \
   -e QBITTORRENT_USERNAME="admin" \
   -e QBITTORRENT_PASSWORD="adminadmin" \
-  -e MEDIA_SERVER_BASE_URL="https://plex.example.com" \
+  -e MEDIA_SERVER_TYPE="plex" \
+  -e MEDIA_SERVER_URL="http://plex:32400" \
+  -e MEDIA_SERVER_PUBLIC_URL="https://plex.example.com" \
   ghcr.io/hononeko/media-webhook-notifier:latest
 ```
 
@@ -55,16 +57,17 @@ services:
       - SERVER_PORT=8080
       - SERVER_AUTH_TOKEN=your-secure-secret-token
       - SERVER_RATE_LIMIT_PER_MINUTE=120
-      - NOTIFICATIONS_TELEGRAM_ENABLED=true
-      - NOTIFICATIONS_TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
-      - NOTIFICATIONS_TELEGRAM_CHAT_ID=-1001234567890
-      - NOTIFICATIONS_TELEGRAM_TOPIC_ID=  # Optional: For Telegram forum supergroups
+      - NOTIFICATION_PROVIDER=telegram
+      - TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+      - TELEGRAM_CHAT_ID=-1001234567890
+      - TELEGRAM_TOPIC_ID=  # Optional: For Telegram forum supergroups
       - QBITTORRENT_URL=http://qbittorrent:8080
       - QBITTORRENT_USERNAME=admin
       - QBITTORRENT_PASSWORD=adminadmin
       - QBITTORRENT_WEBUI_PUBLIC_URL=https://downloads.example.com
       - MEDIA_SERVER_TYPE=plex # "plex" or "jellyfin"
-      - MEDIA_SERVER_BASE_URL=https://plex.example.com
+      - MEDIA_SERVER_URL=http://plex:32400
+      - MEDIA_SERVER_PUBLIC_URL=https://plex.example.com
 ```
 
 ---
@@ -184,25 +187,25 @@ All settings can be configured via environment variables or `application.yaml`:
 | Environment Variable | Default | Description |
 |---|---|---|
 | `SERVER_PORT` | `8080` | HTTP port the server listens on |
-| `SERVER_AUTH_TOKEN` | `""` | Secret token(s). Comma-separated whitelist allowed (`"t1,t2"`) |
+| `SERVER_AUTH_TOKEN` | `""` | Secret token(s). Comma-separated whitelist allowed (`"t1,t2"`). Supports `SERVER_AUTH_TOKEN_FILE` |
 | `SERVER_RATE_LIMIT_PER_MINUTE` | `120` | Inbound rate limit per IP/caller (`<= 0` disables limit) |
-| `NOTIFICATIONS_TELEGRAM_ENABLED` | `true` | Enable or disable Telegram notifications |
-| `NOTIFICATIONS_TELEGRAM_BOT_TOKEN` | `""` | Telegram Bot API token from `@BotFather` |
-| `NOTIFICATIONS_TELEGRAM_CHAT_ID` | `""` | Target chat or channel ID (e.g. `-1001234567890`) |
-| `NOTIFICATIONS_TELEGRAM_TOPIC_ID` | `null` | Optional Telegram Forum topic thread ID |
-| `NOTIFICATIONS_TELEGRAM_RATE_LIMIT_PER_MINUTE` | `30` | Outbound rate limit to prevent Telegram API 429 errors |
-| `NOTIFICATIONS_TELEGRAM_SEND_PHOTOS` | `true` | Send poster images with fallback to HTML text on failure |
+| `NOTIFICATION_PROVIDER` | `telegram` | Active sink provider (`telegram` or `discord`) |
+| `TELEGRAM_BOT_TOKEN` | `""` | Telegram Bot API token from `@BotFather`. Supports `TELEGRAM_BOT_TOKEN_FILE` |
+| `TELEGRAM_CHAT_ID` | `""` | Target chat or channel ID (e.g. `-1001234567890`) |
+| `TELEGRAM_TOPIC_ID` | `null` | Optional Telegram Forum topic thread ID |
+| `TELEGRAM_RATE_LIMIT_PER_MINUTE` | `30` | Outbound rate limit to prevent Telegram API 429 errors |
+| `TELEGRAM_SEND_PHOTOS` | `true` | Send poster images with fallback to HTML text on failure |
+| `DISCORD_WEBHOOK_URL` | `""` | Discord webhook URL. Supports `DISCORD_WEBHOOK_URL_FILE` |
 | `QBITTORRENT_URL` | `http://localhost:8080` | Internal URL to qBittorrent WebUI |
 | `QBITTORRENT_USERNAME` | `""` | qBittorrent WebUI username |
-| `QBITTORRENT_PASSWORD` | `""` | qBittorrent WebUI password |
+| `QBITTORRENT_PASSWORD` | `""` | qBittorrent WebUI password. Supports `QBITTORRENT_PASSWORD_FILE` |
 | `QBITTORRENT_POLL_INTERVAL_SECONDS` | `5` | Download progress polling interval in seconds |
 | `QBITTORRENT_MAX_POLLING_MINUTES` | `30` | Maximum time to track an active download |
 | `QBITTORRENT_STALLED_TIMEOUT_MINUTES` | `15` | Timeout before flagging a download as stalled |
 | `QBITTORRENT_WEBUI_PUBLIC_URL` | `""` | Optional public URL to qBittorrent WebUI for card buttons |
 | `MEDIA_SERVER_TYPE` | `plex` | Active media server (`plex` or `jellyfin`) |
-| `MEDIA_SERVER_BASE_URL` | `""` | Base URL of media server |
-| `MEDIA_SERVER_PLEX_PUBLIC_URL` | `""` | Optional override for Plex Web client URL |
-| `MEDIA_SERVER_JELLYFIN_PUBLIC_URL` | `""` | Optional override for Jellyfin Web client URL |
+| `MEDIA_SERVER_URL` | `""` | Base/internal network URL of media server |
+| `MEDIA_SERVER_PUBLIC_URL` | `""` | Ingress/public URL of media server for action card buttons |
 
 ---
 

@@ -109,7 +109,7 @@ class QBittorrentClientAdapter(
                 parseTorrentResponse(response, normalizedHash)
             }
         } catch (e: Exception) {
-            logger.warn("Failed to fetch torrent progress for hash {}: {}", normalizedHash, e.message)
+            logger.debug("Failed to fetch torrent progress for hash {}: {}", normalizedHash, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
     }

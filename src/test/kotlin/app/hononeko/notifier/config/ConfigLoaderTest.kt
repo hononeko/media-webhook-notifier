@@ -19,9 +19,8 @@ class ConfigLoaderTest {
 
         // Media Server
         assertEquals("plex", config.mediaServer.type)
-        assertEquals("", config.mediaServer.baseUrl)
-        assertEquals("", config.mediaServer.plexPublicUrl)
-        assertEquals("", config.mediaServer.jellyfinPublicUrl)
+        assertEquals("", config.mediaServer.url)
+        assertEquals("", config.mediaServer.publicUrl)
 
         // qBittorrent & Tracking
         assertEquals("http://localhost:8080", config.qbittorrent.url)
@@ -34,7 +33,8 @@ class ConfigLoaderTest {
         assertEquals(5, config.qbittorrent.debounceSeconds)
         assertEquals("", config.qbittorrent.webuiPublicUrl)
 
-        // Telegram
+        // Notifications
+        assertEquals("telegram", config.notifications.provider)
         assertTrue(config.notifications.telegram.enabled)
         assertEquals("", config.notifications.telegram.botToken)
         assertEquals("", config.notifications.telegram.chatId)
@@ -58,7 +58,11 @@ class ConfigLoaderTest {
                 "TELEGRAM_CHAT_ID" to "-100123456",
                 "TELEGRAM_TOPIC_ID" to "42",
                 "QBITTORRENT_URL" to "http://qbittorrent:8080",
-                "MEDIA_SERVER_TYPE" to "jellyfin"
+                "MEDIA_SERVER_TYPE" to "jellyfin",
+                "MEDIA_SERVER_URL" to "http://jellyfin:8096",
+                "MEDIA_SERVER_PUBLIC_URL" to "https://jellyfin.example.com",
+                "NOTIFICATION_PROVIDER" to "discord",
+                "DISCORD_WEBHOOK_URL" to "https://discord.com/api/webhooks/123/xyz"
             )
 
         val config = ConfigLoader.load(env)
@@ -70,5 +74,24 @@ class ConfigLoaderTest {
         assertEquals(42L, config.notifications.telegram.topicId)
         assertEquals("http://qbittorrent:8080", config.qbittorrent.url)
         assertEquals("jellyfin", config.mediaServer.type)
+        assertEquals("http://jellyfin:8096", config.mediaServer.url)
+        assertEquals("https://jellyfin.example.com", config.mediaServer.publicUrl)
+        assertEquals("discord", config.notifications.provider)
+        assertEquals("https://discord.com/api/webhooks/123/xyz", config.notifications.discord.webhookUrl)
+    }
+
+    @Test
+    fun `should resolve file-based secret mounts correctly`() {
+        val tempSecretFile = java.io.File.createTempFile("auth_secret_", ".txt")
+        tempSecretFile.writeText("super-secret-from-file\n")
+        tempSecretFile.deleteOnExit()
+
+        val env =
+            mapOf(
+                "SERVER_AUTH_TOKEN_FILE" to tempSecretFile.absolutePath
+            )
+
+        val config = ConfigLoader.load(env)
+        assertEquals("super-secret-from-file", config.server.authToken)
     }
 }

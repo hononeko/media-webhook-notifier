@@ -68,19 +68,9 @@ object AuthGuard {
     }
 
     fun extractCallerName(call: ApplicationCall): String? {
-        val callerQuery = call.request.queryParameters["caller"]
-        if (!callerQuery.isNullOrBlank()) {
-            return callerQuery.trim()
-        }
-
         val instanceQuery = call.request.queryParameters["instance"]
         if (!instanceQuery.isNullOrBlank()) {
             return instanceQuery.trim()
-        }
-
-        val callerHeader = call.request.header("X-Caller-Name")
-        if (!callerHeader.isNullOrBlank()) {
-            return callerHeader.trim()
         }
 
         val instanceHeader = call.request.header("X-Instance-Name")

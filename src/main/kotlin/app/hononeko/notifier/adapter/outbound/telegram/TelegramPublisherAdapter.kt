@@ -22,6 +22,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -267,6 +268,7 @@ class TelegramPublisherAdapter(
                 }
             handleSendResponse(response)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             logger.warn("Network error sending Telegram photo: {}", e.message)
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
@@ -293,6 +295,7 @@ class TelegramPublisherAdapter(
                 }
             handleSendResponse(response)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             logger.warn("Network error sending Telegram text: {}", e.message)
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
@@ -321,6 +324,7 @@ class TelegramPublisherAdapter(
                 }
             handleEditResponse(response)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }
@@ -348,6 +352,7 @@ class TelegramPublisherAdapter(
                 }
             handleEditResponse(response)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }

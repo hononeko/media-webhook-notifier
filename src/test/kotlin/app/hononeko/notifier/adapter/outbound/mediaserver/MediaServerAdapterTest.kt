@@ -13,7 +13,7 @@ class MediaServerAdapterTest {
         val config =
             MediaServerConfig(
                 type = "plex",
-                plexPublicUrl = "https://plex.example.com"
+                publicUrl = "https://plex.example.com"
             )
         val adapter = MediaServerAdapter(config)
 
@@ -49,7 +49,7 @@ class MediaServerAdapterTest {
         val config =
             MediaServerConfig(
                 type = "jellyfin",
-                jellyfinPublicUrl = "https://jellyfin.example.com"
+                publicUrl = "https://jellyfin.example.com"
             )
         val adapter = MediaServerAdapter(config)
 

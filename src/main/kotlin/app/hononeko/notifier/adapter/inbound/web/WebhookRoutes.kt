@@ -39,6 +39,7 @@ fun Application.configureWebhookRouting(
 
         // Metrics & Telemetry
         get("/metrics") { healthController.handleMetrics(call) }
+        get("/metrics/prometheus") { healthController.handlePrometheusMetrics(call) }
 
         // Dynamic JSON schema retrieval: /schema/{provider}
         route("/schema") {

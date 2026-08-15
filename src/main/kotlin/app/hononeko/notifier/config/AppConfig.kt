@@ -15,9 +15,8 @@ data class ServerConfig(
 
 data class MediaServerConfig(
     val type: String = "plex",
-    val baseUrl: String = "",
-    val plexPublicUrl: String = "",
-    val jellyfinPublicUrl: String = ""
+    val url: String = "",
+    val publicUrl: String = ""
 )
 
 data class QBittorrentConfig(
@@ -33,6 +32,7 @@ data class QBittorrentConfig(
 )
 
 data class NotificationsConfig(
+    val provider: String = "telegram",
     val telegram: TelegramConfig = TelegramConfig(),
     val discord: DiscordConfig = DiscordConfig()
 )

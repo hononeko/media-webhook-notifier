@@ -22,10 +22,7 @@ class MediaServerAdapter(
         val ratingKey = payload.ratingKey ?: return null
         val serverId = payload.serverMachineIdentifier ?: ""
 
-        val plexBase =
-            config.plexPublicUrl.ifBlank { null }
-                ?: config.baseUrl.ifBlank { null }
-                ?: "https://app.plex.tv/desktop"
+        val plexBase = config.publicUrl.ifBlank { config.url }.ifBlank { "https://app.plex.tv/desktop" }
 
         val normalizedBase = plexBase.trimEnd('/')
         return if (normalizedBase.contains("app.plex.tv")) {
@@ -43,10 +40,7 @@ class MediaServerAdapter(
         val itemId = payload.itemId
         if (itemId.isBlank()) return null
 
-        val serverBase =
-            config.jellyfinPublicUrl.ifBlank { null }
-                ?: config.baseUrl.ifBlank { null }
-                ?: return null
+        val serverBase = config.publicUrl.ifBlank { config.url }.ifBlank { return null }
 
         val normalizedBase = serverBase.trimEnd('/')
         val serverParam = if (!payload.serverId.isNullOrBlank()) "&serverId=${payload.serverId}" else ""

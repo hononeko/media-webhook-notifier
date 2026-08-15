@@ -342,9 +342,14 @@ object CardFormatterService {
             actions.add(ActionLink(label = "🎬 Watch on Plex", url = directLink, style = ActionStyle.PRIMARY))
         }
 
+        val subtitle =
+            payload.instanceName?.let {
+                if (it.equals("plex", ignoreCase = true)) "Plex Media Server" else it
+            } ?: "Plex Media Server"
+
         return NotificationCard(
             title = "🍿 Now Available: $fullTitle",
-            subtitle = "Plex Media Server",
+            subtitle = subtitle,
             overview = truncateOverview(payload.summary),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
@@ -377,9 +382,14 @@ object CardFormatterService {
             actions.add(ActionLink(label = "🍿 Watch on Jellyfin", url = directLink, style = ActionStyle.PRIMARY))
         }
 
+        val subtitle =
+            payload.instanceName?.let {
+                if (it.equals("jellyfin", ignoreCase = true)) "Jellyfin Media Server" else it
+            } ?: "Jellyfin Media Server"
+
         return NotificationCard(
             title = "🍿 Now Available: $fullTitle",
-            subtitle = "Jellyfin Media Server",
+            subtitle = subtitle,
             overview = truncateOverview(payload.overview),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
