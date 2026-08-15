@@ -221,4 +221,91 @@ class SeerrWebhookProviderTest {
             assertNotNull(result)
             assertTrue(result is WebhookProcessResult.InvalidPayload)
         }
+
+    @Test
+    fun `should handle fallback to event field when notification_type is absent`() =
+        testApplication {
+            var result: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook-event-field") {
+                    result = provider.process(call, "   ")
+                    call.respondText("OK")
+                }
+            }
+
+            val payload =
+                """
+                {
+                    "event": "MEDIA_APPROVED",
+                    "subject": "",
+                    "message": "  ",
+                    "image": "  ",
+                    "url": "   ",
+                    "application_url": "https://overseerr.local",
+                    "media": {
+                        "status4k": "AVAILABLE"
+                    },
+                    "extra": [
+                        { "name": "Requested By", "value": "Charlie" },
+                        { "name": null, "value": "ignored" },
+                        { "name": "BlankVal", "value": null }
+                    ]
+                }
+                """.trimIndent()
+
+            client.post("/webhook-event-field") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            assertNotNull(result)
+            assertTrue(result is WebhookProcessResult.Queued)
+            val event = (result as WebhookProcessResult.Queued).payload as MediaPayload.SeerrEvent
+            assertEquals(EventType.REQUEST_APPROVED, event.eventType)
+            assertEquals("Media Request", event.subject)
+            assertEquals(null, event.message)
+            assertEquals(null, event.image)
+            assertEquals("https://overseerr.local", event.webUrl)
+            assertEquals("Seerr", event.instanceName)
+            assertEquals("Charlie", event.requestedByUsername)
+            assertTrue(event.is4k)
+            assertEquals(1, event.extra.size)
+        }
+
+    @Test
+    fun `should parse is4k as boolean false and status4k UNKNOWN correctly`() =
+        testApplication {
+            var result: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook-not-4k") {
+                    result = provider.process(call, "Overseerr")
+                    call.respondText("OK")
+                }
+            }
+
+            val payload =
+                """
+                {
+                    "notification_type": "MEDIA_PENDING",
+                    "request": {
+                        "is4k": false
+                    },
+                    "media": {
+                        "status4k": "UNKNOWN"
+                    }
+                }
+                """.trimIndent()
+
+            client.post("/webhook-not-4k") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            assertNotNull(result)
+            assertTrue(result is WebhookProcessResult.Queued)
+            val event = (result as WebhookProcessResult.Queued).payload as MediaPayload.SeerrEvent
+            assertEquals(false, event.is4k)
+        }
 }
