@@ -43,11 +43,13 @@ class TelegramPublisherAdapter(
     // Tracks if a message was posted as photo or text so edits use the matching endpoint
     private val photoMessageRegistry = ConcurrentHashMap<String, Boolean>()
 
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     private val jsonConfig =
         Json {
             ignoreUnknownKeys = true
             isLenient = true
-            encodeDefaults = false
+            encodeDefaults = true
+            explicitNulls = false
         }
 
     private val httpClient =

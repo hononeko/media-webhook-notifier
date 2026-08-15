@@ -29,6 +29,9 @@ class TelegramPublisherAdapterTest {
         runTest {
             val mockEngine =
                 MockEngine { request ->
+                    val bodyContent = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+                    val bodyString = bodyContent?.bytes()?.decodeToString() ?: ""
+                    assertTrue(bodyString.contains(""""parse_mode":"HTML""""))
                     when (request.url.encodedPath) {
                         "/bot12345:TOKEN/sendMessage" -> {
                             val successJson =
