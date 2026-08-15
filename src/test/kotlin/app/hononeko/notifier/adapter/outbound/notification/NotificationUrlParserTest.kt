@@ -1,4 +1,4 @@
-package app.hononeko.notifier.config
+package app.hononeko.notifier.adapter.outbound.notification
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

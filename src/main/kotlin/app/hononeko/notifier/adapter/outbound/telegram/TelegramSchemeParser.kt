@@ -1,4 +1,7 @@
-package app.hononeko.notifier.config
+package app.hononeko.notifier.adapter.outbound.telegram
+
+import app.hononeko.notifier.adapter.outbound.notification.NotificationSchemeParser
+import app.hononeko.notifier.config.NotificationConfig
 
 class TelegramSchemeParser : NotificationSchemeParser {
     override val schemes: Set<String> = setOf("telegram", "tgram")

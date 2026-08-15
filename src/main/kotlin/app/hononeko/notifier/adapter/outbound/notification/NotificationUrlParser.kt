@@ -1,4 +1,7 @@
-package app.hononeko.notifier.config
+package app.hononeko.notifier.adapter.outbound.notification
+
+import app.hononeko.notifier.adapter.outbound.telegram.TelegramSchemeParser
+import app.hononeko.notifier.config.NotificationConfig
 
 object NotificationUrlParser {
     private val parsers: List<NotificationSchemeParser> =

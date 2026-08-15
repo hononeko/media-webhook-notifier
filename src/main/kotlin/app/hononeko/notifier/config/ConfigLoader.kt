@@ -1,5 +1,6 @@
 package app.hononeko.notifier.config
 
+import app.hononeko.notifier.adapter.outbound.notification.NotificationUrlParser
 import java.io.File
 
 object ConfigLoader {

@@ -1,4 +1,6 @@
-package app.hononeko.notifier.config
+package app.hononeko.notifier.adapter.outbound.notification
+
+import app.hononeko.notifier.config.NotificationConfig
 
 interface NotificationSchemeParser {
     val schemes: Set<String>
