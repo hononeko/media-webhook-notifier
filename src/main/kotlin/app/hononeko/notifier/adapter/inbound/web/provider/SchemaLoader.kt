@@ -1,7 +1,9 @@
 package app.hononeko.notifier.adapter.inbound.web.provider
 
+import java.util.concurrent.ConcurrentHashMap
+
 object SchemaLoader {
-    private val schemaCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val schemaCache = ConcurrentHashMap<String, String>()
 
     fun loadSchema(resourcePath: String): String? =
         schemaCache
@@ -10,6 +12,10 @@ object SchemaLoader {
                 val stream =
                     Thread.currentThread().contextClassLoader.getResourceAsStream(cleanPath)
                         ?: SchemaLoader::class.java.classLoader.getResourceAsStream(cleanPath)
-                stream?.use { it.bufferedReader().readText() } ?: ""
+                if (stream == null) {
+                    ""
+                } else {
+                    stream.bufferedReader().use { it.readText() }
+                }
             }.takeIf { it.isNotBlank() }
 }

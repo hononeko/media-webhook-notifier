@@ -432,7 +432,7 @@ class TelegramPublisherAdapter(
         val sb = StringBuilder()
         sb.append("<b>").append(escapeHtml(card.title)).append("</b>\n")
         if (!card.subtitle.isNullOrBlank()) {
-            sb.append("<i>").append(escapeHtml(card.subtitle)).append("</i>\n")
+            appendItalicLine(sb, card.subtitle)
         }
 
         if (card.fields.isNotEmpty()) {
@@ -455,7 +455,7 @@ class TelegramPublisherAdapter(
         }
 
         if (!card.overview.isNullOrBlank()) {
-            sb.append("\n<i>").append(escapeHtml(card.overview)).append("</i>\n")
+            appendItalicLine(sb, card.overview, prefix = "\n")
         }
 
         return sb.toString().trimEnd()
@@ -476,7 +476,7 @@ class TelegramPublisherAdapter(
         val sb = StringBuilder()
         sb.append("<b>⏳ Downloading: ").append(escapeHtml(update.title)).append("</b>\n")
         if (!update.subtitle.isNullOrBlank()) {
-            sb.append("<i>").append(escapeHtml(update.subtitle)).append("</i>\n")
+            appendItalicLine(sb, update.subtitle)
         }
         sb
             .append("\n<code>")
@@ -513,6 +513,18 @@ class TelegramPublisherAdapter(
                 InlineKeyboardButton(text = action.label, url = action.url)
             }
         return InlineKeyboardMarkup(inlineKeyboard = listOf(buttons))
+    }
+
+    private fun appendItalicLine(
+        sb: StringBuilder,
+        text: String,
+        prefix: String = ""
+    ) {
+        sb
+            .append(prefix)
+            .append("<i>")
+            .append(escapeHtml(text))
+            .append("</i>\n")
     }
 
     private fun escapeHtml(text: String): String =
