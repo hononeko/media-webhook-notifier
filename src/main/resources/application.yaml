@@ -20,14 +20,10 @@ qbittorrent:
   webuiPublicUrl: ""
 
 notifications:
-  telegram:
-    enabled: true
-    botToken: ""
-    chatId: ""
-    topicId: null
-    rateLimitPerMinute: 30
-    timeoutSeconds: 5
-    sendPhotos: true
-  discord:
-    enabled: false
-    webhookUrl: ""
+  provider: "telegram"
+  botToken: ""
+  chatId: ""
+  topicId: null
+  sendPhotos: true
+  rateLimitPerMinute: 30
+  timeoutSeconds: 5

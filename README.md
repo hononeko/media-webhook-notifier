@@ -188,14 +188,13 @@ All settings can be configured via environment variables or `application.yaml`:
 |---|---|---|
 | `SERVER_PORT` | `8080` | HTTP port the server listens on |
 | `SERVER_AUTH_TOKEN` | `""` | Secret token(s). Comma-separated whitelist allowed (`"t1,t2"`). Supports `SERVER_AUTH_TOKEN_FILE` |
-| `SERVER_RATE_LIMIT_PER_MINUTE` | `120` | Inbound rate limit per IP/caller (`<= 0` disables limit) |
-| `NOTIFICATION_PROVIDER` | `telegram` | Active sink provider (`telegram` or `discord`) |
+| `NOTIFICATION_PROVIDER` | `telegram` | Active sink provider (`telegram`) |
+| `NOTIFICATION_SEND_PHOTOS` | `true` | Send poster images with fallback to HTML text on failure (alias: `TELEGRAM_SEND_PHOTOS`) |
+| `NOTIFICATION_RATE_LIMIT_PER_MINUTE` | `30` | Outbound rate limit to prevent API 429 rate limit errors (alias: `TELEGRAM_RATE_LIMIT_PER_MINUTE`) |
+| `NOTIFICATION_TIMEOUT_SECONDS` | `5` | Outbound notification request timeout in seconds (alias: `TELEGRAM_TIMEOUT_SECONDS`) |
 | `TELEGRAM_BOT_TOKEN` | `""` | Telegram Bot API token from `@BotFather`. Supports `TELEGRAM_BOT_TOKEN_FILE` |
 | `TELEGRAM_CHAT_ID` | `""` | Target chat or channel ID (e.g. `-1001234567890`) |
 | `TELEGRAM_TOPIC_ID` | `null` | Optional Telegram Forum topic thread ID |
-| `TELEGRAM_RATE_LIMIT_PER_MINUTE` | `30` | Outbound rate limit to prevent Telegram API 429 errors |
-| `TELEGRAM_SEND_PHOTOS` | `true` | Send poster images with fallback to HTML text on failure |
-| `DISCORD_WEBHOOK_URL` | `""` | Discord webhook URL. Supports `DISCORD_WEBHOOK_URL_FILE` |
 | `QBITTORRENT_URL` | `http://localhost:8080` | Internal URL to qBittorrent WebUI |
 | `QBITTORRENT_USERNAME` | `""` | qBittorrent WebUI username |
 | `QBITTORRENT_PASSWORD` | `""` | qBittorrent WebUI password. Supports `QBITTORRENT_PASSWORD_FILE` |

@@ -56,7 +56,12 @@ object ConfigLoader {
                     "QBITTORRENT_MISSING_GRACE_ATTEMPTS",
                     "qbittorrent.missingGraceAttempts"
                 ),
-            debounceSeconds = reader.getLong(5L, "QBITTORRENT_DEBOUNCE_SECONDS", "qbittorrent.debounceSeconds"),
+            debounceSeconds =
+                reader.getLong(
+                    5L,
+                    "QBITTORRENT_DEBOUNCE_SECONDS",
+                    "qbittorrent.debounceSeconds"
+                ),
             webuiPublicUrl =
                 reader.get(
                     "QBITTORRENT_WEBUI_PUBLIC_URL",
@@ -66,64 +71,59 @@ object ConfigLoader {
                 ) ?: ""
         )
 
-    private fun loadTelegramConfig(reader: EnvReader): TelegramConfig =
-        TelegramConfig(
-            enabled = reader.getBoolean(true, "NOTIFICATIONS_TELEGRAM_ENABLED", "notifications.telegram.enabled"),
+    private fun loadNotificationsConfig(reader: EnvReader): NotificationConfig =
+        NotificationConfig(
+            provider =
+                reader.get(
+                    "NOTIFICATION_PROVIDER",
+                    "notifications.provider"
+                ) ?: "telegram",
             botToken =
                 reader.getSecret(
                     "TELEGRAM_BOT_TOKEN",
-                    "NOTIFICATIONS_TELEGRAM_BOT_TOKEN",
+                    "NOTIFICATION_BOT_TOKEN",
+                    "notifications.botToken",
                     "notifications.telegram.botToken"
                 ) ?: "",
             chatId =
-                reader.get("TELEGRAM_CHAT_ID", "NOTIFICATIONS_TELEGRAM_CHAT_ID", "notifications.telegram.chatId") ?: "",
+                reader.get(
+                    "TELEGRAM_CHAT_ID",
+                    "NOTIFICATION_CHAT_ID",
+                    "notifications.chatId",
+                    "notifications.telegram.chatId"
+                ) ?: "",
             topicId =
                 reader
                     .get(
                         "TELEGRAM_TOPIC_ID",
-                        "NOTIFICATIONS_TELEGRAM_TOPIC_ID",
+                        "NOTIFICATION_TOPIC_ID",
+                        "notifications.topicId",
                         "notifications.telegram.topicId"
                     )?.toLongOrNull(),
+            sendPhotos =
+                reader.getBoolean(
+                    true,
+                    "NOTIFICATION_SEND_PHOTOS",
+                    "TELEGRAM_SEND_PHOTOS",
+                    "notifications.sendPhotos",
+                    "notifications.telegram.sendPhotos"
+                ),
             rateLimitPerMinute =
                 reader.getInt(
                     30,
+                    "NOTIFICATION_RATE_LIMIT_PER_MINUTE",
                     "TELEGRAM_RATE_LIMIT_PER_MINUTE",
-                    "NOTIFICATIONS_TELEGRAM_RATE_LIMIT_PER_MINUTE",
+                    "notifications.rateLimitPerMinute",
                     "notifications.telegram.rateLimitPerMinute"
                 ),
             timeoutSeconds =
                 reader.getLong(
                     5L,
+                    "NOTIFICATION_TIMEOUT_SECONDS",
                     "TELEGRAM_TIMEOUT_SECONDS",
-                    "NOTIFICATIONS_TELEGRAM_TIMEOUT_SECONDS",
+                    "notifications.timeoutSeconds",
                     "notifications.telegram.timeoutSeconds"
-                ),
-            sendPhotos =
-                reader.getBoolean(
-                    true,
-                    "TELEGRAM_SEND_PHOTOS",
-                    "NOTIFICATIONS_TELEGRAM_SEND_PHOTOS",
-                    "notifications.telegram.sendPhotos"
                 )
-        )
-
-    private fun loadDiscordConfig(reader: EnvReader): DiscordConfig =
-        DiscordConfig(
-            enabled = reader.getBoolean(false, "NOTIFICATIONS_DISCORD_ENABLED", "notifications.discord.enabled"),
-            webhookUrl =
-                reader.getSecret(
-                    "DISCORD_WEBHOOK_URL",
-                    "NOTIFICATIONS_DISCORD_WEBHOOK_URL",
-                    "notifications.discord.webhookUrl"
-                ) ?: ""
-        )
-
-    private fun loadNotificationsConfig(reader: EnvReader): NotificationsConfig =
-        NotificationsConfig(
-            provider =
-                reader.get("NOTIFICATION_PROVIDER", "NOTIFICATIONS_PROVIDER", "notifications.provider") ?: "telegram",
-            telegram = loadTelegramConfig(reader),
-            discord = loadDiscordConfig(reader)
         )
 
     internal class EnvReader(

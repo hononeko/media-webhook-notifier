@@ -35,17 +35,12 @@ class ConfigLoaderTest {
 
         // Notifications
         assertEquals("telegram", config.notifications.provider)
-        assertTrue(config.notifications.telegram.enabled)
-        assertEquals("", config.notifications.telegram.botToken)
-        assertEquals("", config.notifications.telegram.chatId)
-        assertNull(config.notifications.telegram.topicId)
-        assertEquals(30, config.notifications.telegram.rateLimitPerMinute)
-        assertEquals(5, config.notifications.telegram.timeoutSeconds)
-        assertTrue(config.notifications.telegram.sendPhotos)
-
-        // Discord
-        assertEquals(false, config.notifications.discord.enabled)
-        assertEquals("", config.notifications.discord.webhookUrl)
+        assertEquals("", config.notifications.botToken)
+        assertEquals("", config.notifications.chatId)
+        assertNull(config.notifications.topicId)
+        assertEquals(30, config.notifications.rateLimitPerMinute)
+        assertEquals(5, config.notifications.timeoutSeconds)
+        assertTrue(config.notifications.sendPhotos)
     }
 
     @Test
@@ -57,27 +52,31 @@ class ConfigLoaderTest {
                 "TELEGRAM_BOT_TOKEN" to "tg-bot-12345",
                 "TELEGRAM_CHAT_ID" to "-100123456",
                 "TELEGRAM_TOPIC_ID" to "42",
+                "NOTIFICATION_SEND_PHOTOS" to "false",
+                "NOTIFICATION_RATE_LIMIT_PER_MINUTE" to "45",
+                "NOTIFICATION_TIMEOUT_SECONDS" to "10",
                 "QBITTORRENT_URL" to "http://qbittorrent:8080",
                 "MEDIA_SERVER_TYPE" to "jellyfin",
                 "MEDIA_SERVER_URL" to "http://jellyfin:8096",
                 "MEDIA_SERVER_PUBLIC_URL" to "https://jellyfin.example.com",
-                "NOTIFICATION_PROVIDER" to "discord",
-                "DISCORD_WEBHOOK_URL" to "https://discord.com/api/webhooks/123/xyz"
+                "NOTIFICATION_PROVIDER" to "telegram"
             )
 
         val config = ConfigLoader.load(env)
 
         assertEquals("env-supplied-token", config.server.authToken)
         assertEquals(9090, config.server.port)
-        assertEquals("tg-bot-12345", config.notifications.telegram.botToken)
-        assertEquals("-100123456", config.notifications.telegram.chatId)
-        assertEquals(42L, config.notifications.telegram.topicId)
+        assertEquals("tg-bot-12345", config.notifications.botToken)
+        assertEquals("-100123456", config.notifications.chatId)
+        assertEquals(42L, config.notifications.topicId)
+        assertEquals(false, config.notifications.sendPhotos)
+        assertEquals(45, config.notifications.rateLimitPerMinute)
+        assertEquals(10L, config.notifications.timeoutSeconds)
         assertEquals("http://qbittorrent:8080", config.qbittorrent.url)
         assertEquals("jellyfin", config.mediaServer.type)
         assertEquals("http://jellyfin:8096", config.mediaServer.url)
         assertEquals("https://jellyfin.example.com", config.mediaServer.publicUrl)
-        assertEquals("discord", config.notifications.provider)
-        assertEquals("https://discord.com/api/webhooks/123/xyz", config.notifications.discord.webhookUrl)
+        assertEquals("telegram", config.notifications.provider)
     }
 
     @Test

@@ -1,6 +1,6 @@
 package app.hononeko.notifier.adapter.outbound.telegram
 
-import app.hononeko.notifier.config.TelegramConfig
+import app.hononeko.notifier.config.NotificationConfig
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.ActionLink
 import app.hononeko.notifier.domain.model.MediaSpecs
@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
 class TelegramPublisherAdapter(
-    private val config: TelegramConfig,
+    private val config: NotificationConfig,
     engine: HttpClientEngine? = null
 ) : NotificationPublisherPort {
     companion object {
