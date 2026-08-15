@@ -14,12 +14,14 @@ import kotlin.test.assertTrue
 
 class CardFormatterServiceTest {
     @Test
-    fun `should draw progress bar accurately`() {
-        assertEquals("░░░░░░░░░░", CardFormatterService.drawProgressBar(0, 10))
-        assertEquals("█████░░░░░", CardFormatterService.drawProgressBar(50, 10))
-        assertEquals("██████████", CardFormatterService.drawProgressBar(100, 10))
-        assertEquals("██████████", CardFormatterService.drawProgressBar(120, 10))
-        assertEquals("░░░░░░░░░░", CardFormatterService.drawProgressBar(-10, 10))
+    fun `should draw progress bar accurately with sub-blocks and brackets`() {
+        assertEquals("[░░░░░░░░░░]", CardFormatterService.drawProgressBar(0, 10))
+        assertEquals("[███▌░░░░░░]", CardFormatterService.drawProgressBar(35, 10))
+        assertEquals("[█████░░░░░]", CardFormatterService.drawProgressBar(50, 10))
+        assertEquals("[██████▌░░░]", CardFormatterService.drawProgressBar(65, 10))
+        assertEquals("[██████████]", CardFormatterService.drawProgressBar(100, 10))
+        assertEquals("[██████████]", CardFormatterService.drawProgressBar(120, 10))
+        assertEquals("[░░░░░░░░░░]", CardFormatterService.drawProgressBar(-10, 10))
     }
 
     @Test
@@ -113,14 +115,15 @@ class CardFormatterServiceTest {
                 title = "Severance - S02E01 - Hello",
                 seriesOrMovieTitle = "Severance",
                 seasonNumber = 2,
-                episodeNumbers = listOf(1)
+                episodeNumbers = listOf(1),
+                instanceName = "Sonarr-Main"
             )
 
         val progress =
             TorrentProgress(
                 hash = "hash123",
                 name = "Severance.S02E01",
-                progressPercent = 65,
+                progressPercent = 65.0,
                 progressRatio = 0.65,
                 downloadSpeedBytesPerSec = 10485760,
                 uploadSpeedBytesPerSec = 524288,
@@ -136,8 +139,9 @@ class CardFormatterServiceTest {
 
         val update = CardFormatterService.buildProgressUpdate(payload, progress, "https://qbit.example.com")
         assertEquals("Severance (S02E01)", update.title)
-        assertEquals(65, update.percent)
-        assertEquals("██████░░░░", update.progressBar)
+        assertEquals("Sonarr-Main", update.subtitle)
+        assertEquals(65.0, update.percent)
+        assertEquals("[██████▌░░░]", update.progressBar)
         assertEquals("10.0 MB/s", update.speedFormatted)
         assertEquals("2m 0s", update.etaFormatted)
         assertEquals("Downloading", update.stateText)
@@ -158,7 +162,7 @@ class CardFormatterServiceTest {
             TorrentProgress(
                 hash = "hash456",
                 name = "Dune.Part.Two.2024",
-                progressPercent = 100,
+                progressPercent = 100.0,
                 progressRatio = 1.0,
                 downloadSpeedBytesPerSec = 0,
                 uploadSpeedBytesPerSec = 1048576,

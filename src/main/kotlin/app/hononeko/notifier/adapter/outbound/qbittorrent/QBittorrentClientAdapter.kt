@@ -150,7 +150,7 @@ class QBittorrentClientAdapter(
             torrentList.firstOrNull { it.hash.equals(hash, ignoreCase = true) }
                 ?: return Either.Right(null)
 
-        val progressPercent = (torrentDto.progress * 100).toInt().coerceIn(0, 100)
+        val progressPercent = (torrentDto.progress * 100.0).coerceIn(0.0, 100.0)
         val state = mapState(torrentDto.state)
 
         return Either.Right(

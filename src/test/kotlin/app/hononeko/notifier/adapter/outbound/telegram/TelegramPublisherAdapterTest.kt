@@ -29,6 +29,9 @@ class TelegramPublisherAdapterTest {
         runTest {
             val mockEngine =
                 MockEngine { request ->
+                    val bodyContent = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+                    val bodyString = bodyContent?.bytes()?.decodeToString() ?: ""
+                    assertTrue(bodyString.contains(""""parse_mode":"HTML""""))
                     when (request.url.encodedPath) {
                         "/bot12345:TOKEN/sendMessage" -> {
                             val successJson =
@@ -129,7 +132,7 @@ class TelegramPublisherAdapterTest {
                     ProgressUpdate(
                         trackingKey = "key1",
                         title = "Severance",
-                        percent = 75,
+                        percent = 75.0,
                         progressBar = "███████░░░",
                         speedFormatted = "20 MB/s",
                         etaFormatted = "30s",
@@ -217,7 +220,7 @@ class TelegramPublisherAdapterTest {
             val editResult =
                 adapter.updateProgress(
                     NotificationHandle("telegram", "123", "99"),
-                    ProgressUpdate("k", "T", 10, "█", "1M", "1m", "1G", "1", "DL")
+                    ProgressUpdate("k", "T", 10.0, "█", "1M", "1m", "1G", "1", "DL")
                 )
             assertTrue(editResult.isLeft())
             assertIs<DomainError.NotificationError.RateLimited>((editResult as Either.Left).value)
@@ -240,7 +243,7 @@ class TelegramPublisherAdapterTest {
             val editResult =
                 adapter.updateProgress(
                     NotificationHandle("telegram", "123", "99"),
-                    ProgressUpdate("k", "T", 10, "█", "1M", "1m", "1G", "1", "DL")
+                    ProgressUpdate("k", "T", 10.0, "█", "1M", "1m", "1G", "1", "DL")
                 )
             assertTrue(editResult.isLeft())
         }
@@ -282,7 +285,7 @@ class TelegramPublisherAdapterTest {
                     ProgressUpdate(
                         trackingKey = "key1",
                         title = "Severance",
-                        percent = 50,
+                        percent = 50.0,
                         progressBar = "█████░░░░░",
                         speedFormatted = "10 MB/s",
                         etaFormatted = "1m",
@@ -324,7 +327,7 @@ class TelegramPublisherAdapterTest {
                 ProgressUpdate(
                     trackingKey = "key1",
                     title = "Severance",
-                    percent = 50,
+                    percent = 50.0,
                     progressBar = "█████░░░░░",
                     speedFormatted = "10 MB/s",
                     etaFormatted = "1m",

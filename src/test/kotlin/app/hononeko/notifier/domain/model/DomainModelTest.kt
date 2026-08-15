@@ -56,7 +56,7 @@ class DomainModelTest {
             TorrentProgress(
                 hash = "aabbcc",
                 name = "Test.Torrent",
-                progressPercent = 45,
+                progressPercent = 45.0,
                 progressRatio = 0.45,
                 downloadSpeedBytesPerSec = 15728640,
                 uploadSpeedBytesPerSec = 1048576,
@@ -72,11 +72,11 @@ class DomainModelTest {
 
         assertFalse(downloading.state.isComplete)
         assertFalse(downloading.state.isStalled)
-        assertEquals(45, downloading.progressPercent)
+        assertEquals(45.0, downloading.progressPercent)
 
         val completed =
             downloading.copy(
-                progressPercent = 100,
+                progressPercent = 100.0,
                 progressRatio = 1.0,
                 state = TorrentState.COMPLETED
             )

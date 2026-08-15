@@ -17,14 +17,33 @@ object CardFormatterService {
     private const val OPEN_WEBUI_LABEL = "🌐 Open WebUI"
 
     fun drawProgressBar(
-        percent: Int,
+        percent: Double,
         length: Int = 10
     ): String {
-        val clamped = percent.coerceIn(0, 100)
-        val completed = (clamped * length) / 100
-        val remaining = length - completed
-        return "█".repeat(completed) + "░".repeat(remaining)
+        val clamped = percent.coerceIn(0.0, 100.0)
+        val totalEighths = kotlin.math.round((clamped * length * 8) / 100.0).toInt()
+        val fullBlocks = totalEighths / 8
+        val remainder = totalEighths % 8
+        val subBlocks = charArrayOf(' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉')
+        val sb = StringBuilder()
+        sb.append("[")
+        sb.append("█".repeat(fullBlocks.coerceAtMost(length)))
+        if (fullBlocks < length) {
+            if (remainder > 0) {
+                sb.append(subBlocks[remainder])
+                sb.append("░".repeat(length - fullBlocks - 1))
+            } else {
+                sb.append("░".repeat(length - fullBlocks))
+            }
+        }
+        sb.append("]")
+        return sb.toString()
     }
+
+    fun drawProgressBar(
+        percent: Int,
+        length: Int = 10
+    ): String = drawProgressBar(percent.toDouble(), length)
 
     fun formatDuration(seconds: Long): String =
         when {
@@ -171,6 +190,7 @@ object CardFormatterService {
         return ProgressUpdate(
             trackingKey = payload.downloadId,
             title = titleText,
+            subtitle = payload.instanceName ?: payload.source.displayName,
             percent = progress.progressPercent,
             progressBar = drawProgressBar(progress.progressPercent),
             speedFormatted = speedFormatted,
@@ -228,12 +248,13 @@ object CardFormatterService {
                 else -> payload.title
             }
 
+        val progressVal = progress?.progressPercent ?: 0.0
         val fields =
             mutableListOf(
                 CardField("Status", "⚠️ Download Stalled (0 B/s)"),
                 CardField(
                     "Progress",
-                    "${progress?.progressPercent ?: 0}% [${drawProgressBar(progress?.progressPercent ?: 0)}]"
+                    String.format(Locale.US, "%.2f%% %s", progressVal, drawProgressBar(progressVal))
                 )
             )
 
