@@ -21,8 +21,8 @@ class NotificationUrlParserTest {
     }
 
     @Test
-    fun `should parse telegram notification URL with slash separator`() {
-        val url = "telegram://123456:ABC-DEF/-1001234567890"
+    fun `should parse telegram notification URL with tgram scheme alias and slash separator`() {
+        val url = "tgram://123456:ABC-DEF/-1001234567890"
         val parsed = NotificationUrlParser.parse(url)
 
         assertEquals("telegram", parsed.provider)
@@ -56,6 +56,15 @@ class NotificationUrlParserTest {
         assertEquals(false, parsed.sendPhotos)
         assertEquals(45, parsed.rateLimitPerMinute)
         assertEquals(8L, parsed.timeoutSeconds)
+    }
+
+    @Test
+    fun `should fallback gracefully for unknown schemes`() {
+        val url = "custom-sink://target-address"
+        val parsed = NotificationUrlParser.parse(url)
+
+        assertEquals("custom-sink", parsed.provider)
+        assertEquals(url, parsed.url)
     }
 
     @Test

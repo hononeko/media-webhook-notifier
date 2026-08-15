@@ -71,21 +71,11 @@ object ConfigLoader {
 
     private fun loadNotificationsConfig(reader: EnvReader): NotificationConfig {
         val rawUrl = reader.getSecret("NOTIFICATION_URL", "notifications.url") ?: ""
-        if (rawUrl.isNotBlank()) {
-            val parsed = NotificationUrlParser.parse(rawUrl)
-            return NotificationConfig(
-                url = rawUrl,
-                provider = parsed.provider,
-                botToken = parsed.botToken,
-                chatId = parsed.chatId,
-                topicId = parsed.topicId,
-                sendPhotos = parsed.sendPhotos,
-                rateLimitPerMinute = parsed.rateLimitPerMinute,
-                timeoutSeconds = parsed.timeoutSeconds
-            )
+        return if (rawUrl.isNotBlank()) {
+            NotificationUrlParser.parse(rawUrl)
+        } else {
+            NotificationConfig()
         }
-
-        return NotificationConfig()
     }
 
     internal class EnvReader(
