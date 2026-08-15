@@ -20,6 +20,9 @@ enum class EventType {
     DOWNLOAD,
     UPGRADE,
     MEDIA_AVAILABLE,
+    HEALTH_ISSUE,
+    HEALTH_RESTORED,
+    MANUAL_INTERACTION,
     TEST,
     UNKNOWN
 }

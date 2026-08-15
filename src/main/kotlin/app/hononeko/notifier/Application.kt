@@ -22,9 +22,11 @@ import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.IngestWebhookService
+import app.hononeko.notifier.domain.service.ManualInteractionService
 import app.hononeko.notifier.domain.service.MediaAvailableService
 import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.SeasonDebouncer
+import app.hononeko.notifier.domain.service.SystemHealthService
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -62,6 +64,8 @@ data class AppDependencies(
     val seasonDebouncer: SeasonDebouncer,
     val mediaImportedService: MediaImportedService,
     val mediaAvailableService: MediaAvailableService,
+    val systemHealthService: SystemHealthService,
+    val manualInteractionService: ManualInteractionService,
     val ingestWebhookService: IngestWebhookUseCase,
     val eventRail: EventRail,
     val rateLimiter: InboundRateLimiter,
@@ -119,12 +123,24 @@ fun buildDependencies(
             mediaServerPort = mediaServerPort
         )
 
+    val systemHealthService =
+        SystemHealthService(
+            notificationPublisher = notificationPublisher
+        )
+
+    val manualInteractionService =
+        ManualInteractionService(
+            notificationPublisher = notificationPublisher
+        )
+
     val ingestWebhookService =
         IngestWebhookService(
             seasonDebouncer = seasonDebouncer,
             trackDownloadUseCase = downloadTracker,
             announceMediaImportedUseCase = mediaImportedService,
-            announceMediaAvailableUseCase = mediaAvailableService
+            announceMediaAvailableUseCase = mediaAvailableService,
+            announceSystemHealthUseCase = systemHealthService,
+            announceManualInteractionUseCase = manualInteractionService
         )
 
     val eventRail = EventRail(capacity = 1000)
@@ -148,6 +164,8 @@ fun buildDependencies(
         seasonDebouncer = seasonDebouncer,
         mediaImportedService = mediaImportedService,
         mediaAvailableService = mediaAvailableService,
+        systemHealthService = systemHealthService,
+        manualInteractionService = manualInteractionService,
         ingestWebhookService = ingestWebhookService,
         eventRail = eventRail,
         rateLimiter = rateLimiter,

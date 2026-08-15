@@ -5,7 +5,15 @@
   "properties": {
     "eventType": {
       "type": "string",
-      "enum": ["Grab", "Download", "Test"]
+      "enum": [
+        "Grab",
+        "Download",
+        "Health",
+        "HealthIssue",
+        "HealthRestored",
+        "ManualInteractionRequired",
+        "Test"
+      ]
     },
     "instanceName": { "type": "string" },
     "applicationUrl": { "type": "string" },
@@ -14,7 +22,13 @@
     "episodes": { "type": "array" },
     "release": { "type": "object" },
     "downloadId": { "type": "string" },
-    "isUpgrade": { "type": "boolean" }
+    "downloadClient": { "type": "string" },
+    "isUpgrade": { "type": "boolean" },
+    "level": { "type": "string" },
+    "message": { "type": "string" },
+    "type": { "type": "string" },
+    "wikiUrl": { "type": "string" },
+    "reason": { "type": "string" }
   },
   "required": ["eventType"]
 }

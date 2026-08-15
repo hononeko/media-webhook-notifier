@@ -139,4 +139,44 @@ class DomainModelTest {
         val webhookError: DomainError = DomainError.WebhookError.MissingTorrentHash
         assertEquals(DomainError.WebhookError.MissingTorrentHash, webhookError)
     }
+
+    @Test
+    fun `should construct and inspect MediaPayload ServarrHealth and ServarrManualInteraction correctly`() {
+        val health =
+            MediaPayload.ServarrHealth(
+                source = AppSource.SONARR,
+                eventType = EventType.HEALTH_ISSUE,
+                level = "warning",
+                message = "Indexer connection unstable",
+                type = "IndexersUnavailable",
+                wikiUrl = "https://wiki.servarr.com",
+                instanceName = "Sonarr-Anime"
+            )
+
+        assertEquals(AppSource.SONARR, health.source)
+        assertEquals(EventType.HEALTH_ISSUE, health.eventType)
+        assertEquals("warning", health.level)
+        assertEquals("Indexer connection unstable", health.message)
+        assertEquals("IndexersUnavailable", health.type)
+        assertEquals("https://wiki.servarr.com", health.wikiUrl)
+        assertEquals("Sonarr-Anime", health.instanceName)
+
+        val manual =
+            MediaPayload.ServarrManualInteraction(
+                source = AppSource.RADARR,
+                eventType = EventType.MANUAL_INTERACTION,
+                title = "Dune 2",
+                seriesOrMovieTitle = "Dune: Part Two",
+                releaseTitle = "Dune.2.2024.UHD",
+                reason = "Sample file detected",
+                instanceName = "Radarr-4K"
+            )
+
+        assertEquals(AppSource.RADARR, manual.source)
+        assertEquals(EventType.MANUAL_INTERACTION, manual.eventType)
+        assertEquals("Dune 2", manual.title)
+        assertEquals("Dune: Part Two", manual.seriesOrMovieTitle)
+        assertEquals("Sample file detected", manual.reason)
+        assertEquals("Radarr-4K", manual.instanceName)
+    }
 }

@@ -13,6 +13,11 @@ data class ServarrWebhookDto(
     val downloadClient: String? = null,
     val isUpgrade: Boolean? = null,
     val upgrade: ServarrUpgradeDto? = null,
+    val level: String? = null,
+    val message: String? = null,
+    val type: String? = null,
+    val wikiUrl: String? = null,
+    val reason: String? = null,
     val instanceName: String? = null,
     val applicationUrl: String? = null
 )
