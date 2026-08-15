@@ -21,9 +21,23 @@ object CardFormatterService {
         length: Int = 10
     ): String {
         val clamped = percent.coerceIn(0, 100)
-        val completed = (clamped * length) / 100
-        val remaining = length - completed
-        return "█".repeat(completed) + "░".repeat(remaining)
+        val totalEighths = (clamped * length * 8) / 100
+        val fullBlocks = totalEighths / 8
+        val remainder = totalEighths % 8
+        val subBlocks = charArrayOf(' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉')
+        val sb = StringBuilder()
+        sb.append("[")
+        sb.append("█".repeat(fullBlocks))
+        if (fullBlocks < length) {
+            if (remainder > 0) {
+                sb.append(subBlocks[remainder])
+                sb.append("░".repeat(length - fullBlocks - 1))
+            } else {
+                sb.append("░".repeat(length - fullBlocks))
+            }
+        }
+        sb.append("]")
+        return sb.toString()
     }
 
     fun formatDuration(seconds: Long): String =
@@ -171,6 +185,7 @@ object CardFormatterService {
         return ProgressUpdate(
             trackingKey = payload.downloadId,
             title = titleText,
+            subtitle = payload.instanceName ?: payload.source.displayName,
             percent = progress.progressPercent,
             progressBar = drawProgressBar(progress.progressPercent),
             speedFormatted = speedFormatted,

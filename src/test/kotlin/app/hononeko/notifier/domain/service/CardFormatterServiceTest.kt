@@ -14,12 +14,14 @@ import kotlin.test.assertTrue
 
 class CardFormatterServiceTest {
     @Test
-    fun `should draw progress bar accurately`() {
-        assertEquals("░░░░░░░░░░", CardFormatterService.drawProgressBar(0, 10))
-        assertEquals("█████░░░░░", CardFormatterService.drawProgressBar(50, 10))
-        assertEquals("██████████", CardFormatterService.drawProgressBar(100, 10))
-        assertEquals("██████████", CardFormatterService.drawProgressBar(120, 10))
-        assertEquals("░░░░░░░░░░", CardFormatterService.drawProgressBar(-10, 10))
+    fun `should draw progress bar accurately with sub-blocks and brackets`() {
+        assertEquals("[░░░░░░░░░░]", CardFormatterService.drawProgressBar(0, 10))
+        assertEquals("[███▌░░░░░░]", CardFormatterService.drawProgressBar(35, 10))
+        assertEquals("[█████░░░░░]", CardFormatterService.drawProgressBar(50, 10))
+        assertEquals("[██████▌░░░]", CardFormatterService.drawProgressBar(65, 10))
+        assertEquals("[██████████]", CardFormatterService.drawProgressBar(100, 10))
+        assertEquals("[██████████]", CardFormatterService.drawProgressBar(120, 10))
+        assertEquals("[░░░░░░░░░░]", CardFormatterService.drawProgressBar(-10, 10))
     }
 
     @Test
@@ -113,7 +115,8 @@ class CardFormatterServiceTest {
                 title = "Severance - S02E01 - Hello",
                 seriesOrMovieTitle = "Severance",
                 seasonNumber = 2,
-                episodeNumbers = listOf(1)
+                episodeNumbers = listOf(1),
+                instanceName = "Sonarr-Main"
             )
 
         val progress =
@@ -136,8 +139,9 @@ class CardFormatterServiceTest {
 
         val update = CardFormatterService.buildProgressUpdate(payload, progress, "https://qbit.example.com")
         assertEquals("Severance (S02E01)", update.title)
+        assertEquals("Sonarr-Main", update.subtitle)
         assertEquals(65, update.percent)
-        assertEquals("██████░░░░", update.progressBar)
+        assertEquals("[██████▌░░░]", update.progressBar)
         assertEquals("10.0 MB/s", update.speedFormatted)
         assertEquals("2m 0s", update.etaFormatted)
         assertEquals("Downloading", update.stateText)

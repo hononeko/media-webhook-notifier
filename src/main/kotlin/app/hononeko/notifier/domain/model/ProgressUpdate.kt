@@ -10,5 +10,6 @@ data class ProgressUpdate(
     val sizeFormatted: String,
     val peersInfo: String,
     val stateText: String,
+    val subtitle: String? = null,
     val actions: List<ActionLink> = emptyList()
 )

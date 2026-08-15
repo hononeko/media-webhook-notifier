@@ -436,7 +436,7 @@ class TelegramPublisherAdapter(
             sb.append("\n")
             for (field in card.fields) {
                 sb
-                    .append("<b>")
+                    .append("▪ <b>")
                     .append(escapeHtml(field.name))
                     .append(":</b> ")
                     .append(escapeHtml(field.value))
@@ -447,7 +447,7 @@ class TelegramPublisherAdapter(
         card.mediaSpecs?.let { specs ->
             val summary = formatSpecs(specs)
             if (summary.isNotBlank()) {
-                sb.append("<b>Specs:</b> ").append(escapeHtml(summary)).append("\n")
+                sb.append("▪ <b>Specs:</b> ").append(escapeHtml(summary)).append("\n")
             }
         }
 
@@ -472,18 +472,24 @@ class TelegramPublisherAdapter(
     private fun buildProgressHtml(update: ProgressUpdate): String {
         val sb = StringBuilder()
         sb.append("<b>⏳ Downloading: ").append(escapeHtml(update.title)).append("</b>\n")
+        if (!update.subtitle.isNullOrBlank()) {
+            sb.append("<i>").append(escapeHtml(update.subtitle)).append("</i>\n")
+        }
         sb
-            .append("<code>")
+            .append("\n<code>")
             .append(update.progressBar)
             .append("</code> <b>")
             .append(update.percent)
             .append("%</b>\n\n")
 
-        sb.append("<b>Speed:</b> ").append(escapeHtml(update.speedFormatted)).append("\n")
-        sb.append("<b>ETA:</b> ").append(escapeHtml(update.etaFormatted)).append("\n")
-        sb.append("<b>Size:</b> ").append(escapeHtml(update.sizeFormatted)).append("\n")
-        sb.append("<b>Peers:</b> ").append(escapeHtml(update.peersInfo)).append("\n")
-        sb.append("<b>State:</b> ").append(escapeHtml(update.stateText))
+        sb.append("▪ <b>Speed:</b> ").append(escapeHtml(update.speedFormatted))
+        if (update.etaFormatted.isNotBlank()) {
+            sb.append(" (ETA: ").append(escapeHtml(update.etaFormatted)).append(")")
+        }
+        sb.append("\n")
+        sb.append("▪ <b>Transferred:</b> ").append(escapeHtml(update.sizeFormatted)).append("\n")
+        sb.append("▪ <b>Peers:</b> ").append(escapeHtml(update.peersInfo)).append("\n")
+        sb.append("▪ <b>Status:</b> ").append(escapeHtml(update.stateText))
 
         return sb.toString()
     }
