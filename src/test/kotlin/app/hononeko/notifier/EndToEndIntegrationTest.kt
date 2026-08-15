@@ -18,9 +18,11 @@ import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.IngestWebhookService
+import app.hononeko.notifier.domain.service.ManualInteractionService
 import app.hononeko.notifier.domain.service.MediaAvailableService
 import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.SeasonDebouncer
+import app.hononeko.notifier.domain.service.SystemHealthService
 import arrow.core.Either
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -135,12 +137,17 @@ class EndToEndIntegrationTest {
                     mediaServerPort = mockMediaServer
                 )
 
+            val systemHealthService = SystemHealthService(notificationPublisher = mockPublisher)
+            val manualInteractionService = ManualInteractionService(notificationPublisher = mockPublisher)
+
             val ingestWebhookService =
                 IngestWebhookService(
                     seasonDebouncer = seasonDebouncer,
                     trackDownloadUseCase = downloadTracker,
                     announceMediaImportedUseCase = mediaImportedService,
-                    announceMediaAvailableUseCase = mediaAvailableService
+                    announceMediaAvailableUseCase = mediaAvailableService,
+                    announceSystemHealthUseCase = systemHealthService,
+                    announceManualInteractionUseCase = manualInteractionService
                 )
 
             val eventRail = EventRail(capacity = 100)
@@ -161,6 +168,8 @@ class EndToEndIntegrationTest {
                     seasonDebouncer = seasonDebouncer,
                     mediaImportedService = mediaImportedService,
                     mediaAvailableService = mediaAvailableService,
+                    systemHealthService = systemHealthService,
+                    manualInteractionService = manualInteractionService,
                     ingestWebhookService = ingestWebhookService,
                     eventRail = eventRail,
                     rateLimiter = rateLimiter,

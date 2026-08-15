@@ -255,4 +255,77 @@ class CardFormatterServiceTest {
         assertEquals("⬆️ File Upgraded: Severance (S02E01)", upgradeCard.title)
         assertEquals("Sonarr 4K • Quality Upgrade", upgradeCard.subtitle)
     }
+
+    @Test
+    fun `should build health cards for warning, error, and restored statuses`() {
+        val warningPayload =
+            MediaPayload.ServarrHealth(
+                source = AppSource.SONARR,
+                eventType = app.hononeko.notifier.domain.model.EventType.HEALTH_ISSUE,
+                level = "warning",
+                message = "Indexer connection unstable",
+                type = "IndexersUnavailable",
+                wikiUrl = "https://wiki.servarr.com/indexers",
+                instanceName = "Sonarr-Anime"
+            )
+        val warningCard = CardFormatterService.buildHealthCard(warningPayload)
+        assertEquals("⚠️ Health Warning: Sonarr-Anime", warningCard.title)
+        assertEquals("Sonarr-Anime • Health Warning", warningCard.subtitle)
+        assertEquals(NotificationLevel.WARNING, warningCard.level)
+        assertEquals("Indexer connection unstable", warningCard.fields.first { it.name == "Message" }.value)
+        assertEquals("IndexersUnavailable", warningCard.fields.first { it.name == "Issue Type" }.value)
+        assertEquals("📖 Open Wiki", warningCard.actions.first().label)
+
+        val errorPayload =
+            warningPayload.copy(
+                level = "error",
+                message = "All download clients are offline"
+            )
+        val errorCard = CardFormatterService.buildHealthCard(errorPayload)
+        assertEquals("🚨 Health Error: Sonarr-Anime", errorCard.title)
+        assertEquals(NotificationLevel.ERROR, errorCard.level)
+
+        val restoredPayload =
+            warningPayload.copy(
+                eventType = app.hononeko.notifier.domain.model.EventType.HEALTH_RESTORED,
+                level = "ok",
+                message = "Indexer connection restored"
+            )
+        val restoredCard = CardFormatterService.buildHealthCard(restoredPayload)
+        assertEquals("✅ Health Restored: Sonarr-Anime", restoredCard.title)
+        assertEquals(NotificationLevel.SUCCESS, restoredCard.level)
+    }
+
+    @Test
+    fun `should build manual interaction required card correctly`() {
+        val manualPayload =
+            MediaPayload.ServarrManualInteraction(
+                source = AppSource.RADARR,
+                title = "Dune: Part Two (2024)",
+                seriesOrMovieTitle = "Dune: Part Two",
+                releaseTitle = "Dune.Part.Two.2024.2160p.WEB-DL",
+                quality = "2160p",
+                sizeBytes = 15728640000L,
+                indexer = "Prowlarr",
+                downloadClient = "qBittorrent",
+                downloadId = "hash123",
+                reason = "Sample file detected or unrecognized audio stream",
+                posterUrl = "https://image.tmdb.org/t/p/w500/poster.jpg",
+                webUrl = "http://radarr:7878/activity/queue",
+                instanceName = "Radarr-4K"
+            )
+
+        val card = CardFormatterService.buildManualInteractionCard(manualPayload)
+        assertEquals("✋ Manual Import Required: Dune: Part Two (2024)", card.title)
+        assertEquals("Radarr-4K • Manual Intervention", card.subtitle)
+        assertEquals(NotificationLevel.WARNING, card.level)
+        assertEquals(
+            "Sample file detected or unrecognized audio stream",
+            card.fields.first { it.name == "Reason" }.value
+        )
+        assertEquals("Dune.Part.Two.2024.2160p.WEB-DL", card.fields.first { it.name == "Release" }.value)
+        assertEquals("2160p", card.fields.first { it.name == "Quality" }.value)
+        assertEquals("qBittorrent", card.fields.first { it.name == "Client" }.value)
+        assertEquals("📁 Open in Radarr", card.actions.first().label)
+    }
 }

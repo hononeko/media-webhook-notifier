@@ -123,4 +123,49 @@ class IngestWebhookServiceTest {
             assertEquals(2, importedPayloads.size)
             assertEquals(1, availablePayloads.size)
         }
+
+    @Test
+    fun `should route ServarrHealth and ServarrManualInteraction to alert use cases`() =
+        runTest {
+            val healthPayloads = Collections.synchronizedList(mutableListOf<MediaPayload.ServarrHealth>())
+            val manualPayloads = Collections.synchronizedList(mutableListOf<MediaPayload.ServarrManualInteraction>())
+
+            val service =
+                IngestWebhookService(
+                    seasonDebouncer = null,
+                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    announceMediaImportedUseCase = { Either.Right(Unit) },
+                    announceMediaAvailableUseCase = { Either.Right(Unit) },
+                    announceSystemHealthUseCase = { payload ->
+                        healthPayloads.add(payload)
+                        Either.Right(Unit)
+                    },
+                    announceManualInteractionUseCase = { payload ->
+                        manualPayloads.add(payload)
+                        Either.Right(Unit)
+                    }
+                )
+
+            val health =
+                MediaPayload.ServarrHealth(
+                    source = AppSource.SONARR,
+                    level = "warning",
+                    message = "Indexer offline"
+                )
+
+            val manual =
+                MediaPayload.ServarrManualInteraction(
+                    source = AppSource.RADARR,
+                    title = "Dune 2",
+                    seriesOrMovieTitle = "Dune 2"
+                )
+
+            val healthResult = service.execute(health)
+            val manualResult = service.execute(manual)
+
+            assertTrue(healthResult.isRight())
+            assertTrue(manualResult.isRight())
+            assertEquals(1, healthPayloads.size)
+            assertEquals(1, manualPayloads.size)
+        }
 }

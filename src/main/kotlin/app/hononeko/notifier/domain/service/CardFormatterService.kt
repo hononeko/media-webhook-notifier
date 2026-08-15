@@ -335,6 +335,8 @@ object CardFormatterService {
             is MediaPayload.JellyfinItemAdded -> buildJellyfinCard(payload, mediaServerPort)
             is MediaPayload.ArrDownload -> buildImportCard(payload)
             is MediaPayload.ArrGrab -> buildGrabInitialCard(payload, null)
+            is MediaPayload.ServarrHealth -> buildHealthCard(payload)
+            is MediaPayload.ServarrManualInteraction -> buildManualInteractionCard(payload)
         }
 
     private fun buildPlexCard(
@@ -414,6 +416,96 @@ object CardFormatterService {
             overview = truncateOverview(payload.overview),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
+            artworkUrl = payload.posterUrl,
+            actions = actions
+        )
+    }
+
+    fun buildHealthCard(payload: MediaPayload.ServarrHealth): NotificationCard {
+        val isRestored =
+            payload.eventType == app.hononeko.notifier.domain.model.EventType.HEALTH_RESTORED ||
+                payload.level.equals("ok", ignoreCase = true) ||
+                payload.level.equals("restored", ignoreCase = true)
+        val isError =
+            payload.level.equals("error", ignoreCase = true) ||
+                payload.level.equals("critical", ignoreCase = true)
+
+        val (titlePrefix, level, subtitleSuffix) =
+            when {
+                isRestored -> Triple("✅ Health Restored", NotificationLevel.SUCCESS, "Health Status")
+                isError -> Triple("🚨 Health Error", NotificationLevel.ERROR, "Health Alert")
+                else -> Triple("⚠️ Health Warning", NotificationLevel.WARNING, "Health Warning")
+            }
+
+        val instanceLabel = payload.instanceName ?: payload.source.displayName
+        val title = "$titlePrefix: $instanceLabel"
+        val subtitle = "$instanceLabel • $subtitleSuffix"
+
+        val fields = mutableListOf<CardField>()
+        fields.add(CardField("Message", payload.message, inline = false))
+        payload.type?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Issue Type", it, inline = true))
+        }
+
+        val actions = mutableListOf<ActionLink>()
+        payload.wikiUrl?.takeIf { it.isNotBlank() }?.let {
+            actions.add(ActionLink(label = "📖 Open Wiki", url = it, style = ActionStyle.DEFAULT))
+        }
+
+        return NotificationCard(
+            title = title,
+            subtitle = subtitle,
+            level = level,
+            fields = fields,
+            actions = actions
+        )
+    }
+
+    fun buildManualInteractionCard(payload: MediaPayload.ServarrManualInteraction): NotificationCard {
+        val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
+        val fullTitle =
+            when {
+                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
+                else -> payload.title
+            }
+
+        val fields = mutableListOf<CardField>()
+        payload.reason?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Reason", it, inline = false))
+        }
+        payload.releaseTitle?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Release", it, inline = false))
+        }
+        payload.quality?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Quality", it, inline = true))
+        }
+        payload.sizeBytes?.let {
+            fields.add(CardField("Size", formatBytes(it), inline = true))
+        }
+        payload.indexer?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Indexer", it, inline = true))
+        }
+        payload.downloadClient?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Client", it, inline = true))
+        }
+
+        val actions = mutableListOf<ActionLink>()
+        if (!payload.webUrl.isNullOrBlank()) {
+            actions.add(
+                ActionLink(
+                    label = "📁 Open in ${payload.source.displayName}",
+                    url = payload.webUrl,
+                    style = ActionStyle.PRIMARY
+                )
+            )
+        }
+
+        val instanceLabel = payload.instanceName ?: payload.source.displayName
+        return NotificationCard(
+            title = "✋ Manual Import Required: $fullTitle",
+            subtitle = "$instanceLabel • Manual Intervention",
+            level = NotificationLevel.WARNING,
+            fields = fields,
             artworkUrl = payload.posterUrl,
             actions = actions
         )

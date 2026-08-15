@@ -746,4 +746,88 @@ class WebhookRoutesTest {
             job.cancel()
             testScope.cancel()
         }
+
+    @Test
+    fun `should ingest Servarr Health and ManualInteractionRequired webhooks with 202 Accepted`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = testToken))
+            }
+
+            val jsonClient =
+                createClient {
+                    install(ClientContentNegotiation) {
+                        json(testJson)
+                    }
+                }
+
+            val healthPayload =
+                """
+                {
+                  "eventType": "Health",
+                  "level": "warning",
+                  "message": "All indexers are unavailable",
+                  "type": "IndexersUnavailable",
+                  "wikiUrl": "https://wiki.servarr.com/indexers",
+                  "instanceName": "Sonarr-TV"
+                }
+                """.trimIndent()
+
+            val healthResponse =
+                jsonClient.post("/api/v1/webhook/sonarr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(healthPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, healthResponse.status)
+
+            val healthRestoredPayload =
+                """
+                {
+                  "eventType": "HealthRestored",
+                  "level": "ok",
+                  "message": "Indexer connection restored",
+                  "instanceName": "Sonarr-TV"
+                }
+                """.trimIndent()
+
+            val healthRestoredResponse =
+                jsonClient.post("/api/v1/webhook/sonarr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(healthRestoredPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, healthRestoredResponse.status)
+
+            val manualPayload =
+                """
+                {
+                  "eventType": "ManualInteractionRequired",
+                  "movie": {
+                    "id": 1,
+                    "title": "Dune: Part Two"
+                  },
+                  "release": {
+                    "quality": "2160p",
+                    "size": 15000000000,
+                    "releaseTitle": "Dune.2.2024.UHD"
+                  },
+                  "reason": "Sample file detected",
+                  "downloadClient": "qBittorrent",
+                  "applicationUrl": "http://radarr:7878/activity/queue"
+                }
+                """.trimIndent()
+
+            val manualResponse =
+                jsonClient.post("/api/v1/webhook/radarr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(manualPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, manualResponse.status)
+        }
 }

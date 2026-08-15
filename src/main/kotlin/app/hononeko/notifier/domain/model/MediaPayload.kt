@@ -80,4 +80,33 @@ sealed interface MediaPayload {
         val deepLinkUrl: String? = null,
         override val instanceName: String? = null
     ) : MediaPayload
+
+    data class ServarrHealth(
+        override val source: AppSource,
+        override val eventType: EventType = EventType.HEALTH_ISSUE,
+        val level: String,
+        val message: String,
+        val type: String? = null,
+        val wikiUrl: String? = null,
+        override val instanceName: String? = null
+    ) : MediaPayload
+
+    data class ServarrManualInteraction(
+        override val source: AppSource,
+        override val eventType: EventType = EventType.MANUAL_INTERACTION,
+        val title: String,
+        val seriesOrMovieTitle: String,
+        val seasonNumber: Int? = null,
+        val episodeNumbers: List<Int> = emptyList(),
+        val releaseTitle: String? = null,
+        val quality: String? = null,
+        val sizeBytes: Long? = null,
+        val indexer: String? = null,
+        val downloadClient: String? = null,
+        val downloadId: String? = null,
+        val reason: String? = null,
+        val posterUrl: String? = null,
+        val webUrl: String? = null,
+        override val instanceName: String? = null
+    ) : MediaPayload
 }

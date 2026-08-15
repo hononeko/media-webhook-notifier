@@ -54,6 +54,9 @@ abstract class AbstractServarrWebhookProvider(
             when (eventType?.lowercase()) {
                 "grab" -> mapToArrGrab(dto, source, callerName)
                 "download" -> mapToArrDownload(dto, source, callerName)
+                "health", "healthissue" -> mapToHealth(dto, source, callerName, isRestored = false)
+                "healthrestored" -> mapToHealth(dto, source, callerName, isRestored = true)
+                "manualinteractionrequired" -> mapToManualInteraction(dto, source, callerName)
                 else -> {
                     logger.debug("Ignoring unsupported Servarr event type: {}", eventType)
                     null
@@ -179,6 +182,66 @@ abstract class AbstractServarrWebhookProvider(
                 ?.episodeFile
                 ?.size
             ?: dto.release?.size
+
+    private fun mapToHealth(
+        dto: ServarrWebhookDto,
+        source: AppSource,
+        callerName: String?,
+        isRestored: Boolean
+    ): MediaPayload.ServarrHealth {
+        val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
+        val level =
+            if (isRestored) {
+                "ok"
+            } else {
+                dto.level ?: "warning"
+            }
+        val eventType =
+            if (isRestored) {
+                app.hononeko.notifier.domain.model.EventType.HEALTH_RESTORED
+            } else {
+                app.hononeko.notifier.domain.model.EventType.HEALTH_ISSUE
+            }
+
+        return MediaPayload.ServarrHealth(
+            source = source,
+            eventType = eventType,
+            level = level,
+            message = dto.message ?: "Health alert from $effectiveInstanceName",
+            type = dto.type,
+            wikiUrl = dto.wikiUrl,
+            instanceName = effectiveInstanceName
+        )
+    }
+
+    private fun mapToManualInteraction(
+        dto: ServarrWebhookDto,
+        source: AppSource,
+        callerName: String?
+    ): MediaPayload.ServarrManualInteraction {
+        val title = extractTitle(dto)
+        val seriesOrMovieTitle = dto.series?.title ?: dto.movie?.title ?: title
+        val poster = extractPosterUrl(dto)
+        val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
+
+        return MediaPayload.ServarrManualInteraction(
+            source = source,
+            title = title,
+            seriesOrMovieTitle = seriesOrMovieTitle,
+            seasonNumber = dto.episodes.firstOrNull()?.seasonNumber,
+            episodeNumbers = dto.episodes.mapNotNull { it.episodeNumber },
+            releaseTitle = dto.release?.releaseTitle ?: dto.downloadId,
+            quality = dto.release?.quality ?: dto.release?.qualityVersion?.toString(),
+            sizeBytes = dto.release?.size,
+            indexer = dto.release?.indexer,
+            downloadClient = dto.downloadClient,
+            downloadId = dto.downloadId,
+            reason = dto.reason ?: dto.message,
+            posterUrl = poster,
+            webUrl = dto.applicationUrl,
+            instanceName = effectiveInstanceName
+        )
+    }
 
     private fun resolveInstanceName(
         callerName: String?,
