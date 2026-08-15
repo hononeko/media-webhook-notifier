@@ -12,6 +12,9 @@ enum class AppSource(
     WHISPARR("Whisparr"),
     PLEX("Plex"),
     JELLYFIN("Jellyfin"),
+    SEERR("Seerr"),
+    OVERSEERR("Overseerr"),
+    JELLYSEERR("Jellyseerr"),
     UNKNOWN("Unknown")
 }
 
@@ -23,6 +26,16 @@ enum class EventType {
     HEALTH_ISSUE,
     HEALTH_RESTORED,
     MANUAL_INTERACTION,
+    REQUEST_PENDING,
+    REQUEST_APPROVED,
+    REQUEST_AUTO_APPROVED,
+    REQUEST_AVAILABLE,
+    REQUEST_DECLINED,
+    REQUEST_FAILED,
+    ISSUE_CREATED,
+    ISSUE_COMMENT,
+    ISSUE_RESOLVED,
+    ISSUE_REOPENED,
     TEST,
     UNKNOWN
 }

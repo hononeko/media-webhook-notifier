@@ -109,4 +109,26 @@ sealed interface MediaPayload {
         val webUrl: String? = null,
         override val instanceName: String? = null
     ) : MediaPayload
+
+    data class SeerrEvent(
+        override val source: AppSource = AppSource.SEERR,
+        override val eventType: EventType,
+        val notificationType: String,
+        val subject: String,
+        val message: String? = null,
+        val image: String? = null,
+        val mediaType: String? = null,
+        val tmdbId: String? = null,
+        val tvdbId: String? = null,
+        val requestedByUsername: String? = null,
+        val requestedByEmail: String? = null,
+        val requestedByAvatar: String? = null,
+        val is4k: Boolean = false,
+        val issueType: String? = null,
+        val issueStatus: String? = null,
+        val commentMessage: String? = null,
+        val extra: Map<String, String> = emptyMap(),
+        val webUrl: String? = null,
+        override val instanceName: String? = null
+    ) : MediaPayload
 }

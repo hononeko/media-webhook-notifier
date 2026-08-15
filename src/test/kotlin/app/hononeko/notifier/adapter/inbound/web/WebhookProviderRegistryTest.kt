@@ -4,6 +4,7 @@ import app.hononeko.notifier.adapter.inbound.web.provider.JellyfinWebhookProvide
 import app.hononeko.notifier.adapter.inbound.web.provider.PlexWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.RadarrWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.SchemaLoader
+import app.hononeko.notifier.adapter.inbound.web.provider.SeerrWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.ServarrWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.SonarrWebhookProvider
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
@@ -64,6 +65,18 @@ class WebhookProviderRegistryTest {
         val emby = registry.get("emby")
         assertNotNull(emby)
         assertTrue(emby is JellyfinWebhookProvider)
+
+        val seerr = registry.get("seerr")
+        assertNotNull(seerr)
+        assertTrue(seerr is SeerrWebhookProvider)
+
+        val overseerr = registry.get("overseerr")
+        assertNotNull(overseerr)
+        assertTrue(overseerr is SeerrWebhookProvider)
+
+        val jellyseerr = registry.get("jellyseerr")
+        assertNotNull(jellyseerr)
+        assertTrue(jellyseerr is SeerrWebhookProvider)
     }
 
     @Test
@@ -73,6 +86,7 @@ class WebhookProviderRegistryTest {
         assertNotNull(registry.get("  SONARR  "))
         assertNotNull(registry.get("Plex"))
         assertNotNull(registry.get("JelLyFin"))
+        assertNotNull(registry.get("  OverSeerr  "))
     }
 
     @Test
@@ -94,6 +108,9 @@ class WebhookProviderRegistryTest {
         assertTrue(supported.contains("plex"))
         assertTrue(supported.contains("jellyfin"))
         assertTrue(supported.contains("emby"))
+        assertTrue(supported.contains("seerr"))
+        assertTrue(supported.contains("overseerr"))
+        assertTrue(supported.contains("jellyseerr"))
     }
 
     @Test
@@ -122,6 +139,11 @@ class WebhookProviderRegistryTest {
         val jellyfinSchema = jellyfin.getSchemaJson()
         assertNotNull(jellyfinSchema)
         assertTrue(jellyfinSchema.contains("Jellyfin Webhook Payload"))
+
+        val seerr = SeerrWebhookProvider()
+        val seerrSchema = seerr.getSchemaJson()
+        assertNotNull(seerrSchema)
+        assertTrue(seerrSchema.contains("Seerr (Overseerr / Jellyseerr) Webhook Payload"))
     }
 
     @Test

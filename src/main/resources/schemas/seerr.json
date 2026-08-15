@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Seerr (Overseerr / Jellyseerr) Webhook Payload",
+  "type": "object",
+  "properties": {
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "MEDIA_PENDING",
+        "MEDIA_APPROVED",
+        "MEDIA_AUTO_APPROVED",
+        "MEDIA_AVAILABLE",
+        "MEDIA_DECLINED",
+        "MEDIA_FAILED",
+        "ISSUE_CREATED",
+        "ISSUE_COMMENT",
+        "ISSUE_RESOLVED",
+        "ISSUE_REOPENED",
+        "TEST_NOTIFICATION"
+      ]
+    },
+    "event": { "type": "string" },
+    "subject": { "type": "string" },
+    "message": { "type": "string" },
+    "image": { "type": "string" },
+    "media": {
+      "type": "object",
+      "properties": {
+        "media_type": { "type": "string" },
+        "tmdbId": { "type": "string" },
+        "tvdbId": { "type": "string" },
+        "status": { "type": "string" },
+        "status4k": { "type": "string" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "request_id": { "type": "integer" },
+        "requestedBy_email": { "type": "string" },
+        "requestedBy_username": { "type": "string" },
+        "requestedBy_avatar": { "type": "string" },
+        "is4k": { "type": "boolean" }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "properties": {
+        "issue_id": { "type": "integer" },
+        "issue_type": { "type": "string" },
+        "issue_status": { "type": "string" },
+        "reportedBy_email": { "type": "string" },
+        "reportedBy_username": { "type": "string" },
+        "reportedBy_avatar": { "type": "string" }
+      }
+    },
+    "comment": {
+      "type": "object",
+      "properties": {
+        "comment_id": { "type": "integer" },
+        "comment_message": { "type": "string" },
+        "commentedBy_email": { "type": "string" },
+        "commentedBy_username": { "type": "string" },
+        "commentedBy_avatar": { "type": "string" }
+      }
+    },
+    "extra": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "value": { "type": "string" }
+        }
+      }
+    },
+    "application_url": { "type": "string" },
+    "url": { "type": "string" }
+  }
+}

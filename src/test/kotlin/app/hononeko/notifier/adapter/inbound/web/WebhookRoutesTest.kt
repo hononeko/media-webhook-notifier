@@ -830,4 +830,75 @@ class WebhookRoutesTest {
                 }
             assertEquals(HttpStatusCode.Accepted, manualResponse.status)
         }
+
+    @Test
+    fun `should ingest Seerr and Overseerr webhooks with 202 Accepted and handle test notification`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = testToken))
+            }
+
+            val jsonClient =
+                createClient {
+                    install(ClientContentNegotiation) {
+                        json(testJson)
+                    }
+                }
+
+            val requestPendingPayload =
+                """
+                {
+                  "notification_type": "MEDIA_PENDING",
+                  "subject": "Dune: Part Two (2024)",
+                  "message": "New request submitted by Admin",
+                  "media": {
+                    "media_type": "movie",
+                    "tmdbId": "693134"
+                  },
+                  "request": {
+                    "request_id": 1,
+                    "requestedBy_username": "Admin",
+                    "is4k": true
+                  },
+                  "application_url": "https://seerr.example.com"
+                }
+                """.trimIndent()
+
+            val seerrResponse =
+                jsonClient.post("/api/v1/webhook/seerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(requestPendingPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, seerrResponse.status)
+
+            val overseerrResponse =
+                jsonClient.post("/api/v1/webhook/overseerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(requestPendingPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, overseerrResponse.status)
+
+            val testPayload =
+                """
+                {
+                  "notification_type": "TEST_NOTIFICATION",
+                  "subject": "Test Notification",
+                  "message": "This is a test notification from Overseerr"
+                }
+                """.trimIndent()
+
+            val testResponse =
+                jsonClient.post("/api/v1/webhook/jellyseerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(testPayload)
+                }
+            assertEquals(HttpStatusCode.OK, testResponse.status)
+        }
 }

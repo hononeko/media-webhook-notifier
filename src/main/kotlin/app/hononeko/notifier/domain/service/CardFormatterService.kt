@@ -3,6 +3,7 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.model.ActionLink
 import app.hononeko.notifier.domain.model.ActionStyle
 import app.hononeko.notifier.domain.model.CardField
+import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.MediaSpecs
 import app.hononeko.notifier.domain.model.NotificationCard
@@ -337,6 +338,7 @@ object CardFormatterService {
             is MediaPayload.ArrGrab -> buildGrabInitialCard(payload, null)
             is MediaPayload.ServarrHealth -> buildHealthCard(payload)
             is MediaPayload.ServarrManualInteraction -> buildManualInteractionCard(payload)
+            is MediaPayload.SeerrEvent -> buildSeerrCard(payload)
         }
 
     private fun buildPlexCard(
@@ -507,6 +509,134 @@ object CardFormatterService {
             level = NotificationLevel.WARNING,
             fields = fields,
             artworkUrl = payload.posterUrl,
+            actions = actions
+        )
+    }
+
+    fun buildSeerrCard(payload: MediaPayload.SeerrEvent): NotificationCard {
+        val appName = payload.instanceName ?: payload.source.displayName
+        val (title, subtitle, level) =
+            when (payload.eventType) {
+                EventType.REQUEST_PENDING -> {
+                    Triple(
+                        "🛎️ New Request: ${payload.subject}",
+                        "$appName • Request Pending",
+                        NotificationLevel.WARNING
+                    )
+                }
+                EventType.REQUEST_APPROVED, EventType.REQUEST_AUTO_APPROVED -> {
+                    val approvedType =
+                        if (payload.eventType == EventType.REQUEST_AUTO_APPROVED) "Auto-Approved" else "Approved"
+                    Triple(
+                        "✅ Request $approvedType: ${payload.subject}",
+                        "$appName • Request $approvedType",
+                        NotificationLevel.SUCCESS
+                    )
+                }
+                EventType.REQUEST_AVAILABLE -> {
+                    Triple(
+                        "🍿 Request Available: ${payload.subject}",
+                        "$appName • Media Available",
+                        NotificationLevel.SUCCESS
+                    )
+                }
+                EventType.REQUEST_DECLINED -> {
+                    Triple(
+                        "❌ Request Declined: ${payload.subject}",
+                        "$appName • Request Declined",
+                        NotificationLevel.ERROR
+                    )
+                }
+                EventType.REQUEST_FAILED -> {
+                    Triple(
+                        "🚨 Request Failed: ${payload.subject}",
+                        "$appName • Request Processing Failed",
+                        NotificationLevel.ERROR
+                    )
+                }
+                EventType.ISSUE_CREATED -> {
+                    Triple(
+                        "⚠️ Issue Reported: ${payload.subject}",
+                        "$appName • Issue Report",
+                        NotificationLevel.WARNING
+                    )
+                }
+                EventType.ISSUE_COMMENT -> {
+                    Triple(
+                        "💬 Issue Comment: ${payload.subject}",
+                        "$appName • Issue Update",
+                        NotificationLevel.INFO
+                    )
+                }
+                EventType.ISSUE_RESOLVED -> {
+                    Triple(
+                        "✅ Issue Resolved: ${payload.subject}",
+                        "$appName • Issue Resolved",
+                        NotificationLevel.SUCCESS
+                    )
+                }
+                EventType.ISSUE_REOPENED -> {
+                    Triple(
+                        "⚠️ Issue Reopened: ${payload.subject}",
+                        "$appName • Issue Reopened",
+                        NotificationLevel.WARNING
+                    )
+                }
+                else -> {
+                    Triple(
+                        "🔔 ${payload.subject}",
+                        "$appName • Notification",
+                        NotificationLevel.INFO
+                    )
+                }
+            }
+
+        val fields = mutableListOf<CardField>()
+        payload.requestedByUsername?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Requested By", it, inline = true))
+        }
+        payload.mediaType?.takeIf { it.isNotBlank() }?.let {
+            val mediaLabel =
+                when (it.lowercase()) {
+                    "movie" -> "🎬 Movie"
+                    "tv" -> "📺 TV Series"
+                    else -> it.replaceFirstChar { c -> c.uppercase() }
+                }
+            fields.add(CardField("Media Type", mediaLabel, inline = true))
+        }
+        if (payload.is4k) {
+            fields.add(CardField("Quality", "4K UHD", inline = true))
+        }
+        payload.issueType?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Issue Type", it, inline = true))
+        }
+        payload.issueStatus?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Issue Status", it, inline = true))
+        }
+        payload.commentMessage?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Comment", it, inline = false))
+        }
+        payload.message?.takeIf { it.isNotBlank() && it != payload.subject }?.let {
+            fields.add(CardField("Details", it, inline = false))
+        }
+
+        val actions = mutableListOf<ActionLink>()
+        if (!payload.webUrl.isNullOrBlank()) {
+            actions.add(
+                ActionLink(
+                    label = "🌐 Open in $appName",
+                    url = payload.webUrl,
+                    style = ActionStyle.PRIMARY
+                )
+            )
+        }
+
+        return NotificationCard(
+            title = title,
+            subtitle = subtitle,
+            level = level,
+            fields = fields,
+            artworkUrl = payload.image,
             actions = actions
         )
     }
