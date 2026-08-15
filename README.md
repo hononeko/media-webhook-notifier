@@ -188,10 +188,11 @@ All settings can be configured via environment variables or `application.yaml`:
 |---|---|---|
 | `SERVER_PORT` | `8080` | HTTP port the server listens on |
 | `SERVER_AUTH_TOKEN` | `""` | Secret token(s). Comma-separated whitelist allowed (`"t1,t2"`). Supports `SERVER_AUTH_TOKEN_FILE` |
+| `SERVER_RATE_LIMIT_PER_MINUTE` | `120` | Inbound rate limit for webhook ingress (`<= 0` disables limit) |
 | `NOTIFICATION_PROVIDER` | `telegram` | Active sink provider (`telegram`) |
-| `NOTIFICATION_SEND_PHOTOS` | `true` | Send poster images with fallback to HTML text on failure (alias: `TELEGRAM_SEND_PHOTOS`) |
-| `NOTIFICATION_RATE_LIMIT_PER_MINUTE` | `30` | Outbound rate limit to prevent API 429 rate limit errors (alias: `TELEGRAM_RATE_LIMIT_PER_MINUTE`) |
-| `NOTIFICATION_TIMEOUT_SECONDS` | `5` | Outbound notification request timeout in seconds (alias: `TELEGRAM_TIMEOUT_SECONDS`) |
+| `NOTIFICATION_SEND_PHOTOS` | `true` | Send poster images with fallback to HTML text on failure |
+| `NOTIFICATION_RATE_LIMIT_PER_MINUTE` | `30` | Outbound rate limit to prevent notification API 429 errors |
+| `NOTIFICATION_TIMEOUT_SECONDS` | `5` | Outbound notification request timeout in seconds |
 | `TELEGRAM_BOT_TOKEN` | `""` | Telegram Bot API token from `@BotFather`. Supports `TELEGRAM_BOT_TOKEN_FILE` |
 | `TELEGRAM_CHAT_ID` | `""` | Target chat or channel ID (e.g. `-1001234567890`) |
 | `TELEGRAM_TOPIC_ID` | `null` | Optional Telegram Forum topic thread ID |
@@ -201,6 +202,7 @@ All settings can be configured via environment variables or `application.yaml`:
 | `QBITTORRENT_POLL_INTERVAL_SECONDS` | `5` | Download progress polling interval in seconds |
 | `QBITTORRENT_MAX_POLLING_MINUTES` | `30` | Maximum time to track an active download |
 | `QBITTORRENT_STALLED_TIMEOUT_MINUTES` | `15` | Timeout before flagging a download as stalled |
+| `QBITTORRENT_DEBOUNCE_SECONDS` | `5` | Debounce window for rapid multi-episode grabs |
 | `QBITTORRENT_WEBUI_PUBLIC_URL` | `""` | Optional public URL to qBittorrent WebUI for card buttons |
 | `MEDIA_SERVER_TYPE` | `plex` | Active media server (`plex` or `jellyfin`) |
 | `MEDIA_SERVER_URL` | `""` | Base/internal network URL of media server |
