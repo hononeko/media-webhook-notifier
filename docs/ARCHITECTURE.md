@@ -157,7 +157,7 @@ We avoid throwing unchecked runtime exceptions across domain boundaries. All dom
 ## 4. Single-Instance Topology & In-Memory Event Rail
 
 ### 4.1 1:1:1 Single-Purpose Microservice Model
-To maintain minimal resource consumption (<30 MB RSS memory under GraalVM Native), each running container instance operates on a **1:1:1** mapping:
+To maintain minimal resource consumption (~35-40 MB RSS memory under load), each running container instance operates on a **1:1:1** mapping:
 * **1 Download Client:** `qBittorrent` instance.
 * **1 Media Server:** `Plex` or `Jellyfin` instance (configured via `mediaServer.type`).
 * **1 Destination Notification Sink:** (e.g. 1 Telegram chat / topic).
