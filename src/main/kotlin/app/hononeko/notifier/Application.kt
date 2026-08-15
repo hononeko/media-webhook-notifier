@@ -85,7 +85,7 @@ fun buildDependencies(
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ): AppDependencies {
     val torrentClient = QBittorrentClientAdapter(config = config.qbittorrent)
-    val notificationPublisher = TelegramPublisherAdapter(config = config.notifications.telegram)
+    val notificationPublisher = TelegramPublisherAdapter(config = config.notifications)
     val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
 
     val downloadTracker =

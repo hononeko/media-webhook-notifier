@@ -1,6 +1,6 @@
 package app.hononeko.notifier.adapter.outbound.telegram
 
-import app.hononeko.notifier.config.TelegramConfig
+import app.hononeko.notifier.config.NotificationConfig
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.ActionLink
 import app.hononeko.notifier.domain.model.ActionStyle
@@ -51,7 +51,7 @@ class TelegramPublisherAdapterTest {
                 }
 
             val config =
-                TelegramConfig(
+                NotificationConfig(
                     botToken = "12345:TOKEN",
                     chatId = "-1001234567890",
                     topicId = 42,
@@ -104,7 +104,7 @@ class TelegramPublisherAdapterTest {
                 }
 
             val config =
-                TelegramConfig(
+                NotificationConfig(
                     botToken = "12345:TOKEN",
                     chatId = "123",
                     sendPhotos = true
@@ -174,7 +174,7 @@ class TelegramPublisherAdapterTest {
                 }
 
             val config =
-                TelegramConfig(
+                NotificationConfig(
                     botToken = "12345:TOKEN",
                     chatId = "-1001234567890",
                     sendPhotos = true
@@ -206,7 +206,7 @@ class TelegramPublisherAdapterTest {
                     )
                 }
 
-            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123")
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "123")
             val adapter = TelegramPublisherAdapter(config, mockEngine)
 
             val card = NotificationCard(title = "Test")
@@ -231,7 +231,7 @@ class TelegramPublisherAdapterTest {
                     throw IOException("Connection reset by peer")
                 }
 
-            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123", sendPhotos = false)
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "123", sendPhotos = false)
             val adapter = TelegramPublisherAdapter(config, mockEngine)
 
             val sendResult = adapter.sendCard(NotificationCard(title = "Test"))
@@ -269,7 +269,7 @@ class TelegramPublisherAdapterTest {
                     }
                 }
 
-            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123", sendPhotos = false)
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "123", sendPhotos = false)
             val adapter = TelegramPublisherAdapter(config, mockEngine)
 
             val startResult = adapter.startLiveProgress(NotificationCard(title = "Downloading"))
@@ -316,7 +316,7 @@ class TelegramPublisherAdapterTest {
                     )
                 }
 
-            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123")
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "123")
             val adapter = TelegramPublisherAdapter(config, mockEngine)
 
             val handle = NotificationHandle("telegram", "123", "100")
@@ -352,7 +352,7 @@ class TelegramPublisherAdapterTest {
                     )
                 }
 
-            val config = TelegramConfig(botToken = "12345:TOKEN", chatId = "123")
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "123")
             val adapter = TelegramPublisherAdapter(config, mockEngine)
 
             val card =

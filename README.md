@@ -33,8 +33,7 @@ docker run -d \
   -p 8080:8080 \
   -e SERVER_PORT=8080 \
   -e SERVER_AUTH_TOKEN="your-secure-secret-token" \
-  -e TELEGRAM_BOT_TOKEN="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" \
-  -e TELEGRAM_CHAT_ID="-1001234567890" \
+  -e NOTIFICATION_URL="telegram://123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ@-1001234567890" \
   -e QBITTORRENT_URL="http://qbittorrent:8080" \
   -e QBITTORRENT_USERNAME="admin" \
   -e QBITTORRENT_PASSWORD="adminadmin" \
@@ -57,10 +56,7 @@ services:
       - SERVER_PORT=8080
       - SERVER_AUTH_TOKEN=your-secure-secret-token
       - SERVER_RATE_LIMIT_PER_MINUTE=120
-      - NOTIFICATION_PROVIDER=telegram
-      - TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
-      - TELEGRAM_CHAT_ID=-1001234567890
-      - TELEGRAM_TOPIC_ID=  # Optional: For Telegram forum supergroups
+      - NOTIFICATION_URL=telegram://123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ@-1001234567890
       - QBITTORRENT_URL=http://qbittorrent:8080
       - QBITTORRENT_USERNAME=admin
       - QBITTORRENT_PASSWORD=adminadmin
@@ -104,13 +100,11 @@ spec:
                 secretKeyRef:
                   name: notifier-secrets
                   key: auth-token
-            - name: NOTIFICATIONS_TELEGRAM_BOT_TOKEN
+            - name: NOTIFICATION_URL
               valueFrom:
                 secretKeyRef:
                   name: notifier-secrets
-                  key: telegram-bot-token
-            - name: NOTIFICATIONS_TELEGRAM_CHAT_ID
-              value: "-1001234567890"
+                  key: notification-url
             - name: QBITTORRENT_URL
               value: "http://qbittorrent.media.svc.cluster.local:8080"
             - name: QBITTORRENT_USERNAME
@@ -188,20 +182,15 @@ All settings can be configured via environment variables or `application.yaml`:
 |---|---|---|
 | `SERVER_PORT` | `8080` | HTTP port the server listens on |
 | `SERVER_AUTH_TOKEN` | `""` | Secret token(s). Comma-separated whitelist allowed (`"t1,t2"`). Supports `SERVER_AUTH_TOKEN_FILE` |
-| `SERVER_RATE_LIMIT_PER_MINUTE` | `120` | Inbound rate limit per IP/caller (`<= 0` disables limit) |
-| `NOTIFICATION_PROVIDER` | `telegram` | Active sink provider (`telegram` or `discord`) |
-| `TELEGRAM_BOT_TOKEN` | `""` | Telegram Bot API token from `@BotFather`. Supports `TELEGRAM_BOT_TOKEN_FILE` |
-| `TELEGRAM_CHAT_ID` | `""` | Target chat or channel ID (e.g. `-1001234567890`) |
-| `TELEGRAM_TOPIC_ID` | `null` | Optional Telegram Forum topic thread ID |
-| `TELEGRAM_RATE_LIMIT_PER_MINUTE` | `30` | Outbound rate limit to prevent Telegram API 429 errors |
-| `TELEGRAM_SEND_PHOTOS` | `true` | Send poster images with fallback to HTML text on failure |
-| `DISCORD_WEBHOOK_URL` | `""` | Discord webhook URL. Supports `DISCORD_WEBHOOK_URL_FILE` |
+| `SERVER_RATE_LIMIT_PER_MINUTE` | `120` | Inbound rate limit for webhook ingress (`<= 0` disables limit) |
+| `NOTIFICATION_URL` | `""` | Sink URI (`telegram://<bot_token>@<chat_id>?topic=<id>&photos=true`). Supports `NOTIFICATION_URL_FILE` |
 | `QBITTORRENT_URL` | `http://localhost:8080` | Internal URL to qBittorrent WebUI |
 | `QBITTORRENT_USERNAME` | `""` | qBittorrent WebUI username |
 | `QBITTORRENT_PASSWORD` | `""` | qBittorrent WebUI password. Supports `QBITTORRENT_PASSWORD_FILE` |
 | `QBITTORRENT_POLL_INTERVAL_SECONDS` | `5` | Download progress polling interval in seconds |
 | `QBITTORRENT_MAX_POLLING_MINUTES` | `30` | Maximum time to track an active download |
 | `QBITTORRENT_STALLED_TIMEOUT_MINUTES` | `15` | Timeout before flagging a download as stalled |
+| `QBITTORRENT_DEBOUNCE_SECONDS` | `5` | Debounce window for rapid multi-episode grabs |
 | `QBITTORRENT_WEBUI_PUBLIC_URL` | `""` | Optional public URL to qBittorrent WebUI for card buttons |
 | `MEDIA_SERVER_TYPE` | `plex` | Active media server (`plex` or `jellyfin`) |
 | `MEDIA_SERVER_URL` | `""` | Base/internal network URL of media server |

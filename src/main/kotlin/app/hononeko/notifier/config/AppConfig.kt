@@ -4,7 +4,7 @@ data class AppConfig(
     val server: ServerConfig = ServerConfig(),
     val mediaServer: MediaServerConfig = MediaServerConfig(),
     val qbittorrent: QBittorrentConfig = QBittorrentConfig(),
-    val notifications: NotificationsConfig = NotificationsConfig()
+    val notifications: NotificationConfig = NotificationConfig()
 )
 
 data class ServerConfig(
@@ -31,23 +31,13 @@ data class QBittorrentConfig(
     val webuiPublicUrl: String = ""
 )
 
-data class NotificationsConfig(
+data class NotificationConfig(
+    val url: String = "",
     val provider: String = "telegram",
-    val telegram: TelegramConfig = TelegramConfig(),
-    val discord: DiscordConfig = DiscordConfig()
-)
-
-data class TelegramConfig(
-    val enabled: Boolean = true,
     val botToken: String = "",
     val chatId: String = "",
     val topicId: Long? = null,
+    val sendPhotos: Boolean = true,
     val rateLimitPerMinute: Int = 30,
-    val timeoutSeconds: Long = 5,
-    val sendPhotos: Boolean = true
-)
-
-data class DiscordConfig(
-    val enabled: Boolean = false,
-    val webhookUrl: String = ""
+    val timeoutSeconds: Long = 5
 )
