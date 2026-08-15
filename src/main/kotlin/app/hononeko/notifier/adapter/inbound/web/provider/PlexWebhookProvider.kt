@@ -33,15 +33,11 @@ class PlexWebhookProvider(
                 } else {
                     val rawText = call.receiveText()
                     json.decodeFromString(PlexWebhookDto.serializer(), rawText)
-                }
+                } ?: return WebhookProcessResult.InvalidPayload("Missing payload in multipart request")
             } catch (e: Exception) {
                 logger.warn("Failed to parse Plex webhook payload: ${e.message}")
                 return WebhookProcessResult.InvalidPayload("Invalid Plex payload: ${e.message}")
             }
-
-        if (dto == null) {
-            return WebhookProcessResult.InvalidPayload("Missing payload in multipart request")
-        }
 
         val event = dto.event?.trim()
         logger.info(
