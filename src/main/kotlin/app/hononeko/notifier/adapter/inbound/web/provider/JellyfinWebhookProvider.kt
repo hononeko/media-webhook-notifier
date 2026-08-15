@@ -40,15 +40,15 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
             }
 
         val notificationType = dto.notificationType?.trim()
+        val effectiveInstance = callerName?.ifBlank { null } ?: dto.serverName?.ifBlank { null } ?: "Jellyfin"
         logger.info(
-            "Ingesting Jellyfin webhook event: {} (server: {}, caller: {})",
+            "Ingesting Jellyfin webhook event: {} (instance: {})",
             notificationType,
-            dto.serverName ?: dto.serverId ?: "unknown",
-            callerName ?: "default"
+            effectiveInstance
         )
 
         return if (notificationType.equals("ItemAdded", ignoreCase = true)) {
-            val payload = mapToJellyfinItemAdded(dto)
+            val payload = mapToJellyfinItemAdded(dto, effectiveInstance)
             WebhookProcessResult.Queued(payload, notificationType)
         } else {
             logger.debug("Ignoring unsupported Jellyfin notification type: {}", notificationType)
@@ -58,7 +58,10 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
 
     override fun getSchemaJson(): String? = SchemaLoader.loadSchema("schemas/jellyfin.json")
 
-    private fun mapToJellyfinItemAdded(dto: JellyfinWebhookDto): MediaPayload.JellyfinItemAdded =
+    private fun mapToJellyfinItemAdded(
+        dto: JellyfinWebhookDto,
+        instanceName: String
+    ): MediaPayload.JellyfinItemAdded =
         MediaPayload.JellyfinItemAdded(
             source = AppSource.JELLYFIN,
             eventType = EventType.MEDIA_AVAILABLE,
@@ -73,6 +76,7 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
             videoCodec = dto.videoCodec,
             audioCodec = dto.audioCodec,
             resolution = dto.resolution,
-            posterUrl = dto.posterUrl
+            posterUrl = dto.posterUrl,
+            instanceName = instanceName
         )
 }

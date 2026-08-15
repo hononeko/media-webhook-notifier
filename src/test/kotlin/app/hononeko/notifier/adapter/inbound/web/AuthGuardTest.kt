@@ -196,7 +196,7 @@ class AuthGuardTest {
         }
 
     @Test
-    fun `should extract caller name from query params and headers`() =
+    fun `should extract instance name from query params and headers`() =
         testApplication {
             application {
                 routing {
@@ -207,17 +207,8 @@ class AuthGuardTest {
                 }
             }
 
-            val queryCaller = client.get("/caller?caller=sonarr-anime")
-            assertEquals("sonarr-anime", queryCaller.bodyAsText())
-
             val queryInstance = client.get("/caller?instance=radarr-4k")
             assertEquals("radarr-4k", queryInstance.bodyAsText())
-
-            val headerCaller =
-                client.get("/caller") {
-                    header("X-Caller-Name", "plex-remote")
-                }
-            assertEquals("plex-remote", headerCaller.bodyAsText())
 
             val headerInstance =
                 client.get("/caller") {

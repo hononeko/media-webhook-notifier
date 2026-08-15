@@ -95,4 +95,36 @@ class SeasonDebouncerTest {
             assertEquals(1, received.size)
             assertEquals(0, debouncer.activeBufferCount())
         }
+
+    @Test
+    fun `should execute suspending onDebouncedGrab successfully after timer expires without cancellation`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            var suspendingExecutionCompleted = false
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 1000L,
+                    scope = testScope,
+                    onDebouncedGrab = {
+                        kotlinx.coroutines.delay(50L)
+                        suspendingExecutionCompleted = true
+                    }
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.RADARR,
+                    downloadId = "hashRAD",
+                    title = "Dune: Part Two",
+                    seriesOrMovieTitle = "Dune: Part Two"
+                )
+
+            debouncer.submit(grab)
+            testScope.advanceTimeBy(1100L)
+
+            kotlin.test.assertTrue(suspendingExecutionCompleted)
+            assertEquals(0, debouncer.activeBufferCount())
+        }
 }

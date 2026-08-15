@@ -106,7 +106,7 @@ class EndToEndIntegrationTest {
             val config =
                 AppConfig(
                     server = ServerConfig(authToken = "secret123"),
-                    mediaServer = MediaServerConfig(plexPublicUrl = "https://plex.example.com")
+                    mediaServer = MediaServerConfig(publicUrl = "https://plex.example.com")
                 )
 
             val downloadTracker =

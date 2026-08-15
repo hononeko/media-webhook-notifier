@@ -38,6 +38,7 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.forwardedheaders.ForwardedHeaders
 import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.path
 import io.ktor.server.response.respond
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -161,6 +162,14 @@ fun Application.module(dependencies: AppDependencies) {
 
     install(CallLogging) {
         level = Level.INFO
+        filter { call ->
+            val path = call.request.path()
+            !path.startsWith("/livez") &&
+                !path.startsWith("/readyz") &&
+                !path.startsWith("/startupz") &&
+                !path.startsWith("/health") &&
+                !path.startsWith("/metrics")
+        }
     }
 
     install(ContentNegotiation) {

@@ -3,6 +3,7 @@ package app.hononeko.notifier.domain.model
 sealed interface MediaPayload {
     val source: AppSource
     val eventType: EventType
+    val instanceName: String?
 
     data class ArrGrab(
         override val source: AppSource,
@@ -17,7 +18,7 @@ sealed interface MediaPayload {
         val sizeBytes: Long? = null,
         val indexer: String? = null,
         val posterUrl: String? = null,
-        val instanceName: String? = null
+        override val instanceName: String? = null
     ) : MediaPayload
 
     data class ArrDownload(
@@ -37,7 +38,7 @@ sealed interface MediaPayload {
         val posterUrl: String? = null,
         val overview: String? = null,
         val year: Int? = null,
-        val instanceName: String? = null,
+        override val instanceName: String? = null,
         val webUrl: String? = null
     ) : MediaPayload
 
@@ -57,7 +58,8 @@ sealed interface MediaPayload {
         val posterUrl: String? = null,
         val ratingKey: String? = null,
         val serverMachineIdentifier: String? = null,
-        val deepLinkUrl: String? = null
+        val deepLinkUrl: String? = null,
+        override val instanceName: String? = null
     ) : MediaPayload
 
     data class JellyfinItemAdded(
@@ -75,6 +77,7 @@ sealed interface MediaPayload {
         val audioCodec: String? = null,
         val resolution: String? = null,
         val posterUrl: String? = null,
-        val deepLinkUrl: String? = null
+        val deepLinkUrl: String? = null,
+        override val instanceName: String? = null
     ) : MediaPayload
 }

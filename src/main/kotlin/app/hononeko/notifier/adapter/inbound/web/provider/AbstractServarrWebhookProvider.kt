@@ -41,13 +41,13 @@ abstract class AbstractServarrWebhookProvider(
         val eventType = dto.eventType?.trim()
 
         if (eventType.equals("Test", ignoreCase = true)) {
-            val instance = dto.instanceName ?: callerName ?: defaultSource.name
+            val instance = resolveInstanceName(callerName, dto.instanceName, defaultSource)
             logger.info("Received Test webhook from Servarr instance: {}", instance)
             return WebhookProcessResult.TestOk(instance)
         }
 
         val source = resolveSource(dto)
-        val effectiveCaller = resolveCaller(callerName, dto.instanceName)
+        val effectiveCaller = resolveInstanceName(callerName, dto.instanceName, source)
         logger.info("Ingesting {} webhook for {} (caller: {})", eventType, source, effectiveCaller)
 
         val payload: MediaPayload? =
@@ -82,7 +82,7 @@ abstract class AbstractServarrWebhookProvider(
         val title = extractTitle(dto)
         val seriesOrMovieTitle = dto.series?.title ?: dto.movie?.title ?: title
         val poster = extractPosterUrl(dto)
-        val effectiveInstanceName = dto.instanceName ?: callerName
+        val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
 
         return MediaPayload.ArrGrab(
             source = source,
@@ -122,7 +122,7 @@ abstract class AbstractServarrWebhookProvider(
                 ?.audioCodec
         val quality = extractDownloadQuality(dto)
         val sizeBytes = extractDownloadSizeBytes(dto)
-        val effectiveInstanceName = dto.instanceName ?: callerName
+        val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
 
         return MediaPayload.ArrDownload(
             source = source,
@@ -180,12 +180,12 @@ abstract class AbstractServarrWebhookProvider(
                 ?.size
             ?: dto.release?.size
 
-    private fun resolveCaller(
+    private fun resolveInstanceName(
         callerName: String?,
-        instanceName: String?
-    ): String {
-        if (!callerName.isNullOrBlank()) return callerName
-        if (!instanceName.isNullOrBlank()) return instanceName
-        return "default"
-    }
+        payloadInstanceName: String?,
+        source: AppSource
+    ): String =
+        callerName?.ifBlank { null }
+            ?: payloadInstanceName?.ifBlank { null }
+            ?: source.displayName
 }

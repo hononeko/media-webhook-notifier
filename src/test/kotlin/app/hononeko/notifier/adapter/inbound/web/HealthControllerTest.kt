@@ -3,6 +3,7 @@ package app.hononeko.notifier.adapter.inbound.web
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.config.ServerConfig
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -149,5 +150,41 @@ class HealthControllerTest {
             assertTrue(body.contains("memory"))
             assertTrue(body.contains("activeTrackersCount"))
             assertTrue(body.contains("eventRail"))
+        }
+
+    @Test
+    fun `should report prometheus text metrics when requested via format param or accept header or direct path`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 10)
+            val healthController = HealthController(eventRail = eventRail)
+            application {
+                install(ContentNegotiation) { json(testJson) }
+                configureWebhookRouting(
+                    eventRail = eventRail,
+                    serverConfig = ServerConfig(),
+                    healthController = healthController
+                )
+            }
+
+            val directPromRes = client.get("/metrics/prometheus")
+            assertEquals(HttpStatusCode.OK, directPromRes.status)
+            val directBody = directPromRes.bodyAsText()
+            assertTrue(directBody.contains("process_uptime_seconds"))
+            assertTrue(directBody.contains("jvm_memory_used_bytes"))
+            assertTrue(directBody.contains("media_webhook_active_tracking_jobs"))
+            assertTrue(directBody.contains("media_webhook_event_rail_running"))
+
+            val paramPromRes = client.get("/metrics?format=prometheus")
+            assertEquals(HttpStatusCode.OK, paramPromRes.status)
+            val paramBody = paramPromRes.bodyAsText()
+            assertTrue(paramBody.contains("process_uptime_seconds"))
+
+            val headerPromRes =
+                client.get("/metrics") {
+                    header("Accept", "text/plain; version=0.0.4")
+                }
+            assertEquals(HttpStatusCode.OK, headerPromRes.status)
+            val headerBody = headerPromRes.bodyAsText()
+            assertTrue(headerBody.contains("process_uptime_seconds"))
         }
 }

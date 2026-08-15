@@ -33,6 +33,26 @@ class WebhookProviderRegistryTest {
         assertNotNull(arr)
         assertTrue(arr is ServarrWebhookProvider)
 
+        val lidarr = registry.get("lidarr")
+        assertNotNull(lidarr)
+        assertTrue(lidarr is ServarrWebhookProvider)
+
+        val readarr = registry.get("readarr")
+        assertNotNull(readarr)
+        assertTrue(readarr is ServarrWebhookProvider)
+
+        val prowlarr = registry.get("prowlarr")
+        assertNotNull(prowlarr)
+        assertTrue(prowlarr is ServarrWebhookProvider)
+
+        val bazarr = registry.get("bazarr")
+        assertNotNull(bazarr)
+        assertTrue(bazarr is ServarrWebhookProvider)
+
+        val whisparr = registry.get("whisparr")
+        assertNotNull(whisparr)
+        assertTrue(whisparr is ServarrWebhookProvider)
+
         val plex = registry.get("plex")
         assertNotNull(plex)
         assertTrue(plex is PlexWebhookProvider)

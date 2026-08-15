@@ -40,15 +40,15 @@ class PlexWebhookProvider(
             }
 
         val event = dto.event?.trim()
+        val effectiveInstance = callerName?.ifBlank { null } ?: dto.server?.title?.ifBlank { null } ?: "Plex"
         logger.info(
-            "Ingesting Plex webhook event: {} (server: {}, caller: {})",
+            "Ingesting Plex webhook event: {} (instance: {})",
             event,
-            dto.server?.title ?: "unknown",
-            callerName ?: "default"
+            effectiveInstance
         )
 
         return if (event.equals("library.new", ignoreCase = true)) {
-            val payload = mapToPlexLibraryNew(dto)
+            val payload = mapToPlexLibraryNew(dto, effectiveInstance)
             WebhookProcessResult.Queued(payload, event)
         } else {
             logger.debug("Ignoring unsupported Plex event: {}", event)
@@ -72,7 +72,10 @@ class PlexWebhookProvider(
         return payloadJson?.let { json.decodeFromString(PlexWebhookDto.serializer(), it) }
     }
 
-    private fun mapToPlexLibraryNew(dto: PlexWebhookDto): MediaPayload.PlexLibraryNew {
+    private fun mapToPlexLibraryNew(
+        dto: PlexWebhookDto,
+        instanceName: String
+    ): MediaPayload.PlexLibraryNew {
         val meta = dto.metadata
         val stream = meta?.media?.firstOrNull()
         val durationSec = meta?.duration?.let { it / 1000 }
@@ -92,7 +95,8 @@ class PlexWebhookProvider(
             resolution = stream?.videoResolution,
             posterUrl = meta?.thumb,
             ratingKey = meta?.ratingKey,
-            serverMachineIdentifier = dto.server?.uuid
+            serverMachineIdentifier = dto.server?.uuid,
+            instanceName = instanceName
         )
     }
 }

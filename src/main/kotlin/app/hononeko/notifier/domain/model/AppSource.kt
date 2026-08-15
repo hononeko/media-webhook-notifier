@@ -8,6 +8,8 @@ enum class AppSource(
     LIDARR("Lidarr"),
     READARR("Readarr"),
     BAZARR("Bazarr"),
+    PROWLARR("Prowlarr"),
+    WHISPARR("Whisparr"),
     PLEX("Plex"),
     JELLYFIN("Jellyfin"),
     UNKNOWN("Unknown")
