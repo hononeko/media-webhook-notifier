@@ -5,8 +5,8 @@
 To achieve an ultra-lightweight footprint suitable for continuous sidecar or microservice deployment in Kubernetes / Docker Compose, `media-webhook-notifier` compiles ahead-of-time (AOT) to a static native executable using **GraalVM Native Image** and is published to GitHub Container Registry as **`ghcr.io/hononeko/media-webhook-notifier`**.
 
 ### Performance Target Metrics:
-* **Cold Startup Time:** `< 25 ms` (instantaneous readiness).
-* **Resident Set Size (RSS Memory):** `< 20 - 30 MB` at full load with multiple concurrent tracking jobs.
+* **Cold Startup Time:** `< 5 ms` (instantaneous readiness).
+* **Resident Set Size (RSS Memory):** `~35 - 40 MB` under load with multiple concurrent tracking jobs.
 * **Container Image Size:** `< 35 MB` uncompressed (built on distroless base).
 
 ---

@@ -14,7 +14,7 @@ It ingests webhooks from **Sonarr**, **Radarr**, **Plex**, and **Jellyfin**, mon
 
 ## 🌟 Key Features
 
-* **⚡ Ultra-Low Footprint:** Instant cold startup (<25ms) and tiny memory footprint (<25 MB RSS) via GraalVM Native Image on Distroless Debian 12.
+* **⚡ Ultra-Low Footprint:** Instant cold startup (<5ms) and tiny memory footprint (~35-40 MB RSS under load) via GraalVM Native Image on Distroless Debian 12.
 * **⏳ Live In-Place Telegram Updates:** Monitors active torrent downloads in qBittorrent and silently updates the Telegram status card every few seconds (ASCII progress bar, ETA, speeds, peers, WebUI deep links).
 * **🛡️ Sliding Season Debouncer:** Automatically batches rapid multi-episode grabs sharing the same `downloadId` within a 5-second sliding window to eliminate chat spam.
 * **🎬 Native Plex & Jellyfin Integration:** Directly ingests Plex `library.new` and Jellyfin `ItemAdded` events with rich metadata, TMDB/TVDB posters, and direct playback links without requiring Tautulli.

@@ -15,7 +15,7 @@
    - Allows swapping or adding new notification providers (Telegram, Ntfy, Discord, Pushover) without touching business rules.
 3. **High-Performance Native Runtime:**
    - Built with **Kotlin 2.x** and **Kotlin Coroutines (`kotlinx.coroutines`)**.
-   - Compiled ahead-of-time (AOT) to a standalone native binary using **GraalVM Native Image** for **<25ms cold startup** and **<25 MB RSS memory**.
+   - Compiled ahead-of-time (AOT) to a standalone native binary using **GraalVM Native Image** for **<5ms cold startup** and **~35-40 MB RSS memory under load**.
    - Type-safe, declarative functional error handling powered by **Arrow-kt (`Either`, `Raise` DSL)**.
 4. **Interactive Real-Time UX:**
    - Live in-place message updates on Telegram during active downloads (ASCII progress bar, ETA, speeds, peers, WebUI link).
