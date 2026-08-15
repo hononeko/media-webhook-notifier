@@ -69,48 +69,24 @@ object ConfigLoader {
                 ) ?: ""
         )
 
-    private fun loadNotificationsConfig(reader: EnvReader): NotificationConfig =
-        NotificationConfig(
-            provider =
-                reader.get(
-                    "NOTIFICATION_PROVIDER",
-                    "notifications.provider"
-                ) ?: "telegram",
-            botToken =
-                reader.getSecret(
-                    "TELEGRAM_BOT_TOKEN",
-                    "notifications.botToken"
-                ) ?: "",
-            chatId =
-                reader.get(
-                    "TELEGRAM_CHAT_ID",
-                    "notifications.chatId"
-                ) ?: "",
-            topicId =
-                reader
-                    .get(
-                        "TELEGRAM_TOPIC_ID",
-                        "notifications.topicId"
-                    )?.toLongOrNull(),
-            sendPhotos =
-                reader.getBoolean(
-                    true,
-                    "NOTIFICATION_SEND_PHOTOS",
-                    "notifications.sendPhotos"
-                ),
-            rateLimitPerMinute =
-                reader.getInt(
-                    30,
-                    "NOTIFICATION_RATE_LIMIT_PER_MINUTE",
-                    "notifications.rateLimitPerMinute"
-                ),
-            timeoutSeconds =
-                reader.getLong(
-                    5L,
-                    "NOTIFICATION_TIMEOUT_SECONDS",
-                    "notifications.timeoutSeconds"
-                )
-        )
+    private fun loadNotificationsConfig(reader: EnvReader): NotificationConfig {
+        val rawUrl = reader.getSecret("NOTIFICATION_URL", "notifications.url") ?: ""
+        if (rawUrl.isNotBlank()) {
+            val parsed = NotificationUrlParser.parse(rawUrl)
+            return NotificationConfig(
+                url = rawUrl,
+                provider = parsed.provider,
+                botToken = parsed.botToken,
+                chatId = parsed.chatId,
+                topicId = parsed.topicId,
+                sendPhotos = parsed.sendPhotos,
+                rateLimitPerMinute = parsed.rateLimitPerMinute,
+                timeoutSeconds = parsed.timeoutSeconds
+            )
+        }
+
+        return NotificationConfig()
+    }
 
     internal class EnvReader(
         private val env: Map<String, String>

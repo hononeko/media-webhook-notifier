@@ -49,23 +49,19 @@ class ConfigLoaderTest {
             mapOf(
                 "SERVER_AUTH_TOKEN" to "env-supplied-token",
                 "SERVER_PORT" to "9090",
-                "TELEGRAM_BOT_TOKEN" to "tg-bot-12345",
-                "TELEGRAM_CHAT_ID" to "-100123456",
-                "TELEGRAM_TOPIC_ID" to "42",
-                "NOTIFICATION_SEND_PHOTOS" to "false",
-                "NOTIFICATION_RATE_LIMIT_PER_MINUTE" to "45",
-                "NOTIFICATION_TIMEOUT_SECONDS" to "10",
+                "NOTIFICATION_URL" to
+                    "telegram://tg-bot-12345@-100123456?topic=42&photos=false&rate_limit=45&timeout=10",
                 "QBITTORRENT_URL" to "http://qbittorrent:8080",
                 "MEDIA_SERVER_TYPE" to "jellyfin",
                 "MEDIA_SERVER_URL" to "http://jellyfin:8096",
-                "MEDIA_SERVER_PUBLIC_URL" to "https://jellyfin.example.com",
-                "NOTIFICATION_PROVIDER" to "telegram"
+                "MEDIA_SERVER_PUBLIC_URL" to "https://jellyfin.example.com"
             )
 
         val config = ConfigLoader.load(env)
 
         assertEquals("env-supplied-token", config.server.authToken)
         assertEquals(9090, config.server.port)
+        assertEquals("telegram", config.notifications.provider)
         assertEquals("tg-bot-12345", config.notifications.botToken)
         assertEquals("-100123456", config.notifications.chatId)
         assertEquals(42L, config.notifications.topicId)
@@ -76,7 +72,6 @@ class ConfigLoaderTest {
         assertEquals("jellyfin", config.mediaServer.type)
         assertEquals("http://jellyfin:8096", config.mediaServer.url)
         assertEquals("https://jellyfin.example.com", config.mediaServer.publicUrl)
-        assertEquals("telegram", config.notifications.provider)
     }
 
     @Test
@@ -85,12 +80,19 @@ class ConfigLoaderTest {
         tempSecretFile.writeText("super-secret-from-file\n")
         tempSecretFile.deleteOnExit()
 
+        val tempNotificationUrlFile = java.io.File.createTempFile("notification_url_", ".txt")
+        tempNotificationUrlFile.writeText("telegram://secret-bot-token@-100999\n")
+        tempNotificationUrlFile.deleteOnExit()
+
         val env =
             mapOf(
-                "SERVER_AUTH_TOKEN_FILE" to tempSecretFile.absolutePath
+                "SERVER_AUTH_TOKEN_FILE" to tempSecretFile.absolutePath,
+                "NOTIFICATION_URL_FILE" to tempNotificationUrlFile.absolutePath
             )
 
         val config = ConfigLoader.load(env)
         assertEquals("super-secret-from-file", config.server.authToken)
+        assertEquals("secret-bot-token", config.notifications.botToken)
+        assertEquals("-100999", config.notifications.chatId)
     }
 }

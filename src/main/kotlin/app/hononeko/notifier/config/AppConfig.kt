@@ -32,6 +32,7 @@ data class QBittorrentConfig(
 )
 
 data class NotificationConfig(
+    val url: String = "",
     val provider: String = "telegram",
     val botToken: String = "",
     val chatId: String = "",
