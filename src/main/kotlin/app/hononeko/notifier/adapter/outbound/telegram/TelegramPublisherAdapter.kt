@@ -27,6 +27,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 class TelegramPublisherAdapter(
@@ -481,7 +482,7 @@ class TelegramPublisherAdapter(
             .append("\n<code>")
             .append(update.progressBar)
             .append("</code> <b>")
-            .append(update.percent)
+            .append(String.format(Locale.US, "%.2f", update.percent))
             .append("%</b>\n\n")
 
         sb.append("▪ <b>Speed:</b> ").append(escapeHtml(update.speedFormatted))

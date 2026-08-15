@@ -124,7 +124,7 @@ class DownloadTrackerEngineTest {
                                 TorrentProgress(
                                     hash = hash,
                                     name = "Test",
-                                    progressPercent = 50,
+                                    progressPercent = 50.0,
                                     progressRatio = 0.5,
                                     downloadSpeedBytesPerSec = 10485760,
                                     uploadSpeedBytesPerSec = 0,
@@ -139,7 +139,7 @@ class DownloadTrackerEngineTest {
                                 TorrentProgress(
                                     hash = hash,
                                     name = "Test",
-                                    progressPercent = 100,
+                                    progressPercent = 100.0,
                                     progressRatio = 1.0,
                                     downloadSpeedBytesPerSec = 0,
                                     uploadSpeedBytesPerSec = 0,
@@ -180,7 +180,7 @@ class DownloadTrackerEngineTest {
             // Tick 1 (50%)
             testScope.advanceTimeBy(2100L)
             assertEquals(1, publisher.progressUpdates.size)
-            assertEquals(50, publisher.progressUpdates.first().percent)
+            assertEquals(50.0, publisher.progressUpdates.first().percent)
 
             // Tick 2 (100% Complete)
             testScope.advanceTimeBy(2100L)

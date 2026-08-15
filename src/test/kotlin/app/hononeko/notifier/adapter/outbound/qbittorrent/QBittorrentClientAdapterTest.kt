@@ -82,7 +82,7 @@ class QBittorrentClientAdapterTest {
             assertNotNull(progress)
             assertEquals(hash, progress.hash)
             assertEquals("Severance.S02E01.1080p.WEB-DL", progress.name)
-            assertEquals(45, progress.progressPercent)
+            assertEquals(45.2, progress.progressPercent, 0.001)
             assertEquals(15728640L, progress.downloadSpeedBytesPerSec)
             assertEquals(120L, progress.etaSeconds)
             assertEquals(TorrentState.DOWNLOADING, progress.state)

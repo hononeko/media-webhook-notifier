@@ -3,7 +3,7 @@ package app.hononeko.notifier.domain.model
 data class TorrentProgress(
     val hash: String,
     val name: String,
-    val progressPercent: Int,
+    val progressPercent: Double,
     val progressRatio: Double,
     val downloadSpeedBytesPerSec: Long,
     val uploadSpeedBytesPerSec: Long,
