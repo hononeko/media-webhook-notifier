@@ -33,20 +33,20 @@ class TelegramSchemeParser : NotificationSchemeParser {
                 ?: queryParams["timeout_seconds"]?.toLongOrNull()
                 ?: 5L
 
-        var botToken = ""
-        var chatId = ""
-
-        if (pathAndAuth.contains("@")) {
-            val atSplit = pathAndAuth.split("@", limit = 2)
-            botToken = atSplit[0].trim()
-            chatId = atSplit[1].trim().removePrefix("/").trim()
-        } else if (pathAndAuth.contains("/")) {
-            val slashSplit = pathAndAuth.split("/", limit = 2)
-            botToken = slashSplit[0].trim()
-            chatId = slashSplit[1].trim()
-        } else {
-            botToken = pathAndAuth.trim()
-        }
+        val (botToken, chatId) =
+            when {
+                pathAndAuth.contains("@") -> {
+                    val atSplit = pathAndAuth.split("@", limit = 2)
+                    atSplit[0].trim() to atSplit[1].trim().removePrefix("/").trim()
+                }
+                pathAndAuth.contains("/") -> {
+                    val slashSplit = pathAndAuth.split("/", limit = 2)
+                    slashSplit[0].trim() to slashSplit[1].trim()
+                }
+                else -> {
+                    pathAndAuth.trim() to ""
+                }
+            }
 
         return NotificationConfig(
             url = rawUrl,
