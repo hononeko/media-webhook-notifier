@@ -9,8 +9,8 @@ import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.contentType
-import io.ktor.server.request.receive
 import io.ktor.server.request.receiveMultipart
+import io.ktor.server.request.receiveText
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
@@ -31,16 +31,13 @@ class PlexWebhookProvider(
                 if (contentType.match(ContentType.MultiPart.FormData)) {
                     parseMultipartPayload(call)
                 } else {
-                    call.receive<PlexWebhookDto>()
-                }
+                    val rawText = call.receiveText()
+                    json.decodeFromString(PlexWebhookDto.serializer(), rawText)
+                } ?: return WebhookProcessResult.InvalidPayload("Missing payload in multipart request")
             } catch (e: Exception) {
                 logger.warn("Failed to parse Plex webhook payload: ${e.message}")
                 return WebhookProcessResult.InvalidPayload("Invalid Plex payload: ${e.message}")
             }
-
-        if (dto == null) {
-            return WebhookProcessResult.InvalidPayload("Missing payload in multipart request")
-        }
 
         val event = dto.event?.trim()
         logger.info(
@@ -72,7 +69,7 @@ class PlexWebhookProvider(
             part.dispose()
         }
 
-        return payloadJson?.let { json.decodeFromString<PlexWebhookDto>(it) }
+        return payloadJson?.let { json.decodeFromString(PlexWebhookDto.serializer(), it) }
     }
 
     private fun mapToPlexLibraryNew(dto: PlexWebhookDto): MediaPayload.PlexLibraryNew {

@@ -7,7 +7,6 @@ import app.hononeko.notifier.domain.model.TorrentState
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -16,6 +15,7 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicReference
@@ -136,10 +137,10 @@ class QBittorrentClientAdapter(
             )
         }
 
-        val rawBody: String = response.body()
+        val rawBody: String = response.bodyAsText()
         val torrentList: List<QBitTorrentDto> =
             try {
-                jsonConfig.decodeFromString(rawBody)
+                jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
             } catch (e: Exception) {
                 logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
                 return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
@@ -200,7 +201,7 @@ class QBittorrentClientAdapter(
                             }
                     )
 
-                val responseBody: String = loginResponse.body()
+                val responseBody: String = loginResponse.bodyAsText()
                 if (responseBody.trim() == "Fails." || loginResponse.status == HttpStatusCode.Forbidden) {
                     logger.error("qBittorrent authentication rejected for user {}", config.username)
                     return

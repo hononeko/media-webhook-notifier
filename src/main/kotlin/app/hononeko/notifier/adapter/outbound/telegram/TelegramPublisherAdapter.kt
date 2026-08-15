@@ -10,7 +10,6 @@ import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import arrow.core.Either
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -18,6 +17,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
@@ -242,6 +242,8 @@ class TelegramPublisherAdapter(
         return result
     }
 
+    private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
+
     private suspend fun sendPhoto(
         photoUrl: String,
         caption: String,
@@ -257,10 +259,11 @@ class TelegramPublisherAdapter(
             )
 
         return try {
+            val payload = jsonConfig.encodeToString(SendPhotoRequest.serializer(), request)
             val response =
                 httpClient.post("$apiBaseUrl/sendPhoto") {
                     contentType(ContentType.Application.Json)
-                    setBody(request)
+                    setBody(payload)
                 }
             handleSendResponse(response)
         } catch (e: Exception) {
@@ -282,10 +285,11 @@ class TelegramPublisherAdapter(
             )
 
         return try {
+            val payload = jsonConfig.encodeToString(SendMessageRequest.serializer(), request)
             val response =
                 httpClient.post("$apiBaseUrl/sendMessage") {
                     contentType(ContentType.Application.Json)
-                    setBody(request)
+                    setBody(payload)
                 }
             handleSendResponse(response)
         } catch (e: Exception) {
@@ -309,10 +313,11 @@ class TelegramPublisherAdapter(
             )
 
         return try {
+            val payload = jsonConfig.encodeToString(EditMessageTextRequest.serializer(), request)
             val response =
                 httpClient.post("$apiBaseUrl/editMessageText") {
                     contentType(ContentType.Application.Json)
-                    setBody(request)
+                    setBody(payload)
                 }
             handleEditResponse(response)
         } catch (e: Exception) {
@@ -335,10 +340,11 @@ class TelegramPublisherAdapter(
             )
 
         return try {
+            val payload = jsonConfig.encodeToString(EditMessageCaptionRequest.serializer(), request)
             val response =
                 httpClient.post("$apiBaseUrl/editMessageCaption") {
                     contentType(ContentType.Application.Json)
-                    setBody(request)
+                    setBody(payload)
                 }
             handleEditResponse(response)
         } catch (e: Exception) {
@@ -349,11 +355,11 @@ class TelegramPublisherAdapter(
     private suspend fun handleSendResponse(
         response: HttpResponse
     ): Either<DomainError.NotificationError, NotificationHandle> {
+        val raw: String = response.bodyAsText()
         if (response.status == HttpStatusCode.TooManyRequests) {
-            val raw: String = response.body()
             val parsed: TelegramResponse<MessageResult>? =
                 runCatching {
-                    jsonConfig.decodeFromString<TelegramResponse<MessageResult>>(raw)
+                    jsonConfig.decodeFromString(telegramResponseSerializer, raw)
                 }.getOrNull()
             val retryAfter = parsed?.parameters?.retryAfter ?: 30
             return Either.Left(DomainError.NotificationError.RateLimited(providerId, retryAfter))
@@ -363,13 +369,22 @@ class TelegramPublisherAdapter(
                 .toString()
                 .startsWith("2")
         ) {
-            val raw: String = response.body()
             return Either.Left(
                 DomainError.NotificationError.DeliveryFailed(providerId, "HTTP ${response.status.value}: $raw")
             )
         }
 
-        val parsed: TelegramResponse<MessageResult> = response.body()
+        val parsed: TelegramResponse<MessageResult> =
+            runCatching {
+                jsonConfig.decodeFromString(telegramResponseSerializer, raw)
+            }.getOrElse { e ->
+                return Either.Left(
+                    DomainError.NotificationError.DeliveryFailed(
+                        providerId,
+                        "Failed to parse Telegram response: ${e.message}"
+                    )
+                )
+            }
         val msgId =
             parsed.result?.messageId
                 ?: return Either.Left(
@@ -379,11 +394,11 @@ class TelegramPublisherAdapter(
     }
 
     private suspend fun handleEditResponse(response: HttpResponse): Either<DomainError.NotificationError, Unit> {
+        val raw: String = response.bodyAsText()
         if (response.status == HttpStatusCode.TooManyRequests) {
-            val raw: String = response.body()
             val parsed: TelegramResponse<MessageResult>? =
                 runCatching {
-                    jsonConfig.decodeFromString<TelegramResponse<MessageResult>>(raw)
+                    jsonConfig.decodeFromString(telegramResponseSerializer, raw)
                 }.getOrNull()
             val retryAfter = parsed?.parameters?.retryAfter ?: 5
             return Either.Left(DomainError.NotificationError.RateLimited(providerId, retryAfter))
@@ -393,7 +408,6 @@ class TelegramPublisherAdapter(
                 .toString()
                 .startsWith("2")
         ) {
-            val raw: String = response.body()
             // If message was not modified, Telegram returns 400 Bad Request ("message is not modified"), which is safe to ignore
             if (raw.contains("message is not modified", ignoreCase = true)) {
                 return Either.Right(Unit)
