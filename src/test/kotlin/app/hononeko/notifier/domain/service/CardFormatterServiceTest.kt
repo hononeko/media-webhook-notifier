@@ -328,4 +328,116 @@ class CardFormatterServiceTest {
         assertEquals("qBittorrent", card.fields.first { it.name == "Client" }.value)
         assertEquals("📁 Open in Radarr", card.actions.first().label)
     }
+
+    @Test
+    fun `should build Seerr notification cards for requests and issues correctly`() {
+        val pendingPayload =
+            MediaPayload.SeerrEvent(
+                source = AppSource.SEERR,
+                eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_PENDING,
+                notificationType = "MEDIA_PENDING",
+                subject = "Severance (2022)",
+                message = "New request submitted by John.",
+                mediaType = "tv",
+                requestedByUsername = "John",
+                is4k = true,
+                webUrl = "https://overseerr.example.com/tv/123",
+                instanceName = "Overseerr"
+            )
+
+        val pendingCard = CardFormatterService.buildSeerrCard(pendingPayload)
+        assertEquals("🛎️ New Request: Severance (2022)", pendingCard.title)
+        assertEquals("Overseerr • Request Pending", pendingCard.subtitle)
+        assertEquals(NotificationLevel.WARNING, pendingCard.level)
+        assertEquals("John", pendingCard.fields.first { it.name == "Requested By" }.value)
+        assertEquals("📺 TV Series", pendingCard.fields.first { it.name == "Media Type" }.value)
+        assertEquals("4K UHD", pendingCard.fields.first { it.name == "Quality" }.value)
+        assertEquals("🌐 Open in Overseerr", pendingCard.actions.first().label)
+
+        val approvedPayload =
+            pendingPayload.copy(
+                eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_APPROVED
+            )
+        val approvedCard = CardFormatterService.buildSeerrCard(approvedPayload)
+        assertEquals("✅ Request Approved: Severance (2022)", approvedCard.title)
+        assertEquals(NotificationLevel.SUCCESS, approvedCard.level)
+
+        val issuePayload =
+            MediaPayload.SeerrEvent(
+                source = AppSource.SEERR,
+                eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_CREATED,
+                notificationType = "ISSUE_CREATED",
+                subject = "Dune: Part Two (2024)",
+                issueType = "Audio",
+                issueStatus = "OPEN",
+                commentMessage = "Audio is out of sync in second half",
+                instanceName = "Jellyseerr"
+            )
+        val issueCard = CardFormatterService.buildSeerrCard(issuePayload)
+        assertEquals("⚠️ Issue Reported: Dune: Part Two (2024)", issueCard.title)
+        assertEquals("Jellyseerr • Issue Report", issueCard.subtitle)
+        assertEquals(NotificationLevel.WARNING, issueCard.level)
+        assertEquals("Audio", issueCard.fields.first { it.name == "Issue Type" }.value)
+        assertEquals("Audio is out of sync in second half", issueCard.fields.first { it.name == "Comment" }.value)
+
+        val autoApprovedCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_AUTO_APPROVED)
+            )
+        assertEquals("✅ Request Auto-Approved: Severance (2022)", autoApprovedCard.title)
+        assertEquals(NotificationLevel.SUCCESS, autoApprovedCard.level)
+
+        val availableCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_AVAILABLE)
+            )
+        assertEquals("🍿 Request Available: Severance (2022)", availableCard.title)
+        assertEquals(NotificationLevel.SUCCESS, availableCard.level)
+
+        val declinedCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_DECLINED)
+            )
+        assertEquals("❌ Request Declined: Severance (2022)", declinedCard.title)
+        assertEquals(NotificationLevel.ERROR, declinedCard.level)
+
+        val failedCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_FAILED)
+            )
+        assertEquals("🚨 Request Failed: Severance (2022)", failedCard.title)
+        assertEquals(NotificationLevel.ERROR, failedCard.level)
+
+        val issueCommentCard =
+            CardFormatterService.buildSeerrCard(
+                issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_COMMENT)
+            )
+        assertEquals("💬 Issue Comment: Dune: Part Two (2024)", issueCommentCard.title)
+        assertEquals(NotificationLevel.INFO, issueCommentCard.level)
+
+        val issueResolvedCard =
+            CardFormatterService.buildSeerrCard(
+                issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_RESOLVED)
+            )
+        assertEquals("✅ Issue Resolved: Dune: Part Two (2024)", issueResolvedCard.title)
+        assertEquals(NotificationLevel.SUCCESS, issueResolvedCard.level)
+
+        val issueReopenedCard =
+            CardFormatterService.buildSeerrCard(
+                issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_REOPENED)
+            )
+        assertEquals("⚠️ Issue Reopened: Dune: Part Two (2024)", issueReopenedCard.title)
+        assertEquals(NotificationLevel.WARNING, issueReopenedCard.level)
+
+        val fallbackCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(
+                    eventType = app.hononeko.notifier.domain.model.EventType.UNKNOWN,
+                    webUrl = null
+                )
+            )
+        assertEquals("🔔 Severance (2022)", fallbackCard.title)
+        assertEquals(NotificationLevel.INFO, fallbackCard.level)
+        assertTrue(fallbackCard.actions.isEmpty())
+    }
 }

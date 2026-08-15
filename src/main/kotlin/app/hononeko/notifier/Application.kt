@@ -25,6 +25,7 @@ import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
 import app.hononeko.notifier.domain.service.MediaAvailableService
 import app.hononeko.notifier.domain.service.MediaImportedService
+import app.hononeko.notifier.domain.service.MediaRequestService
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
 import io.ktor.http.HttpStatusCode
@@ -66,6 +67,7 @@ data class AppDependencies(
     val mediaAvailableService: MediaAvailableService,
     val systemHealthService: SystemHealthService,
     val manualInteractionService: ManualInteractionService,
+    val mediaRequestService: MediaRequestService,
     val ingestWebhookService: IngestWebhookUseCase,
     val eventRail: EventRail,
     val rateLimiter: InboundRateLimiter,
@@ -133,6 +135,11 @@ fun buildDependencies(
             notificationPublisher = notificationPublisher
         )
 
+    val mediaRequestService =
+        MediaRequestService(
+            notificationPublisher = notificationPublisher
+        )
+
     val ingestWebhookService =
         IngestWebhookService(
             seasonDebouncer = seasonDebouncer,
@@ -140,7 +147,8 @@ fun buildDependencies(
             announceMediaImportedUseCase = mediaImportedService,
             announceMediaAvailableUseCase = mediaAvailableService,
             announceSystemHealthUseCase = systemHealthService,
-            announceManualInteractionUseCase = manualInteractionService
+            announceManualInteractionUseCase = manualInteractionService,
+            announceMediaRequestUseCase = mediaRequestService
         )
 
     val eventRail = EventRail(capacity = 1000)
@@ -166,6 +174,7 @@ fun buildDependencies(
         mediaAvailableService = mediaAvailableService,
         systemHealthService = systemHealthService,
         manualInteractionService = manualInteractionService,
+        mediaRequestService = mediaRequestService,
         ingestWebhookService = ingestWebhookService,
         eventRail = eventRail,
         rateLimiter = rateLimiter,

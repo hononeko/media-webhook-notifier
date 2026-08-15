@@ -5,6 +5,7 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.inbound.AnnounceManualInteractionUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaAvailableUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaImportedUseCase
+import app.hononeko.notifier.domain.port.inbound.AnnounceMediaRequestUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceSystemHealthUseCase
 import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
@@ -18,7 +19,8 @@ class IngestWebhookService(
     private val announceMediaImportedUseCase: AnnounceMediaImportedUseCase,
     private val announceMediaAvailableUseCase: AnnounceMediaAvailableUseCase,
     private val announceSystemHealthUseCase: AnnounceSystemHealthUseCase? = null,
-    private val announceManualInteractionUseCase: AnnounceManualInteractionUseCase? = null
+    private val announceManualInteractionUseCase: AnnounceManualInteractionUseCase? = null,
+    private val announceMediaRequestUseCase: AnnounceMediaRequestUseCase? = null
 ) : IngestWebhookUseCase {
     private val logger = LoggerFactory.getLogger(IngestWebhookService::class.java)
 
@@ -47,6 +49,9 @@ class IngestWebhookService(
                 }
                 is MediaPayload.ServarrManualInteraction -> {
                     announceManualInteractionUseCase?.announce(payload)?.bind()
+                }
+                is MediaPayload.SeerrEvent -> {
+                    announceMediaRequestUseCase?.announce(payload)?.bind()
                 }
             }
         }

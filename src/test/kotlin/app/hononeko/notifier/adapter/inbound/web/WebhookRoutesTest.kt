@@ -830,4 +830,131 @@ class WebhookRoutesTest {
                 }
             assertEquals(HttpStatusCode.Accepted, manualResponse.status)
         }
+
+    @Test
+    fun `should ingest Seerr and Overseerr webhooks with 202 Accepted and handle test notification`() =
+        testApplication {
+            val eventRail = EventRail(capacity = 50)
+            application {
+                install(ServerContentNegotiation) {
+                    json(testJson)
+                }
+                configureWebhookRouting(eventRail, ServerConfig(authToken = testToken))
+            }
+
+            val jsonClient =
+                createClient {
+                    install(ClientContentNegotiation) {
+                        json(testJson)
+                    }
+                }
+
+            val requestPendingPayload =
+                """
+                {
+                  "notification_type": "MEDIA_PENDING",
+                  "subject": "Dune: Part Two (2024)",
+                  "message": "New request submitted by Admin",
+                  "media": {
+                    "media_type": "movie",
+                    "tmdbId": "693134"
+                  },
+                  "request": {
+                    "request_id": 1,
+                    "requestedBy_username": "Admin",
+                    "is4k": true
+                  },
+                  "application_url": "https://seerr.example.com"
+                }
+                """.trimIndent()
+
+            val seerrResponse =
+                jsonClient.post("/api/v1/webhook/seerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(requestPendingPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, seerrResponse.status)
+
+            val overseerrResponse =
+                jsonClient.post("/api/v1/webhook/overseerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(requestPendingPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, overseerrResponse.status)
+
+            val testPayload =
+                """
+                {
+                  "notification_type": "TEST_NOTIFICATION",
+                  "subject": "Test Notification",
+                  "message": "This is a test notification from Overseerr"
+                }
+                """.trimIndent()
+
+            val testResponse =
+                jsonClient.post("/api/v1/webhook/jellyseerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(testPayload)
+                }
+            assertEquals(HttpStatusCode.OK, testResponse.status)
+
+            val fullTemplatePayload =
+                """
+                {
+                    "notification_type": "MEDIA_PENDING",
+                    "event": "New Media Pending Approval",
+                    "subject": "Dune: Part Two",
+                    "message": "A new request has been submitted by vehkiya.",
+                    "image": "https://image.tmdb.org/t/p/w600/poster.jpg",
+                    "media": {
+                        "media_type": "movie",
+                        "imdbId": "tt15239678",
+                        "tmdbId": "693134",
+                        "tvdbId": "12345",
+                        "jellyfinMediaId": "jf-uuid-123",
+                        "status": "PENDING_APPROVAL",
+                        "status4k": "UNKNOWN"
+                    },
+                    "request": {
+                        "request_id": "1",
+                        "requestedBy_email": "user@example.com",
+                        "requestedBy_username": "vehkiya",
+                        "requestedBy_avatar": "https://example.com/avatar.png",
+                        "requestedBy_jellyfinUserId": "jf-user-1",
+                        "requestedBy_settings_discordIds": "123456789",
+                        "requestedBy_settings_telegramChatId": "987654321"
+                    },
+                    "issue": {
+                        "issue_id": "",
+                        "issue_type": "",
+                        "issue_status": "",
+                        "reportedBy_email": "",
+                        "reportedBy_username": "",
+                        "reportedBy_avatar": "",
+                        "reportedBy_settings_discordIds": "",
+                        "reportedBy_settings_telegramChatId": ""
+                    },
+                    "comment": {
+                        "comment_message": "",
+                        "commentedBy_email": "",
+                        "commentedBy_username": "",
+                        "commentedBy_avatar": "",
+                        "commentedBy_settings_discordIds": "",
+                        "commentedBy_settings_telegramChatId": ""
+                    },
+                    "extra": []
+                }
+                """.trimIndent()
+
+            val fullTemplateResponse =
+                jsonClient.post("/api/v1/webhook/seerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(fullTemplatePayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, fullTemplateResponse.status)
+        }
 }

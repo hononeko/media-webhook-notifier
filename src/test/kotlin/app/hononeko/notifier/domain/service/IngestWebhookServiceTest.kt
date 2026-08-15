@@ -168,4 +168,36 @@ class IngestWebhookServiceTest {
             assertEquals(1, healthPayloads.size)
             assertEquals(1, manualPayloads.size)
         }
+
+    @Test
+    fun `should route SeerrEvent to AnnounceMediaRequestUseCase`() =
+        runTest {
+            val seerrPayloads = Collections.synchronizedList(mutableListOf<MediaPayload.SeerrEvent>())
+
+            val service =
+                IngestWebhookService(
+                    seasonDebouncer = null,
+                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    announceMediaImportedUseCase = { Either.Right(Unit) },
+                    announceMediaAvailableUseCase = { Either.Right(Unit) },
+                    announceMediaRequestUseCase = { payload ->
+                        seerrPayloads.add(payload)
+                        Either.Right(Unit)
+                    }
+                )
+
+            val seerrEvent =
+                MediaPayload.SeerrEvent(
+                    source = AppSource.SEERR,
+                    eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_PENDING,
+                    notificationType = "MEDIA_PENDING",
+                    subject = "Dune 2",
+                    requestedByUsername = "Admin"
+                )
+
+            val result = service.execute(seerrEvent)
+            assertTrue(result.isRight())
+            assertEquals(1, seerrPayloads.size)
+            assertEquals("Admin", seerrPayloads.first().requestedByUsername)
+        }
 }

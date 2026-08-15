@@ -179,4 +179,33 @@ class DomainModelTest {
         assertEquals("Sample file detected", manual.reason)
         assertEquals("Radarr-4K", manual.instanceName)
     }
+
+    @Test
+    fun `should construct and inspect MediaPayload SeerrEvent correctly`() {
+        val seerr =
+            MediaPayload.SeerrEvent(
+                source = AppSource.SEERR,
+                eventType = EventType.REQUEST_PENDING,
+                notificationType = "MEDIA_PENDING",
+                subject = "Severance (2022)",
+                message = "New request submitted by Bob",
+                mediaType = "tv",
+                tmdbId = "12345",
+                requestedByUsername = "Bob",
+                is4k = true,
+                webUrl = "https://seerr.example.com",
+                instanceName = "Overseerr"
+            )
+
+        assertEquals(AppSource.SEERR, seerr.source)
+        assertEquals(EventType.REQUEST_PENDING, seerr.eventType)
+        assertEquals("MEDIA_PENDING", seerr.notificationType)
+        assertEquals("Severance (2022)", seerr.subject)
+        assertEquals("tv", seerr.mediaType)
+        assertEquals("12345", seerr.tmdbId)
+        assertEquals("Bob", seerr.requestedByUsername)
+        assertTrue(seerr.is4k)
+        assertEquals("https://seerr.example.com", seerr.webUrl)
+        assertEquals("Overseerr", seerr.instanceName)
+    }
 }

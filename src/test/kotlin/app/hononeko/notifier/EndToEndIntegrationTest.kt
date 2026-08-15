@@ -21,6 +21,7 @@ import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
 import app.hononeko.notifier.domain.service.MediaAvailableService
 import app.hononeko.notifier.domain.service.MediaImportedService
+import app.hononeko.notifier.domain.service.MediaRequestService
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
 import arrow.core.Either
@@ -139,6 +140,7 @@ class EndToEndIntegrationTest {
 
             val systemHealthService = SystemHealthService(notificationPublisher = mockPublisher)
             val manualInteractionService = ManualInteractionService(notificationPublisher = mockPublisher)
+            val mediaRequestService = MediaRequestService(notificationPublisher = mockPublisher)
 
             val ingestWebhookService =
                 IngestWebhookService(
@@ -147,7 +149,8 @@ class EndToEndIntegrationTest {
                     announceMediaImportedUseCase = mediaImportedService,
                     announceMediaAvailableUseCase = mediaAvailableService,
                     announceSystemHealthUseCase = systemHealthService,
-                    announceManualInteractionUseCase = manualInteractionService
+                    announceManualInteractionUseCase = manualInteractionService,
+                    announceMediaRequestUseCase = mediaRequestService
                 )
 
             val eventRail = EventRail(capacity = 100)
@@ -170,6 +173,7 @@ class EndToEndIntegrationTest {
                     mediaAvailableService = mediaAvailableService,
                     systemHealthService = systemHealthService,
                     manualInteractionService = manualInteractionService,
+                    mediaRequestService = mediaRequestService,
                     ingestWebhookService = ingestWebhookService,
                     eventRail = eventRail,
                     rateLimiter = rateLimiter,
@@ -277,14 +281,42 @@ class EndToEndIntegrationTest {
                 }
             assertEquals(HttpStatusCode.Accepted, plexResponse.status)
 
+            // 5. Ingest Seerr Media Pending Webhook
+            val seerrPayload =
+                """
+                {
+                  "notification_type": "MEDIA_PENDING",
+                  "subject": "Severance (2022)",
+                  "message": "New request submitted by Alice",
+                  "media": {
+                    "media_type": "tv",
+                    "tmdbId": "95557"
+                  },
+                  "request": {
+                    "request_id": "1",
+                    "requestedBy_username": "Alice",
+                    "is4k": "true"
+                  },
+                  "application_url": "https://seerr.example.com"
+                }
+                """.trimIndent()
+
+            val seerrResponse =
+                client.post("/api/v1/webhook/seerr?token=secret123") {
+                    contentType(ContentType.Application.Json)
+                    setBody(seerrPayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, seerrResponse.status)
+
             // Wait for event rail queue processing
             runBlocking { delay(250) }
 
             // Assert that cards were published to mock publisher
             assertTrue(mockPublisher.sentCards.isNotEmpty())
             assertTrue(mockPublisher.sentCards.any { it.title.contains("Frieren") })
+            assertTrue(mockPublisher.sentCards.any { it.title.contains("Severance") })
 
-            // 5. Verify Metrics Telemetry
+            // 6. Verify Metrics Telemetry
             val metricsRes = client.get("/metrics")
             assertEquals(HttpStatusCode.OK, metricsRes.status)
             val metricsBody = metricsRes.bodyAsText()

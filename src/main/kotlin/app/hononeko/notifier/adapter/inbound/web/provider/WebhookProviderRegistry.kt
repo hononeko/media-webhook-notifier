@@ -23,7 +23,8 @@ class WebhookProviderRegistry(
                 RadarrWebhookProvider(),
                 ServarrWebhookProvider(),
                 PlexWebhookProvider(),
-                JellyfinWebhookProvider()
+                JellyfinWebhookProvider(),
+                SeerrWebhookProvider()
             )
     }
 }
