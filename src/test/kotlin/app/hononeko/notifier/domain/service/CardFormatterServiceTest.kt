@@ -379,5 +379,65 @@ class CardFormatterServiceTest {
         assertEquals(NotificationLevel.WARNING, issueCard.level)
         assertEquals("Audio", issueCard.fields.first { it.name == "Issue Type" }.value)
         assertEquals("Audio is out of sync in second half", issueCard.fields.first { it.name == "Comment" }.value)
+
+        val autoApprovedCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_AUTO_APPROVED)
+            )
+        assertEquals("✅ Request Auto-Approved: Severance (2022)", autoApprovedCard.title)
+        assertEquals(NotificationLevel.SUCCESS, autoApprovedCard.level)
+
+        val availableCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_AVAILABLE)
+            )
+        assertEquals("🍿 Request Available: Severance (2022)", availableCard.title)
+        assertEquals(NotificationLevel.SUCCESS, availableCard.level)
+
+        val declinedCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_DECLINED)
+            )
+        assertEquals("❌ Request Declined: Severance (2022)", declinedCard.title)
+        assertEquals(NotificationLevel.ERROR, declinedCard.level)
+
+        val failedCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_FAILED)
+            )
+        assertEquals("🚨 Request Failed: Severance (2022)", failedCard.title)
+        assertEquals(NotificationLevel.ERROR, failedCard.level)
+
+        val issueCommentCard =
+            CardFormatterService.buildSeerrCard(
+                issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_COMMENT)
+            )
+        assertEquals("💬 Issue Comment: Dune: Part Two (2024)", issueCommentCard.title)
+        assertEquals(NotificationLevel.INFO, issueCommentCard.level)
+
+        val issueResolvedCard =
+            CardFormatterService.buildSeerrCard(
+                issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_RESOLVED)
+            )
+        assertEquals("✅ Issue Resolved: Dune: Part Two (2024)", issueResolvedCard.title)
+        assertEquals(NotificationLevel.SUCCESS, issueResolvedCard.level)
+
+        val issueReopenedCard =
+            CardFormatterService.buildSeerrCard(
+                issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_REOPENED)
+            )
+        assertEquals("⚠️ Issue Reopened: Dune: Part Two (2024)", issueReopenedCard.title)
+        assertEquals(NotificationLevel.WARNING, issueReopenedCard.level)
+
+        val fallbackCard =
+            CardFormatterService.buildSeerrCard(
+                pendingPayload.copy(
+                    eventType = app.hononeko.notifier.domain.model.EventType.UNKNOWN,
+                    webUrl = null
+                )
+            )
+        assertEquals("🔔 Severance (2022)", fallbackCard.title)
+        assertEquals(NotificationLevel.INFO, fallbackCard.level)
+        assertTrue(fallbackCard.actions.isEmpty())
     }
 }
