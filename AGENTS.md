@@ -112,7 +112,8 @@ This repository enforces the [Conventional Commits](https://www.conventionalcomm
 │       ├── pr.yml                # PR validation workflow
 │       ├── main.yml              # Main branch push validation
 │       ├── cd.yml                # SemVer calculation, container publish & GitHub release
-│       └── sonar.yml             # SonarQube / SonarCloud code quality analysis
+│       ├── sonar.yml             # SonarQube / SonarCloud code quality analysis
+│       └── codeql.yml            # GitHub CodeQL Static Analysis (manual build mode)
 
 ├── docs/                         # Specification & architecture blueprints
 ├── gradle/
