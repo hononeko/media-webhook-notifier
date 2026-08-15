@@ -7,6 +7,8 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveText
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import org.slf4j.LoggerFactory
 
 class SeerrWebhookProvider : WebhookProviderStrategy {
@@ -99,6 +101,15 @@ class SeerrWebhookProvider : WebhookProviderStrategy {
 
         val webUrl = dto.url?.ifBlank { null } ?: dto.applicationUrl?.ifBlank { null }
 
+        val is4k =
+            when (val el = dto.request?.is4k) {
+                is kotlinx.serialization.json.JsonPrimitive -> {
+                    el.booleanOrNull ?: el.content.equals("true", ignoreCase = true)
+                }
+                else -> false
+            } ||
+                (dto.media?.status4k != null && dto.media.status4k != "UNKNOWN" && dto.media.status4k.isNotBlank())
+
         return MediaPayload.SeerrEvent(
             source = AppSource.SEERR,
             eventType = eventType,
@@ -107,12 +118,14 @@ class SeerrWebhookProvider : WebhookProviderStrategy {
             message = dto.message?.ifBlank { null },
             image = dto.image?.ifBlank { null },
             mediaType = dto.media?.mediaType,
+            imdbId = dto.media?.imdbId,
             tmdbId = dto.media?.tmdbId,
             tvdbId = dto.media?.tvdbId,
+            jellyfinMediaId = dto.media?.jellyfinMediaId,
             requestedByUsername = dto.request?.requestedByUsername ?: extraMap["Requested By"],
             requestedByEmail = dto.request?.requestedByEmail,
             requestedByAvatar = dto.request?.requestedByAvatar,
-            is4k = dto.request?.is4k == true || (dto.media?.status4k != null && dto.media.status4k != "UNKNOWN"),
+            is4k = is4k,
             issueType = dto.issue?.issueType,
             issueStatus = dto.issue?.issueStatus,
             commentMessage = dto.comment?.commentMessage,

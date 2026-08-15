@@ -900,5 +900,61 @@ class WebhookRoutesTest {
                     setBody(testPayload)
                 }
             assertEquals(HttpStatusCode.OK, testResponse.status)
+
+            val fullTemplatePayload =
+                """
+                {
+                    "notification_type": "MEDIA_PENDING",
+                    "event": "New Media Pending Approval",
+                    "subject": "Dune: Part Two",
+                    "message": "A new request has been submitted by vehkiya.",
+                    "image": "https://image.tmdb.org/t/p/w600/poster.jpg",
+                    "media": {
+                        "media_type": "movie",
+                        "imdbId": "tt15239678",
+                        "tmdbId": "693134",
+                        "tvdbId": "12345",
+                        "jellyfinMediaId": "jf-uuid-123",
+                        "status": "PENDING_APPROVAL",
+                        "status4k": "UNKNOWN"
+                    },
+                    "request": {
+                        "request_id": "1",
+                        "requestedBy_email": "user@example.com",
+                        "requestedBy_username": "vehkiya",
+                        "requestedBy_avatar": "https://example.com/avatar.png",
+                        "requestedBy_jellyfinUserId": "jf-user-1",
+                        "requestedBy_settings_discordIds": "123456789",
+                        "requestedBy_settings_telegramChatId": "987654321"
+                    },
+                    "issue": {
+                        "issue_id": "",
+                        "issue_type": "",
+                        "issue_status": "",
+                        "reportedBy_email": "",
+                        "reportedBy_username": "",
+                        "reportedBy_avatar": "",
+                        "reportedBy_settings_discordIds": "",
+                        "reportedBy_settings_telegramChatId": ""
+                    },
+                    "comment": {
+                        "comment_message": "",
+                        "commentedBy_email": "",
+                        "commentedBy_username": "",
+                        "commentedBy_avatar": "",
+                        "commentedBy_settings_discordIds": "",
+                        "commentedBy_settings_telegramChatId": ""
+                    },
+                    "extra": []
+                }
+                """.trimIndent()
+
+            val fullTemplateResponse =
+                jsonClient.post("/api/v1/webhook/seerr") {
+                    header("Authorization", "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(fullTemplatePayload)
+                }
+            assertEquals(HttpStatusCode.Accepted, fullTemplateResponse.status)
         }
 }
