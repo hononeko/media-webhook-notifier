@@ -103,6 +103,7 @@ graalvmNative {
                 "--enable-http",
                 "--enable-https",
                 "-H:IncludeResources=schemas/.*\\.json",
+                "-H:IncludeResources=templates\\.default\\.yaml",
                 "-H:IncludeResources=logback.xml"
             )
             if (project.hasProperty("static") || System.getenv("GRAALVM_STATIC") == "true") {
