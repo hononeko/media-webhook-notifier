@@ -305,7 +305,6 @@ object CardFormatterService {
             sizeFormatted = sizeFormatted,
             peersInfo = peersFormatted,
             stateText = stateLabel,
-            releaseName = releaseName,
             customBody = resolved.customBody,
             actions = resolved.actions
         )
