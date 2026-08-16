@@ -66,6 +66,7 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
             source = AppSource.JELLYFIN,
             eventType = EventType.MEDIA_AVAILABLE,
             itemId = dto.itemId ?: "",
+            mediaType = dto.itemType,
             serverId = dto.serverId,
             title = dto.name ?: "Unknown Media",
             seriesName = dto.seriesName,

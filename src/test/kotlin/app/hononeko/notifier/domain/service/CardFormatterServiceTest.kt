@@ -246,6 +246,114 @@ class CardFormatterServiceTest {
     }
 
     @Test
+    fun `should format Plex and Jellyfin TV season added cards correctly`() {
+        val plexSeason =
+            MediaPayload.PlexLibraryNew(
+                title = "Season 3",
+                parentTitle = "Futurama",
+                mediaType = "season",
+                seasonNumber = 3,
+                year = 1999,
+                summary = "After a young male is transported to the future...",
+                rating = 8.8,
+                durationSeconds = 1320L,
+                videoCodec = "HEVC",
+                audioCodec = "EAC3",
+                resolution = "1080p",
+                posterUrl = "https://plex.example.com/season3_poster.jpg",
+                parentPosterUrl = "https://plex.example.com/series_poster.jpg",
+                deepLinkUrl = "https://app.plex.tv/desktop#!/server/abc/details?key=123",
+                instanceName = "Kerrlab Plex"
+            )
+
+        val plexCard = CardFormatterService.buildAvailableCard(plexSeason)
+        assertEquals("🍿 Futurama - Season 3 now available on Kerrlab Plex", plexCard.title)
+        assertEquals(null, plexCard.subtitle)
+        assertEquals("8.8/10", plexCard.mediaSpecs?.score)
+        assertNull(plexCard.mediaSpecs?.duration, "Season duration should be omitted for season-level notifications")
+        assertEquals("https://plex.example.com/season3_poster.jpg", plexCard.artworkUrl)
+        assertEquals(1, plexCard.actions.size)
+        assertEquals("🎬 Watch on Plex", plexCard.actions.first().label)
+
+        val jellyfinSeason =
+            MediaPayload.JellyfinItemAdded(
+                itemId = "season-item-99",
+                mediaType = "Season",
+                title = "Season 3",
+                seriesName = "Futurama",
+                seasonNumber = 3,
+                year = 1999,
+                overview = "Fry and the Planet Express crew embark on season 3 adventures.",
+                videoCodec = "HEVC",
+                audioCodec = "AAC",
+                resolution = "1080p",
+                posterUrl = "https://jellyfin.example.com/season3.jpg",
+                instanceName = "Home Jellyfin"
+            )
+
+        val jellyfinCard = CardFormatterService.buildAvailableCard(jellyfinSeason)
+        assertEquals("🍿 Futurama - Season 3 now available on Home Jellyfin", jellyfinCard.title)
+        assertEquals(null, jellyfinCard.subtitle)
+        assertNull(jellyfinCard.mediaSpecs?.duration)
+        assertEquals("https://jellyfin.example.com/season3.jpg", jellyfinCard.artworkUrl)
+    }
+
+    @Test
+    fun `should fallback to series poster when season poster is null for Plex season card`() {
+        val plexSeasonNoThumb =
+            MediaPayload.PlexLibraryNew(
+                title = "Season 3",
+                parentTitle = "Futurama",
+                mediaType = "season",
+                seasonNumber = 3,
+                posterUrl = null,
+                parentPosterUrl = "https://plex.example.com/series_poster.jpg",
+                instanceName = "Plex"
+            )
+
+        val card = CardFormatterService.buildAvailableCard(plexSeasonNoThumb)
+        assertEquals("🍿 Futurama - Season 3 now available on Plex", card.title)
+        assertEquals("https://plex.example.com/series_poster.jpg", card.artworkUrl)
+    }
+
+    @Test
+    fun `should format Plex and Jellyfin TV episode added cards with SxxExx and episode duration`() {
+        val plexEpisode =
+            MediaPayload.PlexLibraryNew(
+                title = "Roswell That Ends Well",
+                parentTitle = "Season 3",
+                grandParentTitle = "Futurama",
+                mediaType = "episode",
+                seasonNumber = 3,
+                episodeNumber = 1,
+                durationSeconds = 1320L,
+                posterUrl = "https://plex.example.com/ep_thumb.jpg",
+                parentPosterUrl = "https://plex.example.com/season_poster.jpg",
+                instanceName = "Kerrlab Plex"
+            )
+
+        val plexCard = CardFormatterService.buildAvailableCard(plexEpisode)
+        assertEquals("🍿 Futurama - S03E01 - Roswell That Ends Well now available on Kerrlab Plex", plexCard.title)
+        assertEquals("22m 0s", plexCard.mediaSpecs?.duration)
+        assertEquals("https://plex.example.com/ep_thumb.jpg", plexCard.artworkUrl)
+
+        val jellyfinEpisode =
+            MediaPayload.JellyfinItemAdded(
+                itemId = "ep-123",
+                mediaType = "Episode",
+                title = "Roswell That Ends Well",
+                seriesName = "Futurama",
+                seasonNumber = 3,
+                episodeNumber = 1,
+                posterUrl = "https://jellyfin.example.com/ep.jpg",
+                instanceName = "Jellyfin"
+            )
+
+        val jellyfinCard = CardFormatterService.buildAvailableCard(jellyfinEpisode)
+        assertEquals("🍿 Futurama - S03E01 - Roswell That Ends Well now available on Jellyfin", jellyfinCard.title)
+    }
+
+    @Test
     fun `should build import and upgrade cards correctly`() {
         val importPayload =
             MediaPayload.ArrDownload(

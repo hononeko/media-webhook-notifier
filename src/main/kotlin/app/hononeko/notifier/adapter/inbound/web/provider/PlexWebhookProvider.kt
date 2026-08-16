@@ -99,6 +99,21 @@ class PlexWebhookProvider(
         val meta = dto.metadata
         val stream = meta?.media?.firstOrNull()
         val durationSec = meta?.duration?.let { it / 1000 }
+        val mediaType = meta?.type?.lowercase()
+
+        val seasonNumber =
+            when (mediaType) {
+                "season" -> meta?.index ?: extractSeasonNumber(meta?.title)
+                "episode" -> meta?.parentIndex ?: extractSeasonNumber(meta?.parentTitle)
+                else -> meta?.index
+            }
+
+        val episodeNumber =
+            if (mediaType == "episode") {
+                meta?.index
+            } else {
+                null
+            }
 
         val rawThumb = meta?.thumb
         val effectivePosterUrl =
@@ -108,13 +123,35 @@ class PlexWebhookProvider(
                 else -> null
             }
 
+        val rawParentThumb = meta?.parentThumb
+        val parentPosterUrl =
+            when {
+                rawParentThumb.isNullOrBlank() -> null
+                rawParentThumb.startsWith("http://") || rawParentThumb.startsWith("https://") -> rawParentThumb
+                else -> null
+            }
+
+        val rawGrandparentThumb = meta?.grandparentThumb
+        val grandparentPosterUrl =
+            when {
+                rawGrandparentThumb.isNullOrBlank() -> null
+                rawGrandparentThumb.startsWith(
+                    "http://"
+                ) ||
+                    rawGrandparentThumb.startsWith("https://") -> rawGrandparentThumb
+                else -> null
+            }
+
         return MediaPayload.PlexLibraryNew(
             source = AppSource.PLEX,
             eventType = EventType.MEDIA_AVAILABLE,
             title = meta?.title ?: "Unknown Media",
+            mediaType = mediaType,
             grandParentTitle = meta?.grandparentTitle,
             parentTitle = meta?.parentTitle,
-            year = meta?.year,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            year = meta?.year ?: meta?.parentYear,
             summary = meta?.summary,
             rating = meta?.rating,
             durationSeconds = durationSec,
@@ -122,10 +159,18 @@ class PlexWebhookProvider(
             audioCodec = stream?.audioCodec,
             resolution = stream?.videoResolution,
             posterUrl = effectivePosterUrl,
+            parentPosterUrl = parentPosterUrl,
+            grandparentPosterUrl = grandparentPosterUrl,
             artworkBytes = thumbBytes,
             ratingKey = meta?.ratingKey,
             serverMachineIdentifier = dto.server?.uuid,
             instanceName = instanceName
         )
+    }
+
+    private fun extractSeasonNumber(title: String?): Int? {
+        if (title.isNullOrBlank()) return null
+        val match = Regex("""(?:Season|Series)\s+(\d+)""", RegexOption.IGNORE_CASE).find(title)
+        return match?.groupValues?.get(1)?.toIntOrNull()
     }
 }

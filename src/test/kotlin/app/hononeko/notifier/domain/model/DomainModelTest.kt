@@ -269,8 +269,11 @@ class DomainModelTest {
                 source = AppSource.PLEX,
                 eventType = EventType.MEDIA_AVAILABLE,
                 title = "Title",
+                mediaType = "movie",
                 grandParentTitle = "Grand",
                 parentTitle = "Parent",
+                seasonNumber = 1,
+                episodeNumber = 2,
                 year = 2024,
                 summary = "Sum",
                 rating = 9.0,
@@ -279,6 +282,8 @@ class DomainModelTest {
                 audioCodec = "aac",
                 resolution = "1080p",
                 posterUrl = "https://example.com/p.jpg",
+                parentPosterUrl = "https://example.com/parent.jpg",
+                grandparentPosterUrl = "https://example.com/grand.jpg",
                 artworkBytes = bytes1,
                 ratingKey = "123",
                 serverMachineIdentifier = "srv",
@@ -305,8 +310,11 @@ class DomainModelTest {
         assertFalse(p1 == p1.copy(source = AppSource.JELLYFIN))
         assertFalse(p1 == p1.copy(eventType = EventType.GRAB))
         assertFalse(p1 == p1.copy(title = "Other"))
+        assertFalse(p1 == p1.copy(mediaType = "season"))
         assertFalse(p1 == p1.copy(grandParentTitle = "Other"))
         assertFalse(p1 == p1.copy(parentTitle = "Other"))
+        assertFalse(p1 == p1.copy(seasonNumber = 9))
+        assertFalse(p1 == p1.copy(episodeNumber = 9))
         assertFalse(p1 == p1.copy(year = 2025))
         assertFalse(p1 == p1.copy(summary = "Other"))
         assertFalse(p1 == p1.copy(rating = 5.0))
@@ -315,6 +323,8 @@ class DomainModelTest {
         assertFalse(p1 == p1.copy(audioCodec = "mp3"))
         assertFalse(p1 == p1.copy(resolution = "720p"))
         assertFalse(p1 == p1.copy(posterUrl = null))
+        assertFalse(p1 == p1.copy(parentPosterUrl = null))
+        assertFalse(p1 == p1.copy(grandparentPosterUrl = null))
         assertFalse(p1 == p1.copy(ratingKey = "999"))
         assertFalse(p1 == p1.copy(serverMachineIdentifier = "srv2"))
         assertFalse(p1 == p1.copy(deepLinkUrl = null))
