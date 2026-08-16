@@ -9,15 +9,6 @@ theme:
 
 events:
   download:
-    grab:
-      title: "⏳ Queueing Download: {title}"
-      subtitle: "{instance_name}"
-      body: |
-        ▪ <b>Quality:</b> {quality}
-        ▪ <b>Group:</b> {release_group}
-        ▪ <b>Size:</b> {size}
-        ▪ <b>Indexer:</b> {indexer}
-
     progress:
       title: "{title}"
       subtitle: "{instance_name}"
@@ -45,6 +36,15 @@ events:
         ▪ <b>Progress:</b> {progress_percent}% {progress_bar}
 
   servarr:
+    grab:
+      title: "⏳ Queueing Download: {title}"
+      subtitle: "{instance_name}"
+      body: |
+        ▪ <b>Quality:</b> {quality}
+        ▪ <b>Group:</b> {release_group}
+        ▪ <b>Size:</b> {size}
+        ▪ <b>Indexer:</b> {indexer}
+
     import:
       title: "{import_icon} {import_action}: {title}"
       subtitle: "{instance_name} • {import_type}"

@@ -47,7 +47,8 @@ class TemplateEngine(
         config.events[eventName]
             ?: when (eventName) {
                 "grab" ->
-                    config.events["download.grab"] ?: config.events["download_grab"]
+                    config.events["servarr.grab"] ?: config.events["servarr_grab"] ?: config.events["arr.grab"]
+                        ?: config.events["download.grab"] ?: config.events["download_grab"]
                         ?: config.events["torrent.grab"]
                 "download_progress", "progress" ->
                     config.events["download_progress"] ?: config.events["download.progress"]
