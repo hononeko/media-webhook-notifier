@@ -120,9 +120,12 @@ class TemplatePreviewController {
 
         val htmlOutput =
             if (card != null) {
-                renderHtmlCard(card)
+                app.hononeko.notifier.adapter.outbound.telegram.TelegramHtmlFormatter
+                    .buildCardHtml(card)
             } else {
-                renderHtmlProgress(progressUpdate!!)
+                app.hononeko.notifier.adapter.outbound.telegram.TelegramHtmlFormatter.buildProgressHtml(
+                    progressUpdate!!
+                )
             }
 
         call.respond(
@@ -478,76 +481,4 @@ class TemplatePreviewController {
             webUrl = "http://overseerr.lan:5055/movie/1",
             instanceName = "Overseerr"
         )
-
-    private fun renderHtmlCard(card: NotificationCard): String {
-        val sb = StringBuilder()
-        sb.append("<b>").append(card.title).append("</b>\n")
-        if (!card.subtitle.isNullOrBlank()) {
-            sb.append("<i>").append(card.subtitle).append("</i>\n")
-        }
-
-        if (!card.customBody.isNullOrBlank()) {
-            sb.append("\n").append(card.customBody).append("\n")
-        } else {
-            if (card.fields.isNotEmpty()) {
-                sb.append("\n")
-                for (field in card.fields) {
-                    sb
-                        .append("▪ <b>")
-                        .append(field.name)
-                        .append(":</b> ")
-                        .append(field.value)
-                        .append("\n")
-                }
-            }
-
-            card.mediaSpecs?.let { specs ->
-                val items = mutableListOf<String>()
-                specs.resolution?.let { items.add(it) }
-                specs.video?.let { items.add(it) }
-                specs.audio?.let { items.add(it) }
-                specs.score?.let { items.add("⭐ $it") }
-                specs.duration?.let { items.add(it) }
-                specs.sizeFormatted?.let { items.add(it) }
-                if (items.isNotEmpty()) {
-                    sb.append("▪ <b>Specs:</b> ").append(items.joinToString(" • ")).append("\n")
-                }
-            }
-
-            if (!card.overview.isNullOrBlank()) {
-                sb.append("\n<i>").append(card.overview).append("</i>\n")
-            }
-        }
-
-        return sb.toString().trimEnd()
-    }
-
-    private fun renderHtmlProgress(update: ProgressUpdate): String {
-        val sb = StringBuilder()
-        sb.append("<b>⏳ Downloading: ").append(update.title).append("</b>\n")
-        if (!update.subtitle.isNullOrBlank()) {
-            sb.append("<i>").append(update.subtitle).append("</i>\n")
-        }
-
-        if (!update.customBody.isNullOrBlank()) {
-            sb.append("\n").append(update.customBody)
-        } else {
-            sb
-                .append("\n<code>")
-                .append(update.progressBar)
-                .append("</code> <b>")
-                .append(String.format(Locale.US, "%.2f", update.percent))
-                .append("%</b>\n\n")
-            sb.append("▪ <b>Speed:</b> ").append(update.speedFormatted)
-            if (update.etaFormatted.isNotBlank()) {
-                sb.append(" (ETA: ").append(update.etaFormatted).append(")")
-            }
-            sb.append("\n")
-            sb.append("▪ <b>Transferred:</b> ").append(update.sizeFormatted).append("\n")
-            sb.append("▪ <b>Peers:</b> ").append(update.peersInfo).append("\n")
-            sb.append("▪ <b>Status:</b> ").append(update.stateText)
-        }
-
-        return sb.toString()
-    }
 }
