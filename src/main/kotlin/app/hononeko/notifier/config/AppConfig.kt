@@ -1,16 +1,20 @@
 package app.hononeko.notifier.config
 
+import app.hononeko.notifier.domain.model.TemplateConfig
+
 data class AppConfig(
     val server: ServerConfig = ServerConfig(),
     val mediaServer: MediaServerConfig = MediaServerConfig(),
     val qbittorrent: QBittorrentConfig = QBittorrentConfig(),
-    val notifications: NotificationConfig = NotificationConfig()
+    val notifications: NotificationConfig = NotificationConfig(),
+    val templates: TemplateConfig = TemplateConfig()
 )
 
 data class ServerConfig(
     val port: Int = 8080,
     val authToken: String = "",
-    val rateLimitPerMinute: Int = 120
+    val rateLimitPerMinute: Int = 120,
+    val enablePreview: Boolean = false
 )
 
 data class MediaServerConfig(

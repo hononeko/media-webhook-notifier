@@ -1,6 +1,7 @@
 package app.hononeko.notifier.config
 
 import app.hononeko.notifier.adapter.outbound.notification.NotificationUrlParser
+import app.hononeko.notifier.domain.model.TemplateConfig
 import java.io.File
 
 object ConfigLoader {
@@ -10,7 +11,8 @@ object ConfigLoader {
             server = loadServerConfig(reader),
             mediaServer = loadMediaServerConfig(reader),
             qbittorrent = loadQBittorrentConfig(reader),
-            notifications = loadNotificationsConfig(reader)
+            notifications = loadNotificationsConfig(reader),
+            templates = loadTemplatesConfig(reader)
         )
     }
 
@@ -18,8 +20,70 @@ object ConfigLoader {
         ServerConfig(
             port = reader.getInt(8080, "SERVER_PORT", "server.port"),
             authToken = reader.getSecret("SERVER_AUTH_TOKEN", "server.authToken") ?: "",
-            rateLimitPerMinute = reader.getInt(120, "SERVER_RATE_LIMIT_PER_MINUTE", "server.rateLimitPerMinute")
+            rateLimitPerMinute = reader.getInt(120, "SERVER_RATE_LIMIT_PER_MINUTE", "server.rateLimitPerMinute"),
+            enablePreview = reader.getBoolean(false, "ENABLE_PREVIEW", "server.enablePreview", "SERVER_ENABLE_PREVIEW")
         )
+
+    private fun loadTemplatesConfig(reader: EnvReader): TemplateConfig {
+        val defaultStream =
+            ConfigLoader::class.java.classLoader.getResourceAsStream("templates.default.yaml")
+                ?: throw IllegalStateException(
+                    "Default templates resource 'templates.default.yaml' not found on classpath!"
+                )
+        val defaultContent = defaultStream.bufferedReader().use { it.readText() }
+        val defaultConfig = YamlParser.parseTemplateConfig(defaultContent)
+
+        val directYaml = reader.get("TEMPLATES_YAML", "templates.yaml")
+        if (!directYaml.isNullOrBlank()) {
+            val userConfig = YamlParser.parseTemplateConfig(directYaml)
+            return mergeTemplates(defaultConfig, userConfig)
+        }
+
+        val filePath =
+            reader.get(
+                "TEMPLATES_FILE",
+                "TEMPLATES_FILE_PATH",
+                "TEMPLATES_CONFIG_PATH",
+                "templates.file",
+                "templates.path"
+            )
+        if (!filePath.isNullOrBlank()) {
+            val file = File(filePath)
+            check(file.exists() && file.canRead()) {
+                "Configured templates file '$filePath' does not exist or is not readable"
+            }
+            val userConfig = YamlParser.parseTemplateConfig(file.readText())
+            return mergeTemplates(defaultConfig, userConfig)
+        }
+
+        val secretFile = reader.getSecret("TEMPLATES")
+        if (!secretFile.isNullOrBlank()) {
+            val userConfig = YamlParser.parseTemplateConfig(secretFile)
+            return mergeTemplates(defaultConfig, userConfig)
+        }
+
+        val defaultFiles = listOf("templates.yaml", "templates.yml", "/config/templates.yaml", "/config/templates.yml")
+        for (defaultPath in defaultFiles) {
+            val file = File(defaultPath)
+            if (file.exists() && file.canRead()) {
+                val userConfig = YamlParser.parseTemplateConfig(file.readText())
+                return mergeTemplates(defaultConfig, userConfig)
+            }
+        }
+
+        return defaultConfig
+    }
+
+    private fun mergeTemplates(
+        base: TemplateConfig,
+        override: TemplateConfig
+    ): TemplateConfig {
+        val mergedEvents = base.events.toMutableMap()
+        for ((key, tpl) in override.events) {
+            mergedEvents[key] = tpl
+        }
+        return TemplateConfig(theme = override.theme, events = mergedEvents)
+    }
 
     private fun loadMediaServerConfig(reader: EnvReader): MediaServerConfig =
         MediaServerConfig(

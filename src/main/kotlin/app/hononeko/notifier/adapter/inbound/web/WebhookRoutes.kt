@@ -41,6 +41,20 @@ fun Application.configureWebhookRouting(
         get("/metrics") { healthController.handleMetrics(call) }
         get("/metrics/prometheus") { healthController.handlePrometheusMetrics(call) }
 
+        // Stateless template preview sandbox (feature-flagged)
+        if (serverConfig.enablePreview) {
+            val previewController =
+                app.hononeko.notifier.adapter.inbound.web.controller
+                    .TemplatePreviewController()
+            route("/api/v1/templates") {
+                post("/preview") {
+                    withAuthAndRateLimit(call, serverConfig.authToken, rateLimiter) {
+                        previewController.handlePreview(call)
+                    }
+                }
+            }
+        }
+
         // Dynamic JSON schema retrieval: /schema/{provider}
         route("/schema") {
             get("/{provider}") {

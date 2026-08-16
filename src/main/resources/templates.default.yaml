@@ -1,0 +1,102 @@
+# ==============================================================================
+# Built-in Default Templates
+# ==============================================================================
+theme:
+  max_overview_length: 220
+  progress_bar_length: 10
+  progress_bar_style: "default"
+  date_format: "yyyy-MM-dd HH:mm"
+
+events:
+  grab:
+    title: "⏳ Queueing Download: {title}"
+    subtitle: "{instance_name}"
+    body: |
+      ▪ <b>Quality:</b> {quality}
+      ▪ <b>Group:</b> {release_group}
+      ▪ <b>Size:</b> {size}
+      ▪ <b>Indexer:</b> {indexer}
+
+  download_progress:
+    title: "{title}"
+    subtitle: "{instance_name}"
+    body: |
+      <code>{progress_bar}</code> <b>{progress_percent}%</b>
+
+      ▪ <b>Speed:</b> {speed} (ETA: {eta})
+      ▪ <b>Transferred:</b> {size_formatted}
+      ▪ <b>Peers:</b> {peers_info}
+      ▪ <b>Status:</b> {state}
+
+  download_complete:
+    title: "✅ Download Complete: {title}"
+    subtitle: "{instance_name}"
+    body: |
+      ▪ <b>Status:</b> 100% Downloaded
+      ▪ <b>Total Size:</b> {total_size}
+      ▪ <b>Quality:</b> {quality}
+
+  download_stalled:
+    title: "⚠️ Download Stalled: {title}"
+    subtitle: "{instance_name}"
+    body: |
+      ▪ <b>Status:</b> Download Stalled (0 B/s)
+      ▪ <b>Progress:</b> {progress_percent}% {progress_bar}
+
+  import:
+    title: "{import_icon} {import_action}: {title}"
+    subtitle: "{instance_name} • {import_type}"
+    body: |
+      ▪ <b>Specs:</b> {specs}
+
+      <i>{overview}</i>
+
+  media_available:
+    title: "🍿 Now Available: {title}"
+    subtitle: "{media_server_name}"
+    body: |
+      ▪ <b>Specs:</b> {specs}
+
+      <i>{overview}</i>
+    actions:
+      - label: "🎬 Watch on {media_server_name}"
+        url: "{deep_link_url}"
+        style: "PRIMARY"
+
+  health:
+    title: "{health_icon} {health_status}: {instance_name}"
+    subtitle: "{instance_name} • {health_type}"
+    body: |
+      ▪ <b>Message:</b> {message}
+      ▪ <b>Issue Type:</b> {issue_type}
+
+  manual_interaction:
+    title: "✋ Manual Import Required: {title}"
+    subtitle: "{instance_name} • Manual Intervention"
+    body: |
+      ▪ <b>Reason:</b> {reason}
+      ▪ <b>Release:</b> {release_title}
+      ▪ <b>Quality:</b> {quality}
+      ▪ <b>Size:</b> {size}
+      ▪ <b>Indexer:</b> {indexer}
+      ▪ <b>Client:</b> {download_client}
+    actions:
+      - label: "📁 Open in {source_name}"
+        url: "{web_url}"
+        style: "PRIMARY"
+
+  request:
+    title: "{request_icon} {request_action}: {subject}"
+    subtitle: "{instance_name} • {request_status}"
+    body: |
+      ▪ <b>Requested By:</b> {requested_by}
+      ▪ <b>Media Type:</b> {media_type}
+      ▪ <b>Quality:</b> {quality}
+      ▪ <b>Issue Type:</b> {issue_type}
+      ▪ <b>Issue Status:</b> {issue_status}
+      ▪ <b>Comment:</b> {comment}
+      ▪ <b>Details:</b> {message}
+    actions:
+      - label: "🌐 Open in {source_name}"
+        url: "{web_url}"
+        style: "PRIMARY"

@@ -95,4 +95,38 @@ class ConfigLoaderTest {
         assertEquals("secret-bot-token", config.notifications.botToken)
         assertEquals("-100999", config.notifications.chatId)
     }
+
+    @Test
+    fun `should load prepopulated default templates when environment is empty`() {
+        val config = ConfigLoader.load(emptyMap())
+        assertNotNull(config.templates)
+        assertNotNull(config.templates.events["grab"])
+        assertNotNull(config.templates.events["download_progress"])
+        assertNotNull(config.templates.events["download_complete"])
+        assertNotNull(config.templates.events["import"])
+        assertNotNull(config.templates.events["media_available"])
+        assertNotNull(config.templates.events["health"])
+        assertNotNull(config.templates.events["manual_interaction"])
+        assertNotNull(config.templates.events["request"])
+    }
+
+    @Test
+    fun `should fail startup if configured templates file does not exist`() {
+        val env = mapOf("TEMPLATES_FILE" to "/non/existent/templates.yaml")
+        kotlin.test.assertFailsWith<IllegalStateException> {
+            ConfigLoader.load(env)
+        }
+    }
+
+    @Test
+    fun `should merge user template overrides with default templates`() {
+        val env =
+            mapOf(
+                "TEMPLATES_YAML" to "events:\n  grab:\n    title: 'Custom Grab'"
+            )
+        val config = ConfigLoader.load(env)
+        assertEquals("Custom Grab", config.templates.events["grab"]?.title)
+        assertNotNull(config.templates.events["import"])
+        assertNotNull(config.templates.events["media_available"])
+    }
 }

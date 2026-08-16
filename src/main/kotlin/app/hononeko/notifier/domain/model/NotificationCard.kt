@@ -7,6 +7,7 @@ data class NotificationCard(
     val level: NotificationLevel = NotificationLevel.INFO,
     val fields: List<CardField> = emptyList(),
     val mediaSpecs: MediaSpecs? = null,
+    val customBody: String? = null,
     val artworkUrl: String? = null,
     val actions: List<ActionLink> = emptyList()
 )
