@@ -585,4 +585,107 @@ class CardFormatterServiceTest {
         val healthCard = CardFormatterService.buildHealthCard(health, engine = customEngine)
         assertEquals("Custom Health Body", healthCard.customBody)
     }
+
+    @Test
+    fun `should dispatch buildAvailableCard across all payload types correctly`() {
+        val jellyfin =
+            MediaPayload.JellyfinItemAdded(
+                itemId = "j1",
+                title = "Episode 1",
+                seriesName = "Show"
+            )
+        val download =
+            MediaPayload.ArrDownload(
+                source = AppSource.RADARR,
+                title = "Movie",
+                seriesOrMovieTitle = "Movie"
+            )
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.RADARR,
+                downloadId = "hash",
+                title = "Movie",
+                seriesOrMovieTitle = "Movie"
+            )
+        val health =
+            MediaPayload.ServarrHealth(
+                source = AppSource.SONARR,
+                level = "warning",
+                message = "Indexer offline"
+            )
+        val manual =
+            MediaPayload.ServarrManualInteraction(
+                source = AppSource.SONARR,
+                title = "Show S01E01",
+                seriesOrMovieTitle = "Show"
+            )
+        val seerr =
+            MediaPayload.SeerrEvent(
+                eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_PENDING,
+                notificationType = "PENDING",
+                subject = "Show"
+            )
+
+        assertNotNull(CardFormatterService.buildAvailableCard(jellyfin))
+        assertNotNull(CardFormatterService.buildAvailableCard(download))
+        assertNotNull(CardFormatterService.buildAvailableCard(grab))
+        assertNotNull(CardFormatterService.buildAvailableCard(health))
+        assertNotNull(CardFormatterService.buildAvailableCard(manual))
+        assertNotNull(CardFormatterService.buildAvailableCard(seerr))
+    }
+
+    @Test
+    fun `should handle edge cases in formatting helpers`() {
+        // Truncate overview with no spaces
+        val longWord = "a".repeat(100)
+        val truncated = CardFormatterService.truncateOverview(longWord, 20)
+        assertTrue(truncated?.endsWith("...") == true)
+        assertTrue((truncated?.length ?: 0) <= 23)
+
+        // Duration formatting
+        assertEquals("30s", CardFormatterService.formatDuration(30))
+        assertEquals("5m 0s", CardFormatterService.formatDuration(300))
+        assertEquals("2h 0m", CardFormatterService.formatDuration(7200))
+
+        // Progress updates across states
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "hash",
+                title = "Show S01E01",
+                seriesOrMovieTitle = "Show"
+            )
+
+        val states =
+            listOf(
+                TorrentState.CHECKING,
+                TorrentState.PAUSED,
+                TorrentState.QUEUED,
+                TorrentState.STALLED,
+                TorrentState.ALLOCATING_METADATA,
+                TorrentState.UNKNOWN
+            )
+
+        for (state in states) {
+            val progress =
+                TorrentProgress(
+                    hash = "hash",
+                    name = "Show",
+                    progressPercent = 50.0,
+                    progressRatio = 0.5,
+                    downloadSpeedBytesPerSec = 1000000,
+                    uploadSpeedBytesPerSec = 50000,
+                    etaSeconds = 300,
+                    totalSizeBytes = 2000000000L,
+                    downloadedBytes = 1000000000L,
+                    seedsCount = 10,
+                    seedsTotal = 20,
+                    peersCount = 5,
+                    peersTotal = 10,
+                    state = state
+                )
+            val update = CardFormatterService.buildProgressUpdate(grab, progress, null)
+            assertNotNull(update.subtitle)
+        }
+    }
 }

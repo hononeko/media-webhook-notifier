@@ -288,4 +288,147 @@ class DownloadTrackerEngineTest {
             assertEquals(0, engine.activeTrackerCount())
             assertFalse(engine.isTracking("hashStop"))
         }
+
+    @Test
+    fun `should stop tracking when maxPollingMinutes is exceeded`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            val progress =
+                TorrentProgress(
+                    hash = "hashMaxPoll",
+                    name = "Show",
+                    progressPercent = 10.0,
+                    progressRatio = 0.1,
+                    downloadSpeedBytesPerSec = 1000,
+                    uploadSpeedBytesPerSec = 0,
+                    etaSeconds = 600,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 100000L,
+                    seedsCount = 1,
+                    seedsTotal = 2,
+                    peersCount = 1,
+                    peersTotal = 2,
+                    state = TorrentState.DOWNLOADING
+                )
+            val torrentClient = TorrentClientPort { Either.Right(progress) }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = torrentClient,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 1,
+                    maxPollingMinutes = 1, // 1 minute max
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hashMaxPoll",
+                    title = "Show",
+                    seriesOrMovieTitle = "Show"
+                )
+
+            engine.track("hashMaxPoll", grab)
+            assertTrue(engine.isTracking("hashMaxPoll"))
+
+            // Advance time past 1 minute (61 seconds)
+            testScope.advanceTimeBy(65000L)
+
+            assertEquals(0, engine.activeTrackerCount())
+            assertFalse(engine.isTracking("hashMaxPoll"))
+        }
+
+    @Test
+    fun `should send stalled notification when download is stalled beyond timeout`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            val stalledProgress =
+                TorrentProgress(
+                    hash = "hashStalled",
+                    name = "Stalled Show",
+                    progressPercent = 15.0,
+                    progressRatio = 0.15,
+                    downloadSpeedBytesPerSec = 0,
+                    uploadSpeedBytesPerSec = 0,
+                    etaSeconds = -1,
+                    totalSizeBytes = 2000000L,
+                    downloadedBytes = 300000L,
+                    seedsCount = 0,
+                    seedsTotal = 0,
+                    peersCount = 0,
+                    peersTotal = 0,
+                    state = TorrentState.STALLED
+                )
+            val torrentClient = TorrentClientPort { Either.Right(stalledProgress) }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = torrentClient,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 1,
+                    stalledTimeoutMinutes = 1, // 1 minute stalled timeout
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hashStalled",
+                    title = "Stalled Show",
+                    seriesOrMovieTitle = "Stalled Show"
+                )
+
+            engine.track("hashStalled", grab)
+
+            // Advance time past 1 minute stalled window
+            testScope.advanceTimeBy(65000L)
+
+            assertEquals(1, publisher.cancelledCards.size)
+            assertEquals(0, engine.activeTrackerCount())
+        }
+
+    @Test
+    fun `should handle torrent client errors during poll loop gracefully`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            val torrentClient =
+                TorrentClientPort {
+                    Either.Left(DomainError.TorrentClientError.ConnectionFailed("http://localhost:8080"))
+                }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = torrentClient,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 1,
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hashErr",
+                    title = "Err Show",
+                    seriesOrMovieTitle = "Err Show"
+                )
+
+            engine.track("hashErr", grab)
+            assertTrue(engine.isTracking("hashErr"))
+
+            testScope.advanceTimeBy(3000L)
+
+            // Should remain tracking despite transient errors
+            assertTrue(engine.isTracking("hashErr"))
+            engine.stopAll()
+        }
 }

@@ -444,4 +444,189 @@ class TelegramPublisherAdapterTest {
             assertTrue(relativeResult.isRight())
             assertEquals("/bot12345:TOKEN/sendMessage", endpointCalled)
         }
+
+    @Test
+    fun `should edit progress with editMessageCaption for photo messages and custom body`() =
+        runTest {
+            var endpointCalled = ""
+            val mockEngine =
+                MockEngine { request ->
+                    endpointCalled = request.url.encodedPath
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":777}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123",
+                    sendPhotos = true
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            // Send photo card first so photoMessageRegistry records it
+            val photoCard =
+                NotificationCard(
+                    title = "Downloading",
+                    artworkUrl = "https://example.com/poster.jpg",
+                    eventType = "grab"
+                )
+            val handleResult = adapter.sendCard(photoCard)
+            assertTrue(handleResult.isRight())
+            val handle = handleResult.getOrNull()!!
+
+            val progressUpdate =
+                ProgressUpdate(
+                    trackingKey = "hash123",
+                    title = "Downloading: Futurama",
+                    percent = 50.0,
+                    progressBar = "[█████░░░░░]",
+                    speedFormatted = "10 MB/s",
+                    etaFormatted = "2m",
+                    sizeFormatted = "2.0 GB",
+                    peersInfo = "10 seeds",
+                    stateText = "Downloading",
+                    subtitle = "50% • 10 MB/s",
+                    customBody = "Custom Progress Text",
+                    actions = listOf(ActionLink("Open", "http://localhost:8080", ActionStyle.PRIMARY))
+                )
+
+            val editResult = adapter.updateProgress(handle, progressUpdate)
+            assertTrue(editResult.isRight())
+            assertEquals("/bot12345:TOKEN/editMessageCaption", endpointCalled)
+        }
+
+    @Test
+    fun `should handle non-200 responses and errors during updateProgress gracefully`() =
+        runTest {
+            val mockEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/bot12345:TOKEN/sendMessage" -> {
+                            respond(
+                                content = """{"ok":true,"result":{"message_id":123}}""",
+                                status = HttpStatusCode.OK,
+                                headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                        "/bot12345:TOKEN/editMessageText" -> {
+                            respond(
+                                content = """{"ok":false,"error_code":500,"description":"Internal Server Error"}""",
+                                status = HttpStatusCode.InternalServerError,
+                                headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                        else -> respond("Not found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123"
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val handle = NotificationHandle("telegram", "-100123", "123")
+            val progressUpdate =
+                ProgressUpdate(
+                    trackingKey = "hash123",
+                    title = "Downloading",
+                    percent = 50.0,
+                    progressBar = "[█████░░░░░]",
+                    speedFormatted = "10 MB/s",
+                    etaFormatted = "2m",
+                    sizeFormatted = "2.0 GB",
+                    peersInfo = "10 seeds",
+                    stateText = "Downloading",
+                    subtitle = "50%"
+                )
+
+            val editResult = adapter.updateProgress(handle, progressUpdate)
+            assertTrue(editResult.isLeft())
+            assertIs<DomainError.NotificationError.DeliveryFailed>(editResult.leftOrNull())
+        }
+
+    @Test
+    fun `should send photo binary with topicId, action markup, and truncated caption`() =
+        runTest {
+            val mockEngine =
+                MockEngine { request ->
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":999}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123",
+                    topicId = 42,
+                    sendPhotos = true
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val longOverview = "A".repeat(1200)
+            val photoCard =
+                NotificationCard(
+                    title = "Binary Photo Title",
+                    artworkBytes = byteArrayOf(1, 2, 3),
+                    overview = longOverview,
+                    actions = listOf(ActionLink("Watch", "https://plex.tv", ActionStyle.PRIMARY))
+                )
+
+            val result = adapter.sendCard(photoCard)
+            assertTrue(result.isRight())
+        }
+
+    @Test
+    fun `should handle network exceptions across all endpoints gracefully`() =
+        runTest {
+            val throwingEngine =
+                MockEngine {
+                    throw java.io.IOException("Connection refused")
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123",
+                    sendPhotos = true
+                )
+            val adapter = TelegramPublisherAdapter(config, throwingEngine)
+
+            // Send text
+            val textResult = adapter.sendCard(NotificationCard(title = "Text"))
+            assertTrue(textResult.isLeft())
+
+            // Send photo url
+            val photoResult = adapter.sendCard(NotificationCard(title = "Photo", artworkUrl = "https://img.jpg"))
+            assertTrue(photoResult.isLeft())
+
+            // Send photo binary
+            val binaryResult = adapter.sendCard(NotificationCard(title = "Binary", artworkBytes = byteArrayOf(1, 2)))
+            assertTrue(binaryResult.isLeft())
+
+            // Update text progress
+            val handle = NotificationHandle("telegram", "-100123", "123")
+            val progress =
+                ProgressUpdate(
+                    trackingKey = "k",
+                    title = "T",
+                    percent = 1.0,
+                    progressBar = "[]",
+                    speedFormatted = "0",
+                    etaFormatted = "0",
+                    sizeFormatted = "0",
+                    peersInfo = "0",
+                    stateText = "D"
+                )
+            val updateResult = adapter.updateProgress(handle, progress)
+            assertTrue(updateResult.isLeft())
+        }
 }

@@ -75,4 +75,17 @@ class NotificationUrlParserTest {
         assertEquals("", parsed.chatId)
         assertNull(parsed.topicId)
     }
+
+    @Test
+    fun `should handle scheme-less string and single-token telegram URL`() {
+        val parsedNoScheme = NotificationUrlParser.parse("just-a-plain-string")
+        assertEquals("just-a-plain-string", parsedNoScheme.url)
+
+        val parsedSingleToken = NotificationUrlParser.parse("telegram://myonlybottoken?photo=false&topic_id=77&")
+        assertEquals("telegram", parsedSingleToken.provider)
+        assertEquals("myonlybottoken", parsedSingleToken.botToken)
+        assertEquals("", parsedSingleToken.chatId)
+        assertEquals(77L, parsedSingleToken.topicId)
+        assertEquals(false, parsedSingleToken.sendPhotos)
+    }
 }

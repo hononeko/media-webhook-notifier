@@ -290,4 +290,59 @@ class SeasonDebouncerTest {
             assertEquals(1, downloads.size)
             assertEquals(0, debouncer.activeBufferCount())
         }
+
+    @Test
+    fun `should support generic submit for MediaPayload instances`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val grabs = Collections.synchronizedList(mutableListOf<MediaPayload.ArrGrab>())
+            val downloads = Collections.synchronizedList(mutableListOf<MediaPayload.ArrDownload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 1000L,
+                    scope = testScope,
+                    onDebouncedGrab = { grabs.add(it) },
+                    onDebouncedDownload = { downloads.add(it) }
+                )
+
+            val grab: MediaPayload =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "",
+                    title = "Futurama - S01E01",
+                    seriesOrMovieTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1),
+                    instanceName = "Sonarr-Main"
+                )
+
+            val download: MediaPayload =
+                MediaPayload.ArrDownload(
+                    source = AppSource.SONARR,
+                    downloadId = null,
+                    title = "Futurama - S01E01",
+                    seriesOrMovieTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1),
+                    instanceName = "Sonarr-Main"
+                )
+
+            val plex: MediaPayload = MediaPayload.PlexLibraryNew(title = "Futurama")
+
+            debouncer.submit(grab)
+            debouncer.submit(download)
+            debouncer.submit(plex) // ignored
+
+            assertEquals(2, debouncer.activeBufferCount())
+
+            debouncer.flush("sonarr:sonarr-main:futurama:s1")
+            assertEquals(1, grabs.size)
+
+            debouncer.flush("title:sonarr:sonarr-main:futurama:s1:false")
+            assertEquals(1, downloads.size)
+
+            assertEquals(0, debouncer.activeBufferCount())
+        }
 }

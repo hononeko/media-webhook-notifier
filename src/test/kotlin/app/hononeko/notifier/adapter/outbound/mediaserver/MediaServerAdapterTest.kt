@@ -98,4 +98,39 @@ class MediaServerAdapterTest {
 
         assertNull(adapter.resolveDeepLink(grabPayload))
     }
+
+    @Test
+    fun `should handle edge cases in Plex and Jellyfin deep links`() {
+        val plexAdapter = MediaServerAdapter(MediaServerConfig(type = "plex"))
+
+        // Null ratingKey
+        val noKeyPlex = MediaPayload.PlexLibraryNew(title = "Test", ratingKey = null)
+        assertNull(plexAdapter.resolveDeepLink(noKeyPlex))
+
+        // Rating key starting with /library/metadata/
+        val fullKeyPlex = MediaPayload.PlexLibraryNew(title = "Test", ratingKey = "/library/metadata/999")
+        assertEquals(
+            "https://app.plex.tv/desktop/#!/server//details?key=%2Flibrary%2Fmetadata%2F999",
+            plexAdapter.resolveDeepLink(fullKeyPlex)
+        )
+
+        // Rating key starting with /
+        val slashKeyPlex = MediaPayload.PlexLibraryNew(title = "Test", ratingKey = "/other/key/999")
+        assertEquals(
+            "https://app.plex.tv/desktop/#!/server//details?key=%2Fother%2Fkey%2F999",
+            plexAdapter.resolveDeepLink(slashKeyPlex)
+        )
+
+        val jfNoUrlAdapter = MediaServerAdapter(MediaServerConfig(type = "jellyfin", url = "", publicUrl = ""))
+        val jfPayload = MediaPayload.JellyfinItemAdded(itemId = "item123", title = "Test")
+        assertNull(jfNoUrlAdapter.resolveDeepLink(jfPayload))
+
+        val jfBlankItemPayload = MediaPayload.JellyfinItemAdded(itemId = "", title = "Test")
+        val jfAdapter = MediaServerAdapter(MediaServerConfig(type = "jellyfin", url = "http://localhost:8096"))
+        assertNull(jfAdapter.resolveDeepLink(jfBlankItemPayload))
+
+        // Deep link without serverId
+        val linkWithoutServerId = jfAdapter.resolveDeepLink(jfPayload)
+        assertEquals("http://localhost:8096/web/index.html#!/details?id=item123", linkWithoutServerId)
+    }
 }

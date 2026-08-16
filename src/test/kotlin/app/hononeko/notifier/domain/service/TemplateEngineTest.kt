@@ -188,4 +188,86 @@ class TemplateEngineTest {
         assertEquals(null, card.artworkUrl)
         assertEquals("grab", card.eventType)
     }
+
+    @Test
+    fun `resolveProgress renders progress updates with custom templates and defaults`() {
+        val yaml =
+            """
+            events:
+              download_progress:
+                title: "⏳ {title} ({progress}%)"
+                subtitle: "{speed} • ETA: {eta}"
+                body: |
+                  ▪ <b>Seeds:</b> {seeds}
+                actions:
+                  - label: "Open qBittorrent"
+                    url: "http://qbit.lan:8080"
+                    style: "PRIMARY"
+            """.trimIndent()
+
+        val engine = TemplateEngine(YamlParser.parseTemplateConfig(yaml))
+        val context =
+            mapOf(
+                "title" to "Severance S02E01",
+                "progress" to "50",
+                "speed" to "12 MB/s",
+                "eta" to "2m",
+                "seeds" to "15"
+            )
+
+        val resolved =
+            engine.resolveProgress(
+                eventName = "download_progress",
+                defaultTitle = "Downloading...",
+                defaultSubtitle = "Speed: 10 MB/s",
+                defaultActions = emptyList(),
+                context = context
+            )
+
+        assertEquals("⏳ Severance S02E01 (50%)", resolved.title)
+        assertEquals("12 MB/s • ETA: 2m", resolved.subtitle)
+        assertEquals("▪ <b>Seeds:</b> 15", resolved.customBody)
+        assertEquals(1, resolved.actions.size)
+        assertEquals("Open qBittorrent", resolved.actions.first().label)
+    }
+
+    @Test
+    fun `getEventTemplate resolves event name aliases properly`() {
+        val yaml =
+            """
+            events:
+              servarr.grab:
+                title: "Grab"
+              download.progress:
+                title: "Progress"
+              download.complete:
+                title: "Complete"
+              download.stalled:
+                title: "Stalled"
+              servarr.import:
+                title: "Import"
+              servarr.manual_interaction:
+                title: "Manual"
+              system.health:
+                title: "Health"
+              media_server.available:
+                title: "Available"
+              seerr.request:
+                title: "Request"
+            """.trimIndent()
+
+        val engine = TemplateEngine(YamlParser.parseTemplateConfig(yaml))
+
+        assertEquals("Grab", engine.getEventTemplate("grab")?.title)
+        assertEquals("Progress", engine.getEventTemplate("progress")?.title)
+        assertEquals("Complete", engine.getEventTemplate("complete")?.title)
+        assertEquals("Stalled", engine.getEventTemplate("stalled")?.title)
+        assertEquals("Import", engine.getEventTemplate("import")?.title)
+        assertEquals("Manual", engine.getEventTemplate("manual_interaction")?.title)
+        assertEquals("Health", engine.getEventTemplate("health")?.title)
+        assertEquals("Available", engine.getEventTemplate("available")?.title)
+        assertEquals("Request", engine.getEventTemplate("request")?.title)
+        assertEquals("Request", engine.getEventTemplate("issue")?.title) // fallback to request
+        assertEquals(220, engine.theme.maxOverviewLength)
+    }
 }

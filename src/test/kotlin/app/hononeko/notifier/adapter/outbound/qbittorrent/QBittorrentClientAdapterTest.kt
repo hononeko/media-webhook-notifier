@@ -230,4 +230,41 @@ class QBittorrentClientAdapterTest {
             val result = adapter.getTorrentProgress("hash123")
             assertTrue(result.isLeft())
         }
+
+    @Test
+    fun `should return AuthenticationFailed when login returns Fails`() =
+        runTest {
+            val mockEngine =
+                MockEngine { request ->
+                    if (request.url.encodedPath == "/api/v2/auth/login") {
+                        respond("Fails.", HttpStatusCode.OK)
+                    } else {
+                        respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val config =
+                QBittorrentConfig(
+                    url = "http://localhost:8080",
+                    username = "admin",
+                    password = "wrongpassword"
+                )
+            val adapter = QBittorrentClientAdapter(config, mockEngine)
+            val result = adapter.getTorrentProgress("hash123")
+            assertTrue(result.isLeft())
+        }
+
+    @Test
+    fun `should return ConnectionFailed on network exception`() =
+        runTest {
+            val mockEngine =
+                MockEngine {
+                    throw java.io.IOException("Network down")
+                }
+
+            val config = QBittorrentConfig(url = "http://localhost:8080")
+            val adapter = QBittorrentClientAdapter(config, mockEngine)
+            val result = adapter.getTorrentProgress("hash123")
+            assertTrue(result.isLeft())
+        }
 }
