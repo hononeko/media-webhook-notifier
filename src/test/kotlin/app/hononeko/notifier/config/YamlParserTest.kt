@@ -186,5 +186,18 @@ class YamlParserTest {
         assertEquals(true, config.events["import"]?.imageEmbed)
         assertEquals(false, config.events["complete"]?.imageEmbed)
         assertEquals(true, config.events["stalled"]?.imageEmbed)
+
+        val stringBoolYaml =
+            """
+            events:
+              servarr:
+                grab:
+                  image_embed: "true"
+                import:
+                  image_embed: "false"
+            """.trimIndent()
+        val stringBoolConfig = YamlParser.parseTemplateConfig(stringBoolYaml)
+        assertEquals(true, stringBoolConfig.events["grab"]?.imageEmbed)
+        assertEquals(false, stringBoolConfig.events["import"]?.imageEmbed)
     }
 }
