@@ -41,13 +41,13 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
 
         val notificationType = dto.notificationType?.trim()
         val effectiveInstance = callerName?.ifBlank { null } ?: dto.serverName?.ifBlank { null } ?: "Jellyfin"
-        logger.info(
-            "Ingesting Jellyfin webhook event: {} (instance: {})",
-            notificationType,
-            effectiveInstance
-        )
 
         return if (notificationType.equals("ItemAdded", ignoreCase = true)) {
+            logger.info(
+                "Ingesting Jellyfin webhook event: {} (instance: {})",
+                notificationType,
+                effectiveInstance
+            )
             val payload = mapToJellyfinItemAdded(dto, effectiveInstance)
             WebhookProcessResult.Queued(payload, notificationType)
         } else {
