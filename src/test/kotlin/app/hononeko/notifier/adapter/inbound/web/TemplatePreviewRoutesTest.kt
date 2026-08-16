@@ -178,6 +178,44 @@ class TemplatePreviewRoutesTest {
         }
 
     @Test
+    fun `should preview progress event with progress update card`() =
+        withPreviewApp(authToken = "") { client ->
+            val response =
+                client.post("/api/v1/templates/preview") {
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        """
+                        {
+                            "event_type": "download_progress",
+                            "template_yaml": "events:\n  download_progress:\n    title: 'Custom: {title}'\n    actions:\n      - label: 'Open'\n        url: 'http://localhost:8080'"
+                        }
+                        """.trimIndent()
+                    )
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val responseDto = testJson.decodeFromString<TemplatePreviewResponseDto>(response.bodyAsText())
+            assertEquals("success", responseDto.status)
+            assertEquals("PROGRESS", responseDto.renderedCard.level)
+            assertEquals(1, responseDto.renderedCard.actions.size)
+            assertTrue(responseDto.telegramHtml.contains("Custom: Breaking Bad (S01E01)"))
+        }
+
+    @Test
+    fun `should return 400 Bad Request on invalid JSON payload`() =
+        withPreviewApp(authToken = "") { client ->
+            val response =
+                client.post("/api/v1/templates/preview") {
+                    contentType(ContentType.Application.Json)
+                    setBody("not-a-valid-json")
+                }
+
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+            val body = response.bodyAsText()
+            assertTrue(body.contains("Invalid JSON payload"))
+        }
+
+    @Test
     fun `dto constructors and data models coverage`() {
         val req = TemplatePreviewRequestDto(templateYaml = "foo: bar", eventType = "grab")
         assertEquals("foo: bar", req.templateYaml)

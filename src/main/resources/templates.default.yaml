@@ -10,11 +10,12 @@ theme:
 events:
   download:
     progress:
-      title: "⏳ Downloading: {title}"
+      title: "⏳ Downloading {title} from {indexer}"
       subtitle: "{instance_name}"
       body: |
         <code>{progress_bar}</code> <b>{progress_percent}%</b>
 
+        ▪ <b>Release:</b> {release_name}
         ▪ <b>Speed:</b> {speed} (ETA: {eta})
         ▪ <b>Transferred:</b> {size_formatted}
         ▪ <b>Peers:</b> {peers_info}
@@ -24,6 +25,7 @@ events:
       title: "✅ Download Complete: {title}"
       subtitle: "{instance_name}"
       body: |
+        ▪ <b>Release:</b> {release_name}
         ▪ <b>Status:</b> 100% Downloaded
         ▪ <b>Total Size:</b> {total_size}
 
@@ -31,16 +33,17 @@ events:
       title: "⚠️ Download Stalled: {title}"
       subtitle: "{instance_name}"
       body: |
+        ▪ <b>Release:</b> {release_name}
         ▪ <b>Status:</b> Download Stalled (0 B/s)
         ▪ <b>Progress:</b> {progress_percent}% <code>{progress_bar}</code>
 
   servarr:
     grab:
       image_embed: true
-      title: "⏳ Queueing Download: {title}"
-      subtitle: "{instance_name} • {indexer}"
+      title: "⏳ Downloading {title} from {indexer}"
+      subtitle: "{instance_name}"
       body: |
-        ▪ <b>Release:</b> {release_group}
+        ▪ <b>Release:</b> {release_name}
         ▪ <b>Quality:</b> {quality}
         ▪ <b>Size:</b> {size}
 

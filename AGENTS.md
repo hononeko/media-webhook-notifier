@@ -66,7 +66,7 @@ Before committing or pushing changes to remote, all of the following steps **MUS
 
 ### 2.4 Structured Concurrency & Graceful Shutdown
 * **Supervisor Scope:** Polling and tracking jobs run under `CoroutineScope(SupervisorJob() + Dispatchers.Default)`.
-* **Debounce Window:** Rapid multi-episode grabs sharing the same `downloadId` are buffered for 5 seconds to prevent chat spam.
+* **Debounce Window:** Rapid multi-episode grabs, imports, and upgrades are buffered for 5 seconds to prevent chat spam.
 * **Graceful Termination:** On `SIGTERM` / `SIGINT`, cancel active tracking jobs, flush pending states, and terminate within 5 seconds.
 
 ### 2.5 Security & Input Sanitization

@@ -109,18 +109,21 @@ fun buildDependencies(
             scope = scope
         )
 
-    val seasonDebouncer =
-        SeasonDebouncer(
-            debounceMillis = 5000L,
-            scope = scope,
-            onDebouncedGrab = { grab ->
-                downloadTracker.track(grab.downloadId, grab)
-            }
-        )
-
     val mediaImportedService =
         MediaImportedService(
             notificationPublisher = notificationPublisher
+        )
+
+    val seasonDebouncer =
+        SeasonDebouncer(
+            debounceMillis = config.qbittorrent.debounceSeconds * 1000L,
+            scope = scope,
+            onDebouncedGrab = { grab ->
+                downloadTracker.track(grab.downloadId, grab)
+            },
+            onDebouncedDownload = { download ->
+                mediaImportedService.announce(download)
+            }
         )
 
     val mediaAvailableService =

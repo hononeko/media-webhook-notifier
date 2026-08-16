@@ -187,4 +187,50 @@ class HealthControllerTest {
             val headerBody = headerPromRes.bodyAsText()
             assertTrue(headerBody.contains("process_uptime_seconds"))
         }
+
+    @Test
+    fun `should construct and serialize Health and Metrics DTOs correctly`() {
+        val healthDto =
+            app.hononeko.notifier.adapter.inbound.web.controller
+                .HealthStatusDto(status = "UP")
+        assertEquals("UP", healthDto.status)
+        assertEquals("media-webhook-notifier", healthDto.service)
+        assertTrue(healthDto.timestamp > 0)
+
+        val probeDto =
+            app.hononeko.notifier.adapter.inbound.web.controller.ProbeStatusDto(
+                status = "UP",
+                probe = "readiness",
+                checks = mapOf("event_rail" to "UP")
+            )
+        assertEquals("readiness", probeDto.probe)
+        assertEquals("UP", probeDto.checks?.get("event_rail"))
+
+        val eventRailMetrics =
+            app.hononeko.notifier.adapter.inbound.web.controller.EventRailMetricsDto(
+                closed = false,
+                running = true
+            )
+        assertEquals(false, eventRailMetrics.closed)
+        assertEquals(true, eventRailMetrics.running)
+
+        val memoryMetrics =
+            app.hononeko.notifier.adapter.inbound.web.controller.MemoryMetricsDto(
+                usedBytes = 1000L,
+                freeBytes = 2000L,
+                totalBytes = 3000L,
+                maxBytes = 4000L
+            )
+        assertEquals(1000L, memoryMetrics.usedBytes)
+
+        val metricsDto =
+            app.hononeko.notifier.adapter.inbound.web.controller.MetricsDto(
+                uptimeMillis = 5000L,
+                activeTrackersCount = 2,
+                eventRail = eventRailMetrics,
+                memory = memoryMetrics
+            )
+        assertEquals(5000L, metricsDto.uptimeMillis)
+        assertEquals(2, metricsDto.activeTrackersCount)
+    }
 }

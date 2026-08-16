@@ -15,7 +15,7 @@ Compiled ahead-of-time (AOT) with **GraalVM Native Image** into a static, distro
 ## 🌟 What It Does
 
 * **⏳ Live Download Progress:** Monitors active downloads in **qBittorrent** and silently edits the Telegram message in-place every few seconds with an ASCII progress bar, real-time speed, ETA, and peer stats.
-* **🛡️ Smart Episode Debouncer:** Automatically groups rapid multi-episode grabs sharing the same download ID into a single clean status card (no chat spam).
+* **🛡️ Smart Episode Debouncer:** Automatically groups rapid multi-episode grabs, imports, and quality upgrades into a single clean status card (no chat spam).
 * **🍿 Media Available Cards:** Directly ingests Plex `library.new` and Jellyfin `ItemAdded` events with artwork and instant watch deep links.
 * **🛎️ Request & Issue Tracking:** Ingests media requests and issue reports from Overseerr, Jellyseerr, and Seerr.
 * **🎨 Fully Customizable Layouts:** Modify card titles, emojis, text, or localization via simple YAML templates.
@@ -98,7 +98,7 @@ All settings can be configured via environment variables:
 | `QBITTORRENT_POLL_INTERVAL_SECONDS` | `5` | Tracking update polling interval (in seconds) |
 | `QBITTORRENT_MAX_POLLING_MINUTES` | `30` | Max duration to track a single download |
 | `QBITTORRENT_STALLED_TIMEOUT_MINUTES` | `15` | Timeout before alerting a download is stalled |
-| `QBITTORRENT_DEBOUNCE_SECONDS` | `5` | Sliding window to batch rapid multi-episode grabs |
+| `QBITTORRENT_DEBOUNCE_SECONDS` | `5` | Sliding window to batch rapid multi-episode grabs, imports, and upgrades |
 | `QBITTORRENT_WEBUI_PUBLIC_URL` | `""` | Public URL to qBittorrent WebUI |
 
 ### Media Server (Plex & Jellyfin)

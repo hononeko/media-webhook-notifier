@@ -38,7 +38,16 @@ class IngestWebhookService(
                     }
                 }
                 is MediaPayload.ArrDownload -> {
-                    announceMediaImportedUseCase.announce(payload).bind()
+                    if (seasonDebouncer != null) {
+                        logger.debug(
+                            "Routing ArrDownload to SeasonDebouncer for: {} (season {})",
+                            payload.seriesOrMovieTitle,
+                            payload.seasonNumber
+                        )
+                        seasonDebouncer.submit(payload)
+                    } else {
+                        announceMediaImportedUseCase.announce(payload).bind()
+                    }
                 }
                 is MediaPayload.PlexLibraryNew,
                 is MediaPayload.JellyfinItemAdded -> {

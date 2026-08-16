@@ -107,4 +107,44 @@ class ApplicationBootstrapTest {
                 dependencies.close()
             }
         }
+
+    @Test
+    fun `should route debounced events through dependencies debouncer callbacks`() =
+        testApplication {
+            val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val config =
+                AppConfig(
+                    server = ServerConfig(authToken = ""),
+                    qbittorrent =
+                        app.hononeko.notifier.config
+                            .QBittorrentConfig(debounceSeconds = 1)
+                )
+            val dependencies = buildDependencies(config, scope = testScope)
+
+            val grab =
+                app.hononeko.notifier.domain.model.MediaPayload.ArrGrab(
+                    source = app.hononeko.notifier.domain.model.AppSource.SONARR,
+                    downloadId = "hashBootstrap",
+                    title = "Futurama - S01E01",
+                    seriesOrMovieTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1)
+                )
+
+            val download =
+                app.hononeko.notifier.domain.model.MediaPayload.ArrDownload(
+                    source = app.hononeko.notifier.domain.model.AppSource.SONARR,
+                    downloadId = "hashBootstrapDl",
+                    title = "Futurama - S01E01",
+                    seriesOrMovieTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1)
+                )
+
+            dependencies.seasonDebouncer.submit(grab)
+            dependencies.seasonDebouncer.submit(download)
+            dependencies.seasonDebouncer.flushAll()
+
+            dependencies.close()
+        }
 }

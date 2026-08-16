@@ -120,4 +120,21 @@ class TelegramHtmlFormatterTest {
         assertTrue(html.contains("<i>Radarr</i>"))
         assertTrue(html.contains("🚀 <b>99.0%</b> (50 MB/s)"))
     }
+
+    @Test
+    fun `buildCardHtml skips specs and empty italic lines when blank`() {
+        val cardWithEmptySpecs =
+            NotificationCard(
+                title = "Show",
+                subtitle = "   ",
+                mediaSpecs = MediaSpecs(),
+                overview = ""
+            )
+        val html = TelegramHtmlFormatter.buildCardHtml(cardWithEmptySpecs)
+        assertEquals("<b>Show</b>", html)
+
+        val sb = StringBuilder()
+        TelegramHtmlFormatter.appendItalicLine(sb, "   ")
+        assertEquals("", sb.toString())
+    }
 }
