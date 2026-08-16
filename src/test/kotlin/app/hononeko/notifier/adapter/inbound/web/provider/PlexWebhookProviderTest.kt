@@ -233,4 +233,172 @@ class PlexWebhookProviderTest {
 
             assertIs<WebhookProcessResult.InvalidPayload>(processResult)
         }
+
+    @Test
+    fun `should parse Plex season added webhook with season metadata and parent posters`() =
+        testApplication {
+            var processResult: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook") {
+                    processResult = provider.process(call, "Kerrlab-Plex")
+                    call.respondText("OK")
+                }
+            }
+
+            val payload =
+                """
+                {
+                    "event": "library.new",
+                    "Server": {
+                        "title": "Kerrlab Plex",
+                        "uuid": "uuid-99"
+                    },
+                    "Metadata": {
+                        "ratingKey": "2001",
+                        "title": "Season 3",
+                        "parentTitle": "Futurama",
+                        "type": "season",
+                        "index": 3,
+                        "parentYear": 1999,
+                        "summary": "Season 3 adventures of Planet Express",
+                        "rating": 8.8,
+                        "thumb": "https://example.com/season3_thumb.jpg",
+                        "parentThumb": "https://example.com/series_thumb.jpg"
+                    }
+                }
+                """.trimIndent()
+
+            client.post("/webhook") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val plex = (processResult as WebhookProcessResult.Queued).payload as MediaPayload.PlexLibraryNew
+            assertEquals("Season 3", plex.title)
+            assertEquals("season", plex.mediaType)
+            assertEquals("Futurama", plex.parentTitle)
+            assertNull(plex.grandParentTitle)
+            assertEquals(3, plex.seasonNumber)
+            assertNull(plex.episodeNumber)
+            assertEquals(1999, plex.year)
+            assertEquals("https://example.com/season3_thumb.jpg", plex.posterUrl)
+            assertEquals("https://example.com/series_thumb.jpg", plex.parentPosterUrl)
+        }
+
+    @Test
+    fun `should parse Plex episode added webhook with episode metadata and grandparent titles`() =
+        testApplication {
+            var processResult: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook") {
+                    processResult = provider.process(call, "Kerrlab-Plex")
+                    call.respondText("OK")
+                }
+            }
+
+            val payload =
+                """
+                {
+                    "event": "library.new",
+                    "Server": {
+                        "title": "Kerrlab Plex",
+                        "uuid": "uuid-99"
+                    },
+                    "Metadata": {
+                        "ratingKey": "3001",
+                        "title": "Roswell That Ends Well",
+                        "parentTitle": "Season 3",
+                        "grandparentTitle": "Futurama",
+                        "type": "episode",
+                        "index": 1,
+                        "parentIndex": 3,
+                        "duration": 1320000,
+                        "thumb": "https://example.com/ep_thumb.jpg",
+                        "parentThumb": "https://example.com/season_thumb.jpg",
+                        "grandparentThumb": "https://example.com/series_thumb.jpg"
+                    }
+                }
+                """.trimIndent()
+
+            client.post("/webhook") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val plex = (processResult as WebhookProcessResult.Queued).payload as MediaPayload.PlexLibraryNew
+            assertEquals("Roswell That Ends Well", plex.title)
+            assertEquals("episode", plex.mediaType)
+            assertEquals("Season 3", plex.parentTitle)
+            assertEquals("Futurama", plex.grandParentTitle)
+            assertEquals(3, plex.seasonNumber)
+            assertEquals(1, plex.episodeNumber)
+            assertEquals(1320L, plex.durationSeconds)
+            assertEquals("https://example.com/ep_thumb.jpg", plex.posterUrl)
+            assertEquals("https://example.com/season_thumb.jpg", plex.parentPosterUrl)
+            assertEquals("https://example.com/series_thumb.jpg", plex.grandparentPosterUrl)
+        }
+
+    @Test
+    fun `should extract season number from title or parentTitle when index is missing`() =
+        testApplication {
+            var processResult: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook") {
+                    processResult = provider.process(call, "Plex")
+                    call.respondText("OK")
+                }
+            }
+
+            val payloadSeason =
+                """
+                {
+                    "event": "library.new",
+                    "Metadata": {
+                        "ratingKey": "4001",
+                        "title": "Season 5",
+                        "type": "season",
+                        "thumb": "/library/metadata/4001/thumb"
+                    }
+                }
+                """.trimIndent()
+
+            client.post("/webhook") {
+                contentType(ContentType.Application.Json)
+                setBody(payloadSeason)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val plexSeason = (processResult as WebhookProcessResult.Queued).payload as MediaPayload.PlexLibraryNew
+            assertEquals(5, plexSeason.seasonNumber)
+            assertNull(plexSeason.posterUrl, "Non-http relative URL should be sanitized to null")
+
+            val payloadEpisode =
+                """
+                {
+                    "event": "library.new",
+                    "Metadata": {
+                        "ratingKey": "4002",
+                        "title": "Finale",
+                        "parentTitle": "Series 4",
+                        "type": "episode",
+                        "index": 10
+                    }
+                }
+                """.trimIndent()
+
+            client.post("/webhook") {
+                contentType(ContentType.Application.Json)
+                setBody(payloadEpisode)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val plexEpisode = (processResult as WebhookProcessResult.Queued).payload as MediaPayload.PlexLibraryNew
+            assertEquals(4, plexEpisode.seasonNumber)
+            assertEquals(10, plexEpisode.episodeNumber)
+        }
 }

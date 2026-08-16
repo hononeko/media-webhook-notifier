@@ -183,20 +183,25 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | Tag | Applicable Events | Description | Example Output |
 | :--- | :--- | :--- | :--- |
 | **Universal & Identity** | | | |
-| `{instance_name}` | All Events | Resolved instance name (from header, query param, or fallback) | `Sonarr-4K`, `Radarr-Anime` |
+| `{instance_name}` | All Events | Resolved instance name (from header, query param, or fallback) | `Sonarr-4K`, `Kerrlab Plex`, `Home Jellyfin` |
 | `{overview}` | Grab, Import, Available, Request | Synopsis or plot summary (truncated to `theme.max_overview_length`) | *Paul Atreides unites with Chani...* |
-| `{poster_url}` | Grab, Import, Available, Request | URL to movie/series artwork poster | `https://image.tmdb.org/...` |
-| `{source_name}` | All Events | Display name of originating service | `Sonarr`, `Radarr`, `Plex`, `Overseerr` |
+| `{poster_url}` | Grab, Import, Available, Request | URL to artwork poster (Season poster for seasons, with series fallback) | `https://image.tmdb.org/...` |
+| `{source_name}` | All Events | Display name of originating service | `Sonarr`, `Radarr`, `Plex`, `Jellyfin`, `Overseerr` |
 | `{web_url}` | Grab, Import, Manual, Request | Web link back to originating service activity | `http://sonarr.lan:8989/series/...` |
 | `{year}` | Grab, Import, Available | Release or air year | `2024` |
 | `---` | `---` | `---` | `---` |
 | **Media & Episode Details** | | | |
-| `{title}` | All Media Events | Full formatted title (includes episode range if series) | `Severance (S02E01-E04)` |
-| `{series_title}` | Grab, Import, Available | Series title without season or episode suffix | `Severance` |
-| `{season}` | Grab, Import | 2-digit zero-padded season number | `02` |
-| `{episode}` | Grab, Import | 2-digit zero-padded episode number | `01` |
+| `{title}` | All Media Events | Full formatted title (e.g. `Futurama - Season 3`, `Dune: Part Two (2024)`) | `Futurama - Season 3` |
+| `{item_title}` | Available | Direct raw item title from media server | `Season 3`, `Roswell That Ends Well` |
+| `{series_title}` | Grab, Import, Available | Series title without season or episode suffix | `Futurama`, `Severance` |
+| `{season}` | Grab, Import, Available | 2-digit zero-padded season number | `03` |
+| `{season_number}` | Grab, Import, Available | Raw unpadded season number integer | `3` |
+| `{season_title}` | Available | Season title label | `Season 3` |
+| `{episode}` | Grab, Import, Available | 2-digit zero-padded episode number | `01` |
+| `{episode_number}` | Grab, Import, Available | Raw unpadded episode number integer | `1` |
 | `{episode_range}` | Grab, Import | Formatted episode range notation | `S02E01-E04` |
-| `{episode_title}` | Import, Available | Episode title name | `Hello, World` |
+| `{episode_title}` | Import, Available | Episode title name | `Roswell That Ends Well` |
+| `{media_type}` | Available, Request | Media type (`season`, `episode`, `movie`, `show` in media servers) | `season`, `movie` |
 | `{quality}` | Grab, Import, Manual, Request | Quality profile or resolution label | `WEBDL-1080p`, `Remux-2160p` |
 | `{release_group}` | Grab, Import, Manual | Torrent/Usenet scene or release group | `FLUX`, `NTb`, `FraMeSToR` |
 | `{release_title}` | Grab, Import, Manual | Original raw release filename | `Show.S01E01.1080p.mkv` |
@@ -219,7 +224,7 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | **Media Server & Playback** | | | |
 | `{audio_codec}` | Import, Available | Audio codec and audio channels | `EAC3 5.1`, `TrueHD Atmos` |
 | `{deep_link_url}` | Available | Direct playback/detail link in media server | `https://app.plex.tv/desktop...` |
-| `{duration}` | Available | Media playback runtime | `1h 45m` |
+| `{duration}` | Available | Media playback runtime (omitted on season-level notifications) | `1h 45m` |
 | `{media_server_name}` | Available | Display name of configured media server | `Plex Media Server`, `Jellyfin` |
 | `{rating}` / `{score}` | Available | Community rating formatted | `8.6/10` |
 | `{resolution}` | Import, Available | Resolution label | `2160p (4K)`, `1080p` |
@@ -231,7 +236,6 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | `{health_type}` | Health | Underlying health check category | `DiskSpace`, `DownloadClient` |
 | `{issue_status}` | Request Issues | Issue state | `Open`, `Resolved` |
 | `{issue_type}` | Health, Request Issues | Issue classification | `Video`, `Audio`, `Subtitles` |
-| `{media_type}` | Request | Requested media format | `🎬 Movie`, `📺 TV Series` |
 | `{message}` | Health, Request Comments | Diagnostic or user comment message | `Indexers are unreachable` |
 | `{reason}` | Manual Interaction | Rejection reason from Servarr | `Quality profile not matched` |
 | `{request_action}` | Request | Action verb | `Approved`, `Available`, `Declined` |

@@ -244,6 +244,45 @@ class WebhookDtoTest {
     }
 
     @Test
+    fun `test PlexWebhookDto season serialization and deserialization`() {
+        val dto =
+            PlexWebhookDto(
+                event = "library.new",
+                server = PlexServerDto(title = "Kerrlab Plex", uuid = "server-uuid-123"),
+                metadata =
+                    PlexMetadataDto(
+                        librarySectionType = "show",
+                        ratingKey = "987",
+                        title = "Season 3",
+                        parentTitle = "Futurama",
+                        type = "season",
+                        index = 3,
+                        parentYear = 1999,
+                        thumb = "/library/metadata/987/thumb",
+                        parentThumb = "/library/metadata/654/thumb",
+                        grandparentThumb = "/library/metadata/321/thumb",
+                        parentArt = "/library/metadata/654/art",
+                        grandparentArt = "/library/metadata/321/art"
+                    )
+            )
+
+        val serialized = json.encodeToString(PlexWebhookDto.serializer(), dto)
+        val deserialized = json.decodeFromString(PlexWebhookDto.serializer(), serialized)
+
+        assertEquals("library.new", deserialized.event)
+        assertEquals("Season 3", deserialized.metadata?.title)
+        assertEquals("Futurama", deserialized.metadata?.parentTitle)
+        assertEquals("season", deserialized.metadata?.type)
+        assertEquals(3, deserialized.metadata?.index)
+        assertEquals(1999, deserialized.metadata?.parentYear)
+        assertEquals("/library/metadata/987/thumb", deserialized.metadata?.thumb)
+        assertEquals("/library/metadata/654/thumb", deserialized.metadata?.parentThumb)
+        assertEquals("/library/metadata/321/thumb", deserialized.metadata?.grandparentThumb)
+        assertEquals("/library/metadata/654/art", deserialized.metadata?.parentArt)
+        assertEquals("/library/metadata/321/art", deserialized.metadata?.grandparentArt)
+    }
+
+    @Test
     fun `test WebhookReceiptDto serialization`() {
         val dto =
             WebhookReceiptDto(

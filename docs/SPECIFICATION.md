@@ -131,20 +131,38 @@ Status:   downloading (Peers: 18/4)
 ---
 
 ### 4.2 Media Available Card (Plex / Jellyfin Scanned)
-Delivered with high-resolution TMDB/TVDB poster image (`SendPhoto` with HTML caption):
+Delivered with high-resolution artwork (`SendPhoto` with HTML caption) and instant playback deep links:
+
+#### Season Added Notification (e.g. Plex / Jellyfin TV Season)
+* **Title:** `🍿 Futurama - Season 3 now available on Kerrlab Plex`
+* **Poster:** Uses Season Poster (with Series Poster fallback)
+* **Duration:** Single-episode runtime is omitted for season-level notifications
 
 ```text
-🍿 Now Available: Dune: Part Two (2024)
+🍿 Futurama - Season 3 now available on Kerrlab Plex
 ━━━━━━━━━━━━━━━━━━━━━━
-⭐ TMDB: 8.5/10 • ⏱ 2h 46m • 📅 2024
-🎭 Sci-Fi, Adventure, Action
+⭐ Score: 8.8/10 • 🎞 Video: 1080p • HEVC • EAC3
 
-🎞 Video:  2160p UHD • HDR10 • HEVC
-🔊 Audio:  Dolby Atmos • TrueHD 7.1
-💾 Size:   27.1 GB (Quality Upgrade ⬆️)
-
-Paul Atreides unites with Chani and the Fremen while seeking revenge...
+After a young male is transported to the future, he teams up and works with a team of friends who work at a delivery company...
 ```
-**Inline Keyboard:**
-* Row 1: `[🎬 Watch on Plex]` `[🍿 Watch on Jellyfin]`
-* Row 2: `[📁 Open in Radarr / Sonarr]`
+**Inline Keyboard:** `[🎬 Watch on Plex]`
+
+#### Episode Added Notification
+* **Title:** `🍿 Futurama - S03E01 - Roswell That Ends Well now available on Kerrlab Plex`
+* **Poster:** Uses Episode thumbnail (with Season / Series Poster fallback)
+* **Duration:** Episode runtime (e.g. `22m 0s`)
+
+#### Movie / Show Added Notification
+* **Title:** `🍿 Dune: Part Two (2024) now available on Plex`
+* **Poster:** Movie / Show poster
+* **Duration:** Feature film duration (e.g. `2h 46m`)
+
+```text
+🍿 Dune: Part Two (2024) now available on Plex
+━━━━━━━━━━━━━━━━━━━━━━
+⭐ Score: 8.6/10 • ⏱ 2h 46m
+🎞 Video: 2160p (4K) • HEVC • TrueHD Atmos
+
+Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family...
+```
+**Inline Keyboard:** `[🎬 Watch on Plex]` / `[🍿 Watch on Jellyfin]`

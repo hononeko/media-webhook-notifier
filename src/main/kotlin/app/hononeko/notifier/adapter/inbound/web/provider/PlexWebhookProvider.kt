@@ -91,6 +91,8 @@ class PlexWebhookProvider(
         return dto to thumbBytes
     }
 
+    private val seasonPattern = Regex("""(?:Season|Series|S)\s*(\d+)""", RegexOption.IGNORE_CASE)
+
     private fun mapToPlexLibraryNew(
         dto: PlexWebhookDto,
         instanceName: String,
@@ -99,22 +101,40 @@ class PlexWebhookProvider(
         val meta = dto.metadata
         val stream = meta?.media?.firstOrNull()
         val durationSec = meta?.duration?.let { it / 1000 }
+        val mediaType = meta?.type?.lowercase()
 
-        val rawThumb = meta?.thumb
-        val effectivePosterUrl =
-            when {
-                rawThumb.isNullOrBlank() -> null
-                rawThumb.startsWith("http://") || rawThumb.startsWith("https://") -> rawThumb
-                else -> null
+        val seasonNumber =
+            if (meta != null) {
+                when (mediaType) {
+                    "season" -> meta.index ?: extractSeasonNumber(meta.title)
+                    "episode" -> meta.parentIndex ?: extractSeasonNumber(meta.parentTitle)
+                    else -> meta.index
+                }
+            } else {
+                null
             }
+
+        val episodeNumber =
+            if (meta != null && mediaType == "episode") {
+                meta.index
+            } else {
+                null
+            }
+
+        val effectivePosterUrl = sanitizeHttpUrl(meta?.thumb)
+        val parentPosterUrl = sanitizeHttpUrl(meta?.parentThumb)
+        val grandparentPosterUrl = sanitizeHttpUrl(meta?.grandparentThumb)
 
         return MediaPayload.PlexLibraryNew(
             source = AppSource.PLEX,
             eventType = EventType.MEDIA_AVAILABLE,
             title = meta?.title ?: "Unknown Media",
+            mediaType = mediaType,
             grandParentTitle = meta?.grandparentTitle,
             parentTitle = meta?.parentTitle,
-            year = meta?.year,
+            seasonNumber = seasonNumber,
+            episodeNumber = episodeNumber,
+            year = meta?.year ?: meta?.parentYear,
             summary = meta?.summary,
             rating = meta?.rating,
             durationSeconds = durationSec,
@@ -122,10 +142,21 @@ class PlexWebhookProvider(
             audioCodec = stream?.audioCodec,
             resolution = stream?.videoResolution,
             posterUrl = effectivePosterUrl,
+            parentPosterUrl = parentPosterUrl,
+            grandparentPosterUrl = grandparentPosterUrl,
             artworkBytes = thumbBytes,
             ratingKey = meta?.ratingKey,
             serverMachineIdentifier = dto.server?.uuid,
             instanceName = instanceName
         )
+    }
+
+    private fun sanitizeHttpUrl(url: String?): String? =
+        url?.takeIf { it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true) }
+
+    private fun extractSeasonNumber(title: String?): Int? {
+        if (title.isNullOrBlank()) return null
+        val match = seasonPattern.find(title)
+        return match?.groupValues?.get(1)?.toIntOrNull()
     }
 }

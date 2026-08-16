@@ -30,10 +30,17 @@
         "type": { "type": "string" },
         "summary": { "type": "string" },
         "year": { "type": "integer" },
+        "parentYear": { "type": "integer" },
+        "index": { "type": "integer" },
+        "parentIndex": { "type": "integer" },
         "duration": { "type": "integer" },
         "rating": { "type": "number" },
         "thumb": { "type": "string" },
+        "parentThumb": { "type": "string" },
+        "grandparentThumb": { "type": "string" },
         "art": { "type": "string" },
+        "parentArt": { "type": "string" },
+        "grandparentArt": { "type": "string" },
         "Media": {
           "type": "array",
           "items": {

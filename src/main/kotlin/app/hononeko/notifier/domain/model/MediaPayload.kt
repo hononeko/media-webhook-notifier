@@ -47,8 +47,11 @@ sealed interface MediaPayload {
         override val source: AppSource = AppSource.PLEX,
         override val eventType: EventType = EventType.MEDIA_AVAILABLE,
         val title: String,
+        val mediaType: String? = null,
         val grandParentTitle: String? = null,
         val parentTitle: String? = null,
+        val seasonNumber: Int? = null,
+        val episodeNumber: Int? = null,
         val year: Int? = null,
         val summary: String? = null,
         val rating: Double? = null,
@@ -57,6 +60,8 @@ sealed interface MediaPayload {
         val audioCodec: String? = null,
         val resolution: String? = null,
         val posterUrl: String? = null,
+        val parentPosterUrl: String? = null,
+        val grandparentPosterUrl: String? = null,
         val artworkBytes: ByteArray? = null,
         val ratingKey: String? = null,
         val serverMachineIdentifier: String? = null,
@@ -69,8 +74,11 @@ sealed interface MediaPayload {
             if (source != other.source) return false
             if (eventType != other.eventType) return false
             if (title != other.title) return false
+            if (mediaType != other.mediaType) return false
             if (grandParentTitle != other.grandParentTitle) return false
             if (parentTitle != other.parentTitle) return false
+            if (seasonNumber != other.seasonNumber) return false
+            if (episodeNumber != other.episodeNumber) return false
             if (year != other.year) return false
             if (summary != other.summary) return false
             if (rating != other.rating) return false
@@ -79,6 +87,8 @@ sealed interface MediaPayload {
             if (audioCodec != other.audioCodec) return false
             if (resolution != other.resolution) return false
             if (posterUrl != other.posterUrl) return false
+            if (parentPosterUrl != other.parentPosterUrl) return false
+            if (grandparentPosterUrl != other.grandparentPosterUrl) return false
             if (artworkBytes != null) {
                 if (other.artworkBytes == null) return false
                 if (!artworkBytes.contentEquals(other.artworkBytes)) return false
@@ -96,8 +106,11 @@ sealed interface MediaPayload {
             var result = source.hashCode()
             result = 31 * result + eventType.hashCode()
             result = 31 * result + title.hashCode()
+            result = 31 * result + (mediaType?.hashCode() ?: 0)
             result = 31 * result + (grandParentTitle?.hashCode() ?: 0)
             result = 31 * result + (parentTitle?.hashCode() ?: 0)
+            result = 31 * result + (seasonNumber?.hashCode() ?: 0)
+            result = 31 * result + (episodeNumber?.hashCode() ?: 0)
             result = 31 * result + (year?.hashCode() ?: 0)
             result = 31 * result + (summary?.hashCode() ?: 0)
             result = 31 * result + (rating?.hashCode() ?: 0)
@@ -106,6 +119,8 @@ sealed interface MediaPayload {
             result = 31 * result + (audioCodec?.hashCode() ?: 0)
             result = 31 * result + (resolution?.hashCode() ?: 0)
             result = 31 * result + (posterUrl?.hashCode() ?: 0)
+            result = 31 * result + (parentPosterUrl?.hashCode() ?: 0)
+            result = 31 * result + (grandparentPosterUrl?.hashCode() ?: 0)
             result = 31 * result + (artworkBytes?.contentHashCode() ?: 0)
             result = 31 * result + (ratingKey?.hashCode() ?: 0)
             result = 31 * result + (serverMachineIdentifier?.hashCode() ?: 0)
@@ -119,6 +134,7 @@ sealed interface MediaPayload {
         override val source: AppSource = AppSource.JELLYFIN,
         override val eventType: EventType = EventType.MEDIA_AVAILABLE,
         val itemId: String,
+        val mediaType: String? = null,
         val serverId: String? = null,
         val title: String,
         val seriesName: String? = null,

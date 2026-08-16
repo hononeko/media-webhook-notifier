@@ -549,8 +549,13 @@ object CardFormatterService {
     private fun buildMediaServerCard(
         sourceName: String,
         actionEmoji: String,
-        title: String,
+        fullTitle: String,
+        itemTitle: String,
         seriesTitle: String,
+        seasonNumber: Int?,
+        seasonLabel: String?,
+        episodeNumber: Int?,
+        mediaType: String,
         year: Int?,
         overview: String?,
         posterUrl: String?,
@@ -564,13 +569,6 @@ object CardFormatterService {
         instanceName: String?,
         engine: TemplateEngine
     ): NotificationCard {
-        val fullTitle =
-            when {
-                seriesTitle.isNotBlank() && seriesTitle != title -> "$seriesTitle - $title"
-                year != null -> "$title ($year)"
-                else -> title
-            }
-
         val mediaServerName =
             instanceName?.takeUnless { it.equals(sourceName, ignoreCase = true) }
                 ?: sourceName
@@ -584,10 +582,21 @@ object CardFormatterService {
                 audioCodec
             ).joinToString(" • ")
 
+        val formattedSeason = seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val formattedEpisode = episodeNumber?.let { String.format(Locale.US, "%02d", it) }
+
         val context =
             mutableMapOf<String, Any?>(
                 "title" to fullTitle,
-                "series_title" to seriesTitle.ifBlank { title },
+                "item_title" to itemTitle,
+                "series_title" to seriesTitle.ifBlank { itemTitle },
+                "season" to formattedSeason,
+                "season_number" to seasonNumber?.toString(),
+                "season_title" to (seasonLabel ?: formattedSeason?.let { "Season $it" }),
+                "episode" to formattedEpisode,
+                "episode_number" to episodeNumber?.toString(),
+                "episode_title" to itemTitle,
+                "media_type" to mediaType,
                 "year" to year?.toString(),
                 "specs" to specsSummary,
                 "overview" to truncateOverview(overview, engine.theme.maxOverviewLength),
@@ -664,40 +673,176 @@ object CardFormatterService {
         )
     }
 
+    private fun resolveSeasonLabel(
+        isSeason: Boolean,
+        title: String,
+        seasonNumber: Int?
+    ): String? =
+        when {
+            isSeason && title.startsWith("Season", ignoreCase = true) -> title
+            isSeason && seasonNumber != null -> "Season $seasonNumber"
+            else -> null
+        }
+
+    private fun formatEpisodeCode(
+        seasonNumber: Int,
+        episodeNumber: Int
+    ): String = "S%02dE%02d".format(Locale.US, seasonNumber, episodeNumber)
+
+    private fun formatMediaServerFullTitle(
+        isSeason: Boolean,
+        isEpisode: Boolean,
+        seriesTitle: String,
+        itemTitle: String,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        seasonLabel: String?,
+        year: Int?
+    ): String =
+        when {
+            isSeason && seriesTitle.isNotBlank() && seasonLabel != null -> "$seriesTitle - $seasonLabel"
+            isSeason && seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
+            isEpisode &&
+                seriesTitle.isNotBlank() &&
+                seasonNumber != null &&
+                episodeNumber != null -> {
+                val epCode = formatEpisodeCode(seasonNumber, episodeNumber)
+                if (itemTitle.isNotBlank() &&
+                    !itemTitle.equals(epCode, ignoreCase = true) &&
+                    !itemTitle.startsWith("Episode ", ignoreCase = true)
+                ) {
+                    "$seriesTitle - $epCode - $itemTitle"
+                } else {
+                    "$seriesTitle - $epCode"
+                }
+            }
+            isEpisode && seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
+            seriesTitle.isNotBlank() && seriesTitle != itemTitle -> "$seriesTitle - $itemTitle"
+            year != null -> "$itemTitle ($year)"
+            else -> itemTitle
+        }
+
+    private fun resolveMediaType(
+        isSeason: Boolean,
+        isEpisode: Boolean,
+        rawType: String?,
+        seriesTitle: String,
+        year: Int?
+    ): String =
+        when {
+            isSeason -> "season"
+            isEpisode -> "episode"
+            rawType == "movie" || (seriesTitle.isBlank() && year != null) -> "movie"
+            rawType == "show" || rawType == "series" -> "show"
+            else -> rawType ?: "media"
+        }
+
     private fun buildPlexCard(
         payload: MediaPayload.PlexLibraryNew,
         mediaServerPort: MediaServerPort?,
         engine: TemplateEngine = templateEngine
-    ): NotificationCard =
-        buildMediaServerCard(
+    ): NotificationCard {
+        val mediaType = payload.mediaType?.lowercase()
+        val isSeason =
+            mediaType == "season" ||
+                (
+                    payload.parentTitle != null &&
+                        payload.grandParentTitle == null &&
+                        (payload.title.startsWith("Season", ignoreCase = true) || payload.seasonNumber != null)
+                )
+        val isEpisode =
+            mediaType == "episode" ||
+                payload.grandParentTitle != null ||
+                (payload.parentTitle != null && payload.episodeNumber != null)
+
+        val seriesTitle =
+            when {
+                isSeason -> payload.parentTitle ?: ""
+                isEpisode -> payload.grandParentTitle ?: payload.parentTitle ?: ""
+                else -> ""
+            }
+
+        val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)
+        val fullTitle =
+            formatMediaServerFullTitle(
+                isSeason = isSeason,
+                isEpisode = isEpisode,
+                seriesTitle = seriesTitle,
+                itemTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumber = payload.episodeNumber,
+                seasonLabel = seasonLabel,
+                year = payload.year
+            )
+
+        val effectivePosterUrl = payload.posterUrl ?: payload.parentPosterUrl ?: payload.grandparentPosterUrl
+        val effectiveDuration = if (isSeason) null else payload.durationSeconds
+        val resolvedMediaType = resolveMediaType(isSeason, isEpisode, mediaType, seriesTitle, payload.year)
+
+        return buildMediaServerCard(
             sourceName = "Plex",
             actionEmoji = "🎬",
-            title = payload.title,
-            seriesTitle = payload.grandParentTitle ?: "",
+            fullTitle = fullTitle,
+            itemTitle = payload.title,
+            seriesTitle = seriesTitle.ifBlank { payload.title },
+            seasonNumber = payload.seasonNumber,
+            seasonLabel = seasonLabel,
+            episodeNumber = payload.episodeNumber,
+            mediaType = resolvedMediaType,
             year = payload.year,
             overview = payload.summary,
-            posterUrl = payload.posterUrl,
+            posterUrl = effectivePosterUrl,
             artworkBytes = payload.artworkBytes,
             videoCodec = payload.videoCodec,
             audioCodec = payload.audioCodec,
             resolution = payload.resolution,
             rating = payload.rating,
-            durationSeconds = payload.durationSeconds,
+            durationSeconds = effectiveDuration,
             deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload),
             instanceName = payload.instanceName,
             engine = engine
         )
+    }
 
     private fun buildJellyfinCard(
         payload: MediaPayload.JellyfinItemAdded,
         mediaServerPort: MediaServerPort?,
         engine: TemplateEngine = templateEngine
-    ): NotificationCard =
-        buildMediaServerCard(
+    ): NotificationCard {
+        val type = payload.mediaType?.lowercase()
+        val isSeason =
+            type == "season" ||
+                (payload.seriesName != null && payload.seasonNumber != null && payload.episodeNumber == null)
+        val isEpisode =
+            type == "episode" ||
+                (payload.seriesName != null && payload.episodeNumber != null)
+
+        val seriesTitle = payload.seriesName ?: ""
+        val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)
+        val fullTitle =
+            formatMediaServerFullTitle(
+                isSeason = isSeason,
+                isEpisode = isEpisode,
+                seriesTitle = seriesTitle,
+                itemTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumber = payload.episodeNumber,
+                seasonLabel = seasonLabel,
+                year = payload.year
+            )
+
+        val resolvedMediaType = resolveMediaType(isSeason, isEpisode, type, seriesTitle, payload.year)
+
+        return buildMediaServerCard(
             sourceName = "Jellyfin",
             actionEmoji = "🍿",
-            title = payload.title,
-            seriesTitle = payload.seriesName ?: "",
+            fullTitle = fullTitle,
+            itemTitle = payload.title,
+            seriesTitle = seriesTitle.ifBlank { payload.title },
+            seasonNumber = payload.seasonNumber,
+            seasonLabel = seasonLabel,
+            episodeNumber = payload.episodeNumber,
+            mediaType = resolvedMediaType,
             year = payload.year,
             overview = payload.overview,
             posterUrl = payload.posterUrl,
@@ -711,6 +856,7 @@ object CardFormatterService {
             instanceName = payload.instanceName,
             engine = engine
         )
+    }
 
     fun buildHealthCard(
         payload: MediaPayload.ServarrHealth,

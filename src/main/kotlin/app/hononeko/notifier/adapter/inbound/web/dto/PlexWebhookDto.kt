@@ -31,10 +31,17 @@ data class PlexMetadataDto(
     val type: String? = null,
     val summary: String? = null,
     val year: Int? = null,
+    val parentYear: Int? = null,
+    val index: Int? = null,
+    val parentIndex: Int? = null,
     val duration: Long? = null,
     val rating: Double? = null,
     val thumb: String? = null,
+    val parentThumb: String? = null,
+    val grandparentThumb: String? = null,
     val art: String? = null,
+    val parentArt: String? = null,
+    val grandparentArt: String? = null,
     @SerialName("Media") val media: List<PlexMediaStreamDto> = emptyList()
 )
 
