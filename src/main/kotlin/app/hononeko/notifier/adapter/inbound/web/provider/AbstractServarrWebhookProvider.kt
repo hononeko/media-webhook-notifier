@@ -48,7 +48,6 @@ abstract class AbstractServarrWebhookProvider(
 
         val source = resolveSource(dto)
         val effectiveCaller = resolveInstanceName(callerName, dto.instanceName, source)
-        logger.info("Ingesting {} webhook for {} (caller: {})", eventType, source, effectiveCaller)
 
         val payload: MediaPayload? =
             when (eventType?.lowercase()) {
@@ -64,6 +63,7 @@ abstract class AbstractServarrWebhookProvider(
             }
 
         return if (payload != null) {
+            logger.info("Ingesting {} webhook for {} (caller: {})", eventType, source, effectiveCaller)
             WebhookProcessResult.Queued(payload, eventType)
         } else {
             WebhookProcessResult.Ignored("Event type '$eventType' is ignored", eventType)
@@ -113,17 +113,24 @@ abstract class AbstractServarrWebhookProvider(
         val poster = extractPosterUrl(dto)
         val isUpgrade = dto.isUpgrade == true || dto.upgrade?.isUpgrade == true
 
+        val movieFile = dto.movie?.movieFile
+        val episodeFile = dto.episodes.firstOrNull()?.episodeFile
+
         val videoCodec =
-            dto.movie?.movieFile?.videoCodec ?: dto.episodes
-                .firstOrNull()
-                ?.episodeFile
-                ?.videoCodec
+            movieFile?.mediaInfo?.videoCodec
+                ?: movieFile?.videoCodec
+                ?: episodeFile?.mediaInfo?.videoCodec
+                ?: episodeFile?.videoCodec
         val audioCodec =
-            dto.movie?.movieFile?.audioCodec ?: dto.episodes
-                .firstOrNull()
-                ?.episodeFile
-                ?.audioCodec
+            movieFile?.mediaInfo?.audioCodec
+                ?: movieFile?.audioCodec
+                ?: episodeFile?.mediaInfo?.audioCodec
+                ?: episodeFile?.audioCodec
         val quality = extractDownloadQuality(dto)
+        val resolution =
+            movieFile?.mediaInfo?.resolution
+                ?: episodeFile?.mediaInfo?.resolution
+                ?: quality
         val sizeBytes = extractDownloadSizeBytes(dto)
         val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
 
@@ -136,7 +143,7 @@ abstract class AbstractServarrWebhookProvider(
             episodeNumbers = dto.episodes.mapNotNull { it.episodeNumber },
             videoCodec = videoCodec,
             audioCodec = audioCodec,
-            resolution = quality,
+            resolution = resolution,
             quality = quality,
             isUpgrade = isUpgrade,
             sizeBytes = sizeBytes,

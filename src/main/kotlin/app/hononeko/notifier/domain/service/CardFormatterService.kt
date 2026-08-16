@@ -188,7 +188,8 @@ object CardFormatterService {
                 level = NotificationLevel.PROGRESS,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
+                actions = resolved.actions,
+                eventType = "grab"
             )
         }
 
@@ -204,7 +205,8 @@ object CardFormatterService {
             level = NotificationLevel.PROGRESS,
             fields = fields,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = "grab"
         )
     }
 
@@ -263,7 +265,7 @@ object CardFormatterService {
         val resolved =
             engine.resolveProgress(
                 eventName = "download_progress",
-                defaultTitle = titleText,
+                defaultTitle = "⏳ Downloading: $titleText",
                 defaultSubtitle = payload.instanceName ?: payload.source.displayName,
                 defaultActions = emptyList(),
                 context = context
@@ -320,7 +322,8 @@ object CardFormatterService {
                 level = NotificationLevel.SUCCESS,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
+                actions = resolved.actions,
+                eventType = "download_complete"
             )
         }
 
@@ -337,7 +340,8 @@ object CardFormatterService {
             level = NotificationLevel.SUCCESS,
             fields = fields,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = "download_complete"
         )
     }
 
@@ -383,7 +387,8 @@ object CardFormatterService {
                 level = NotificationLevel.WARNING,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
+                actions = resolved.actions,
+                eventType = "download_stalled"
             )
         }
 
@@ -402,7 +407,8 @@ object CardFormatterService {
             level = NotificationLevel.WARNING,
             fields = fields,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = "download_stalled"
         )
     }
 
@@ -432,12 +438,18 @@ object CardFormatterService {
                 "${payload.instanceName ?: payload.source.displayName} • Library Import"
             }
 
+        val specsSummary =
+            listOfNotNull(
+                payload.quality ?: payload.resolution,
+                payload.videoCodec,
+                payload.audioCodec
+            ).joinToString(" • ")
+
         val mediaSpecs =
             MediaSpecs(
                 video = payload.videoCodec,
                 audio = payload.audioCodec,
-                resolution = payload.resolution,
-                sizeFormatted = payload.sizeBytes?.let { formatBytes(it) }
+                resolution = payload.quality ?: payload.resolution
             )
 
         val context =
@@ -448,13 +460,7 @@ object CardFormatterService {
                 "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
                 "episode_range" to epRange,
                 "quality" to payload.quality,
-                "specs" to
-                    listOfNotNull(
-                        payload.resolution,
-                        payload.videoCodec,
-                        payload.audioCodec,
-                        payload.sizeBytes?.let { formatBytes(it) }
-                    ).joinToString(" • "),
+                "specs" to specsSummary,
                 "video_codec" to payload.videoCodec,
                 "audio_codec" to payload.audioCodec,
                 "resolution" to payload.resolution,
@@ -488,7 +494,8 @@ object CardFormatterService {
                 level = NotificationLevel.SUCCESS,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
+                actions = resolved.actions,
+                eventType = "import"
             )
         }
 
@@ -499,7 +506,8 @@ object CardFormatterService {
             level = NotificationLevel.SUCCESS,
             mediaSpecs = mediaSpecs,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = "import"
         )
     }
 
@@ -526,6 +534,7 @@ object CardFormatterService {
         year: Int?,
         overview: String?,
         posterUrl: String?,
+        artworkBytes: ByteArray? = null,
         videoCodec: String?,
         audioCodec: String?,
         resolution: String?,
@@ -542,17 +551,17 @@ object CardFormatterService {
                 else -> title
             }
 
-        val defaultSubtitle =
+        val mediaServerName =
             instanceName?.takeUnless { it.equals(sourceName, ignoreCase = true) }
-                ?: "$sourceName Media Server"
+                ?: sourceName
+
+        val defaultSubtitle: String? = null
 
         val specsSummary =
             listOfNotNull(
                 resolution,
                 videoCodec,
-                audioCodec,
-                rating?.let { "⭐ " + String.format(Locale.US, SCORE_FORMAT, it) },
-                durationSeconds?.let { formatDuration(it) }
+                audioCodec
             ).joinToString(" • ")
 
         val context =
@@ -569,9 +578,9 @@ object CardFormatterService {
                 "score" to rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
                 "duration" to durationSeconds?.let { formatDuration(it) },
                 "deep_link_url" to deepLinkUrl,
-                "media_server_name" to defaultSubtitle,
+                "media_server_name" to mediaServerName,
                 "poster_url" to posterUrl,
-                "instance_name" to defaultSubtitle,
+                "instance_name" to mediaServerName,
                 "source_name" to sourceName
             )
 
@@ -591,12 +600,14 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = "media_available",
-                defaultTitle = "🍿 Now Available: $fullTitle",
+                defaultTitle = "🍿 $fullTitle now available on $mediaServerName",
                 defaultSubtitle = defaultSubtitle,
                 defaultArtworkUrl = posterUrl,
                 defaultActions = defaultActions,
                 context = context
             )
+
+        val finalArtworkBytes = if (resolved.imageEmbedEnabled) artworkBytes else null
 
         if (resolved.customBody != null) {
             return NotificationCard(
@@ -605,7 +616,9 @@ object CardFormatterService {
                 level = NotificationLevel.SUCCESS,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
+                artworkBytes = finalArtworkBytes,
+                actions = resolved.actions,
+                eventType = "media_available"
             )
         }
 
@@ -625,7 +638,9 @@ object CardFormatterService {
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            artworkBytes = finalArtworkBytes,
+            actions = resolved.actions,
+            eventType = "media_available"
         )
     }
 
@@ -642,6 +657,7 @@ object CardFormatterService {
             year = payload.year,
             overview = payload.summary,
             posterUrl = payload.posterUrl,
+            artworkBytes = payload.artworkBytes,
             videoCodec = payload.videoCodec,
             audioCodec = payload.audioCodec,
             resolution = payload.resolution,
@@ -665,6 +681,7 @@ object CardFormatterService {
             year = payload.year,
             overview = payload.overview,
             posterUrl = payload.posterUrl,
+            artworkBytes = null,
             videoCodec = payload.videoCodec,
             audioCodec = payload.audioCodec,
             resolution = payload.resolution,
@@ -727,7 +744,8 @@ object CardFormatterService {
                 subtitle = resolved.subtitle,
                 level = level,
                 customBody = resolved.customBody,
-                actions = resolved.actions
+                actions = resolved.actions,
+                eventType = "health"
             )
         }
 
@@ -742,7 +760,8 @@ object CardFormatterService {
             subtitle = resolved.subtitle,
             level = level,
             fields = fields,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = "health"
         )
     }
 
@@ -811,7 +830,8 @@ object CardFormatterService {
                 level = NotificationLevel.WARNING,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
+                actions = resolved.actions,
+                eventType = "manual_interaction"
             )
         }
 
@@ -841,7 +861,8 @@ object CardFormatterService {
             level = NotificationLevel.WARNING,
             fields = fields,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = "manual_interaction"
         )
     }
 
@@ -1016,7 +1037,8 @@ object CardFormatterService {
                 level = level,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
+                actions = resolved.actions,
+                eventType = eventName
             )
         }
 
@@ -1049,7 +1071,8 @@ object CardFormatterService {
             level = level,
             fields = fields,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = eventName
         )
     }
 

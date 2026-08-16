@@ -136,7 +136,7 @@ class CardFormatterServiceTest {
             )
 
         val update = CardFormatterService.buildProgressUpdate(payload, progress, "https://qbit.example.com")
-        assertEquals("Severance (S02E01)", update.title)
+        assertEquals("⏳ Downloading: Severance (S02E01)", update.title)
         assertEquals("Sonarr-Main", update.subtitle)
         assertEquals(65.0, update.percent)
         assertEquals("[██████▌░░░]", update.progressBar)
@@ -200,8 +200,8 @@ class CardFormatterServiceTest {
             )
 
         val plexCard = CardFormatterService.buildAvailableCard(plex)
-        assertEquals("🍿 Now Available: Dune: Part Two (2024)", plexCard.title)
-        assertEquals("Plex Media Server", plexCard.subtitle)
+        assertEquals("🍿 Dune: Part Two (2024) now available on Plex", plexCard.title)
+        assertEquals(null, plexCard.subtitle)
         assertEquals("8.6/10", plexCard.mediaSpecs?.score)
         assertEquals("2h 46m", plexCard.mediaSpecs?.duration)
         assertEquals(1, plexCard.actions.size)
@@ -219,8 +219,8 @@ class CardFormatterServiceTest {
             )
 
         val jellyfinCard = CardFormatterService.buildAvailableCard(jellyfin)
-        assertEquals("🍿 Now Available: Severance - Hello World", jellyfinCard.title)
-        assertEquals("Jellyfin Media Server", jellyfinCard.subtitle)
+        assertEquals("🍿 Severance - Hello World now available on Jellyfin", jellyfinCard.title)
+        assertEquals(null, jellyfinCard.subtitle)
         assertEquals("🍿 Watch on Jellyfin", jellyfinCard.actions.first().label)
     }
 
@@ -244,6 +244,10 @@ class CardFormatterServiceTest {
         assertEquals("📁 File Imported: Severance (S02E01)", importCard.title)
         assertEquals("Sonarr 4K • Library Import", importCard.subtitle)
         assertEquals(NotificationLevel.SUCCESS, importCard.level)
+        assertEquals("2160p", importCard.mediaSpecs?.resolution)
+        assertEquals("HEVC", importCard.mediaSpecs?.video)
+        assertEquals("EAC3", importCard.mediaSpecs?.audio)
+        assertEquals(null, importCard.mediaSpecs?.sizeFormatted)
 
         val upgradePayload =
             importPayload.copy(

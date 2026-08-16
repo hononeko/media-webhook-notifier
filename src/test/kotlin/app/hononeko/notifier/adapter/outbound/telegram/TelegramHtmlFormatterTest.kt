@@ -30,7 +30,7 @@ class TelegramHtmlFormatterTest {
                 sizeFormatted = "45.00 GB"
             )
         val formatted = TelegramHtmlFormatter.formatSpecs(fullSpecs)
-        assertEquals("2160p • HEVC • TrueHD Atmos • ⭐ 8.5/10 • 2h 15m • 45.00 GB", formatted)
+        assertEquals("2160p • HEVC • TrueHD Atmos • ⭐ 8.5/10 • 2h 15m", formatted)
 
         val emptySpecs = MediaSpecs()
         assertEquals("", TelegramHtmlFormatter.formatSpecs(emptySpecs))
@@ -76,7 +76,7 @@ class TelegramHtmlFormatterTest {
         val withEta =
             ProgressUpdate(
                 trackingKey = "key1",
-                title = "Severance S02E01",
+                title = "⏳ Downloading: Severance S02E01",
                 subtitle = "Sonarr-Main",
                 percent = 45.5,
                 progressBar = "[████░░░░░░]",
@@ -116,7 +116,7 @@ class TelegramHtmlFormatterTest {
             )
 
         val html = TelegramHtmlFormatter.buildProgressHtml(customProgress)
-        assertTrue(html.contains("<b>⏳ Downloading: Movie</b>"))
+        assertTrue(html.contains("<b>Movie</b>"))
         assertTrue(html.contains("<i>Radarr</i>"))
         assertTrue(html.contains("🚀 <b>99.0%</b> (50 MB/s)"))
     }
