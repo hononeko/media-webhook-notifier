@@ -125,4 +125,38 @@ class YamlParserTest {
         assertEquals(123L, tags[2])
         assertNull(tags[3])
     }
+
+    @Test
+    fun `parse 1-level hierarchical events structure correctly`() {
+        val yaml =
+            """
+            events:
+              download:
+                grab:
+                  title: "⏳ Queueing: {title}"
+                progress:
+                  title: "⬇️ Downloading: {title}"
+              seerr:
+                request:
+                  title: "🛎️ New Request: {subject}"
+                issue:
+                  title: "⚠️ Issue: {subject}"
+            """.trimIndent()
+
+        val config = YamlParser.parseTemplateConfig(yaml)
+        assertNotNull(config.events["download.grab"])
+        assertNotNull(config.events["download_grab"])
+        assertNotNull(config.events["grab"])
+        assertEquals("⏳ Queueing: {title}", config.events["grab"]?.title)
+
+        assertNotNull(config.events["seerr.request"])
+        assertNotNull(config.events["seerr_request"])
+        assertNotNull(config.events["request"])
+        assertEquals("🛎️ New Request: {subject}", config.events["request"]?.title)
+
+        assertNotNull(config.events["seerr.issue"])
+        assertNotNull(config.events["seerr_issue"])
+        assertNotNull(config.events["issue"])
+        assertEquals("⚠️ Issue: {subject}", config.events["issue"]?.title)
+    }
 }

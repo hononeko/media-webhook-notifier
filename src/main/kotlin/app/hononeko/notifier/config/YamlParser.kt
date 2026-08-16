@@ -6,6 +6,9 @@ import app.hononeko.notifier.domain.model.TemplateConfig
 import app.hononeko.notifier.domain.model.ThemeConfig
 
 object YamlParser {
+    private val TEMPLATE_KEYS =
+        setOf("title", "subtitle", "body", "artwork_url", "poster_url", "state_text", "actions")
+
     fun parse(yaml: String): Map<String, Any?> {
         if (yaml.isBlank()) return emptyMap()
         val lines = yaml.lines()
@@ -30,45 +33,87 @@ object YamlParser {
             )
 
         val eventsMap = root["events"] as? Map<String, Any?> ?: emptyMap()
-        val events = mutableMapOf<String, EventTemplate>()
-
-        for ((eventName, eventObj) in eventsMap) {
-            if (eventObj !is Map<*, *>) continue
-            val eventProps = eventObj as Map<String, Any?>
-            val actionsList = mutableListOf<TemplateActionConfig>()
-            val rawActions = eventProps["actions"] as? List<*> ?: emptyList<Any?>()
-            for (actionItem in rawActions) {
-                if (actionItem is Map<*, *>) {
-                    val actionMap = actionItem as Map<String, Any?>
-                    val label = actionMap["label"]?.toString() ?: continue
-                    val url = actionMap["url"]?.toString()
-                    val callback = actionMap["callback"]?.toString()
-                    val style = actionMap["style"]?.toString() ?: "DEFAULT"
-                    actionsList.add(
-                        TemplateActionConfig(
-                            label = label,
-                            url = url,
-                            callback = callback,
-                            style = style
-                        )
-                    )
-                }
-            }
-
-            events[eventName] =
-                EventTemplate(
-                    title = eventProps["title"]?.toString(),
-                    subtitle = eventProps["subtitle"]?.toString(),
-                    body = eventProps["body"]?.toString(),
-                    artworkUrl = eventProps["artwork_url"]?.toString() ?: eventProps["poster_url"]?.toString(),
-                    stateText = eventProps["state_text"]?.toString(),
-                    actions = actionsList
-                )
-        }
+        val events = parseEventsMap(eventsMap)
 
         return TemplateConfig(
             theme = theme,
             events = events
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseEventsMap(eventsMap: Map<String, Any?>): Map<String, EventTemplate> {
+        val events = mutableMapOf<String, EventTemplate>()
+        for ((key, obj) in eventsMap) {
+            if (obj !is Map<*, *>) continue
+            val map = obj as Map<String, Any?>
+            if (isEventTemplateMap(map)) {
+                events[key] = parseEventTemplate(map)
+            } else {
+                for ((subKey, subObj) in map) {
+                    if (subObj !is Map<*, *>) continue
+                    val subMap = subObj as Map<String, Any?>
+                    val template = parseEventTemplate(subMap)
+                    registerEventAliases(events, key, subKey, template)
+                }
+            }
+        }
+        return events
+    }
+
+    private fun registerEventAliases(
+        events: MutableMap<String, EventTemplate>,
+        category: String,
+        subKey: String,
+        template: EventTemplate
+    ) {
+        events["$category.$subKey"] = template
+        events["${category}_$subKey"] = template
+        events[subKey] = template
+
+        if (category == "media_server" || category == "media") {
+            events["media_available"] = template
+            events["media.available"] = template
+            events["media_server.available"] = template
+            events["media_server_available"] = template
+            events["available"] = template
+        }
+        if (category == "download" || category == "torrent") {
+            events["download_$subKey"] = template
+            events["torrent_$subKey"] = template
+        }
+    }
+
+    private fun isEventTemplateMap(map: Map<String, Any?>): Boolean = map.keys.any { it in TEMPLATE_KEYS }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseEventTemplate(eventProps: Map<String, Any?>): EventTemplate {
+        val rawActions = eventProps["actions"] as? List<*> ?: emptyList<Any?>()
+        val actionsList = rawActions.mapNotNull { parseAction(it) }
+
+        return EventTemplate(
+            title = eventProps["title"]?.toString(),
+            subtitle = eventProps["subtitle"]?.toString(),
+            body = eventProps["body"]?.toString(),
+            artworkUrl = eventProps["artwork_url"]?.toString() ?: eventProps["poster_url"]?.toString(),
+            stateText = eventProps["state_text"]?.toString(),
+            actions = actionsList
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseAction(actionItem: Any?): TemplateActionConfig? {
+        if (actionItem !is Map<*, *>) return null
+        val actionMap = actionItem as Map<String, Any?>
+        val label = actionMap["label"]?.toString() ?: return null
+        val url = actionMap["url"]?.toString()
+        val callback = actionMap["callback"]?.toString()
+        val style = actionMap["style"]?.toString() ?: "DEFAULT"
+        return TemplateActionConfig(
+            label = label,
+            url = url,
+            callback = callback,
+            style = style
         )
     }
 
