@@ -673,6 +673,70 @@ object CardFormatterService {
         )
     }
 
+    private fun resolveSeasonLabel(
+        isSeason: Boolean,
+        title: String,
+        seasonNumber: Int?
+    ): String? =
+        when {
+            isSeason && title.startsWith("Season", ignoreCase = true) -> title
+            isSeason && seasonNumber != null -> "Season $seasonNumber"
+            else -> null
+        }
+
+    private fun formatEpisodeCode(
+        seasonNumber: Int,
+        episodeNumber: Int
+    ): String = "S%02dE%02d".format(Locale.US, seasonNumber, episodeNumber)
+
+    private fun formatMediaServerFullTitle(
+        isSeason: Boolean,
+        isEpisode: Boolean,
+        seriesTitle: String,
+        itemTitle: String,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        seasonLabel: String?,
+        year: Int?
+    ): String =
+        when {
+            isSeason && seriesTitle.isNotBlank() && seasonLabel != null -> "$seriesTitle - $seasonLabel"
+            isSeason && seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
+            isEpisode &&
+                seriesTitle.isNotBlank() &&
+                seasonNumber != null &&
+                episodeNumber != null -> {
+                val epCode = formatEpisodeCode(seasonNumber, episodeNumber)
+                if (itemTitle.isNotBlank() &&
+                    !itemTitle.equals(epCode, ignoreCase = true) &&
+                    !itemTitle.startsWith("Episode ", ignoreCase = true)
+                ) {
+                    "$seriesTitle - $epCode - $itemTitle"
+                } else {
+                    "$seriesTitle - $epCode"
+                }
+            }
+            isEpisode && seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
+            seriesTitle.isNotBlank() && seriesTitle != itemTitle -> "$seriesTitle - $itemTitle"
+            year != null -> "$itemTitle ($year)"
+            else -> itemTitle
+        }
+
+    private fun resolveMediaType(
+        isSeason: Boolean,
+        isEpisode: Boolean,
+        rawType: String?,
+        seriesTitle: String,
+        year: Int?
+    ): String =
+        when {
+            isSeason -> "season"
+            isEpisode -> "episode"
+            rawType == "movie" || (seriesTitle.isBlank() && year != null) -> "movie"
+            rawType == "show" || rawType == "series" -> "show"
+            else -> rawType ?: "media"
+        }
+
     private fun buildPlexCard(
         payload: MediaPayload.PlexLibraryNew,
         mediaServerPort: MediaServerPort?,
@@ -698,48 +762,22 @@ object CardFormatterService {
                 else -> ""
             }
 
-        val seasonLabel =
-            when {
-                isSeason && payload.title.startsWith("Season", ignoreCase = true) -> payload.title
-                isSeason && payload.seasonNumber != null -> "Season ${payload.seasonNumber}"
-                else -> null
-            }
-
+        val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)
         val fullTitle =
-            when {
-                isSeason && seriesTitle.isNotBlank() && seasonLabel != null -> "$seriesTitle - $seasonLabel"
-                isSeason && seriesTitle.isNotBlank() -> "$seriesTitle - ${payload.title}"
-                isEpisode &&
-                    seriesTitle.isNotBlank() &&
-                    payload.seasonNumber != null &&
-                    payload.episodeNumber != null -> {
-                    val epCode = "S%02dE%02d".format(Locale.US, payload.seasonNumber, payload.episodeNumber)
-                    if (payload.title.isNotBlank() &&
-                        !payload.title.equals(epCode, ignoreCase = true) &&
-                        !payload.title.startsWith("Episode ", ignoreCase = true)
-                    ) {
-                        "$seriesTitle - $epCode - ${payload.title}"
-                    } else {
-                        "$seriesTitle - $epCode"
-                    }
-                }
-                isEpisode && seriesTitle.isNotBlank() -> "$seriesTitle - ${payload.title}"
-                seriesTitle.isNotBlank() && seriesTitle != payload.title -> "$seriesTitle - ${payload.title}"
-                payload.year != null -> "${payload.title} (${payload.year})"
-                else -> payload.title
-            }
+            formatMediaServerFullTitle(
+                isSeason = isSeason,
+                isEpisode = isEpisode,
+                seriesTitle = seriesTitle,
+                itemTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumber = payload.episodeNumber,
+                seasonLabel = seasonLabel,
+                year = payload.year
+            )
 
         val effectivePosterUrl = payload.posterUrl ?: payload.parentPosterUrl ?: payload.grandparentPosterUrl
         val effectiveDuration = if (isSeason) null else payload.durationSeconds
-
-        val resolvedMediaType =
-            when {
-                isSeason -> "season"
-                isEpisode -> "episode"
-                mediaType == "movie" || (seriesTitle.isBlank() && payload.year != null) -> "movie"
-                mediaType == "show" -> "show"
-                else -> mediaType ?: "media"
-            }
+        val resolvedMediaType = resolveMediaType(isSeason, isEpisode, mediaType, seriesTitle, payload.year)
 
         return buildMediaServerCard(
             sourceName = "Plex",
@@ -780,48 +818,20 @@ object CardFormatterService {
                 (payload.seriesName != null && payload.episodeNumber != null)
 
         val seriesTitle = payload.seriesName ?: ""
-
-        val seasonLabel =
-            when {
-                isSeason && payload.title.startsWith("Season", ignoreCase = true) -> payload.title
-                isSeason && payload.seasonNumber != null -> "Season ${payload.seasonNumber}"
-                else -> null
-            }
-
+        val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)
         val fullTitle =
-            when {
-                isSeason && seriesTitle.isNotBlank() && seasonLabel != null -> "$seriesTitle - $seasonLabel"
-                isSeason && seriesTitle.isNotBlank() -> "$seriesTitle - ${payload.title}"
-                isEpisode &&
-                    seriesTitle.isNotBlank() &&
-                    payload.seasonNumber != null &&
-                    payload.episodeNumber != null -> {
-                    val epCode = "S%02dE%02d".format(Locale.US, payload.seasonNumber, payload.episodeNumber)
-                    if (payload.title.isNotBlank() &&
-                        !payload.title.equals(epCode, ignoreCase = true) &&
-                        !payload.title.startsWith("Episode ", ignoreCase = true)
-                    ) {
-                        "$seriesTitle - $epCode - ${payload.title}"
-                    } else {
-                        "$seriesTitle - $epCode"
-                    }
-                }
-                isEpisode && seriesTitle.isNotBlank() -> "$seriesTitle - ${payload.title}"
-                seriesTitle.isNotBlank() && seriesTitle != payload.title -> "$seriesTitle - ${payload.title}"
-                payload.year != null -> "${payload.title} (${payload.year})"
-                else -> payload.title
-            }
+            formatMediaServerFullTitle(
+                isSeason = isSeason,
+                isEpisode = isEpisode,
+                seriesTitle = seriesTitle,
+                itemTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumber = payload.episodeNumber,
+                seasonLabel = seasonLabel,
+                year = payload.year
+            )
 
-        val effectiveDuration = if (isSeason) null else null
-
-        val resolvedMediaType =
-            when {
-                isSeason -> "season"
-                isEpisode -> "episode"
-                type == "movie" || (seriesTitle.isBlank() && payload.year != null) -> "movie"
-                type == "series" -> "show"
-                else -> type ?: "media"
-            }
+        val resolvedMediaType = resolveMediaType(isSeason, isEpisode, type, seriesTitle, payload.year)
 
         return buildMediaServerCard(
             sourceName = "Jellyfin",
@@ -841,7 +851,7 @@ object CardFormatterService {
             audioCodec = payload.audioCodec,
             resolution = payload.resolution,
             rating = null,
-            durationSeconds = effectiveDuration,
+            durationSeconds = null,
             deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload),
             instanceName = payload.instanceName,
             engine = engine

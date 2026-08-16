@@ -277,6 +277,9 @@ class WebhookDtoTest {
         assertEquals(1999, deserialized.metadata?.parentYear)
         assertEquals("/library/metadata/987/thumb", deserialized.metadata?.thumb)
         assertEquals("/library/metadata/654/thumb", deserialized.metadata?.parentThumb)
+        assertEquals("/library/metadata/321/thumb", deserialized.metadata?.grandparentThumb)
+        assertEquals("/library/metadata/654/art", deserialized.metadata?.parentArt)
+        assertEquals("/library/metadata/321/art", deserialized.metadata?.grandparentArt)
     }
 
     @Test

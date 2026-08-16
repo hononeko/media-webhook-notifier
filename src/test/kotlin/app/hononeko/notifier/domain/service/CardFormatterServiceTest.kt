@@ -354,6 +354,99 @@ class CardFormatterServiceTest {
     }
 
     @Test
+    fun `should format Plex and Jellyfin media server cards across all title and type branches`() {
+        // Episode with S03E01 code as title (no duplicate code in output)
+        val plexEpWithCodeTitle =
+            MediaPayload.PlexLibraryNew(
+                title = "S03E01",
+                parentTitle = "Season 3",
+                grandParentTitle = "Futurama",
+                mediaType = "episode",
+                seasonNumber = 3,
+                episodeNumber = 1,
+                instanceName = "Plex"
+            )
+        val card1 = CardFormatterService.buildAvailableCard(plexEpWithCodeTitle)
+        assertEquals("🍿 Futurama - S03E01 now available on Plex", card1.title)
+
+        // Episode with 'Episode 1' as title (no duplicate code in output)
+        val plexEpWithGenericTitle =
+            MediaPayload.PlexLibraryNew(
+                title = "Episode 1",
+                parentTitle = "Season 3",
+                grandParentTitle = "Futurama",
+                mediaType = "episode",
+                seasonNumber = 3,
+                episodeNumber = 1,
+                instanceName = "Plex"
+            )
+        val card2 = CardFormatterService.buildAvailableCard(plexEpWithGenericTitle)
+        assertEquals("🍿 Futurama - S03E01 now available on Plex", card2.title)
+
+        // Episode with null episodeNumber fallback
+        val plexEpNoEpNumber =
+            MediaPayload.PlexLibraryNew(
+                title = "Special",
+                grandParentTitle = "Futurama",
+                mediaType = "episode",
+                seasonNumber = 3,
+                episodeNumber = null,
+                instanceName = "Plex"
+            )
+        val card3 = CardFormatterService.buildAvailableCard(plexEpNoEpNumber)
+        assertEquals("🍿 Futurama - Special now available on Plex", card3.title)
+
+        // Season with non-Season title and null seasonNumber fallback
+        val plexSeasonCustomTitle =
+            MediaPayload.PlexLibraryNew(
+                title = "Final Arc",
+                parentTitle = "Attack on Titan",
+                mediaType = "season",
+                seasonNumber = null,
+                instanceName = "Plex"
+            )
+        val card4 = CardFormatterService.buildAvailableCard(plexSeasonCustomTitle)
+        assertEquals("🍿 Attack on Titan - Final Arc now available on Plex", card4.title)
+
+        // Grandparent poster fallback
+        val plexGrandparentPoster =
+            MediaPayload.PlexLibraryNew(
+                title = "S01E01",
+                grandParentTitle = "Futurama",
+                mediaType = "episode",
+                posterUrl = null,
+                parentPosterUrl = null,
+                grandparentPosterUrl = "https://plex.example.com/grandparent.jpg",
+                instanceName = "Plex"
+            )
+        val card5 = CardFormatterService.buildAvailableCard(plexGrandparentPoster)
+        assertEquals("https://plex.example.com/grandparent.jpg", card5.artworkUrl)
+
+        // Jellyfin Series mapping to show
+        val jellyfinSeries =
+            MediaPayload.JellyfinItemAdded(
+                itemId = "show-1",
+                mediaType = "Series",
+                title = "Severance",
+                year = 2022,
+                instanceName = "Jellyfin"
+            )
+        val card6 = CardFormatterService.buildAvailableCard(jellyfinSeries)
+        assertEquals("🍿 Severance (2022) now available on Jellyfin", card6.title)
+
+        // Movie with no year
+        val plexMovieNoYear =
+            MediaPayload.PlexLibraryNew(
+                title = "Standalone Movie",
+                mediaType = "movie",
+                year = null,
+                instanceName = "Plex"
+            )
+        val card7 = CardFormatterService.buildAvailableCard(plexMovieNoYear)
+        assertEquals("🍿 Standalone Movie now available on Plex", card7.title)
+    }
+
+    @Test
     fun `should build import and upgrade cards correctly`() {
         val importPayload =
             MediaPayload.ArrDownload(
