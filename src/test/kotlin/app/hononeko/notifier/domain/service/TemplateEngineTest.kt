@@ -155,4 +155,37 @@ class TemplateEngineTest {
         assertEquals("Default Body", fallbackCard.overview)
         assertEquals("http://example.com/default.jpg", fallbackCard.artworkUrl)
     }
+
+    @Test
+    fun `renderCard nullifies artworkUrl when imageEmbed is false in template`() {
+        val yaml =
+            """
+            events:
+              grab:
+                title: "🎬 Downloading: {title}"
+                image_embed: false
+            """.trimIndent()
+
+        val config = YamlParser.parseTemplateConfig(yaml)
+        val engine = TemplateEngine(config)
+
+        val card =
+            engine.renderCard(
+                eventName = "grab",
+                defaults =
+                    DefaultCardSpec(
+                        title = "Default Title",
+                        subtitle = "Default Subtitle",
+                        level = NotificationLevel.PROGRESS,
+                        body = null,
+                        artworkUrl = "http://example.com/poster.jpg",
+                        actions = emptyList()
+                    ),
+                context = mapOf("title" to "Severance")
+            )
+
+        assertEquals("🎬 Downloading: Severance", card.title)
+        assertEquals(null, card.artworkUrl)
+        assertEquals("grab", card.eventType)
+    }
 }

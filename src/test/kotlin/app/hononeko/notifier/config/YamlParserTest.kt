@@ -159,4 +159,45 @@ class YamlParserTest {
         assertNotNull(config.events["issue"])
         assertEquals("⚠️ Issue: {subject}", config.events["issue"]?.title)
     }
+
+    @Test
+    fun `parse event template image_embed flags and aliases`() {
+        val yaml =
+            """
+            events:
+              servarr:
+                grab:
+                  title: "Grab"
+                  image_embed: false
+                import:
+                  title: "Import"
+                  embed_image: true
+              download:
+                complete:
+                  title: "Complete"
+                  send_photos: false
+                stalled:
+                  title: "Stalled"
+                  photo: true
+            """.trimIndent()
+
+        val config = YamlParser.parseTemplateConfig(yaml)
+        assertEquals(false, config.events["grab"]?.imageEmbed)
+        assertEquals(true, config.events["import"]?.imageEmbed)
+        assertEquals(false, config.events["complete"]?.imageEmbed)
+        assertEquals(true, config.events["stalled"]?.imageEmbed)
+
+        val stringBoolYaml =
+            """
+            events:
+              servarr:
+                grab:
+                  image_embed: "true"
+                import:
+                  image_embed: "false"
+            """.trimIndent()
+        val stringBoolConfig = YamlParser.parseTemplateConfig(stringBoolYaml)
+        assertEquals(true, stringBoolConfig.events["grab"]?.imageEmbed)
+        assertEquals(false, stringBoolConfig.events["import"]?.imageEmbed)
+    }
 }

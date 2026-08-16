@@ -51,10 +51,15 @@ theme:
 # ==============================================================================
 # Events can be defined using a clean 1-level hierarchy (grouped by category)
 # or in a flat structure (e.g. `grab:`, `request:`). Both work interchangeably.
+#
+# Optional event fields:
+# - `image_embed: true|false` (Control photo attachment per event type)
+# - `artwork_url: "{custom_url}"` (Custom artwork image URL)
+# - `actions:` (Custom inline button links)
 events:
   download:
     progress:
-      title: "{title}"
+      title: "⏳ Downloading: {title}"
       subtitle: "{instance_name}"
       body: |
         <code>{progress_bar}</code> <b>{progress_percent}%</b>
@@ -81,6 +86,7 @@ events:
 
   servarr:
     grab:
+      image_embed: true
       title: "⏳ Queueing Download: {title}"
       subtitle: "{instance_name}"
       body: |
@@ -90,14 +96,17 @@ events:
         ▪ <b>Indexer:</b> {indexer}
 
     import:
+      image_embed: false
       title: "{import_icon} {import_action}: {title}"
       subtitle: "{instance_name} • {import_type}"
       body: |
         ▪ <b>Specs:</b> {specs}
+        ▪ <b>Size:</b> {size}
 
         <i>{overview}</i>
 
     manual_interaction:
+      image_embed: false
       title: "✋ Manual Import Required: {title}"
       subtitle: "{instance_name} • Manual Intervention"
       body: |
@@ -121,10 +130,12 @@ events:
 
   media_server:
     available:
-      title: "🍿 Now Available: {title}"
-      subtitle: "{media_server_name}"
+      image_embed: true
+      title: "🍿 {title} now available on {media_server_name}"
       body: |
         ▪ <b>Specs:</b> {specs}
+        ▪ <b>Rating:</b> {rating}
+        ▪ <b>Duration:</b> {duration}
 
         <i>{overview}</i>
       actions:
@@ -134,6 +145,7 @@ events:
 
   seerr:
     request:
+      image_embed: true
       title: "{request_icon} {request_action}: {subject}"
       subtitle: "{instance_name} • {request_status}"
       body: |
@@ -147,6 +159,7 @@ events:
           style: "PRIMARY"
 
     issue:
+      image_embed: false
       title: "{request_icon} {request_action}: {subject}"
       subtitle: "{instance_name} • {request_status}"
       body: |

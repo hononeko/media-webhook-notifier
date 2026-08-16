@@ -44,12 +44,6 @@ class SeerrWebhookProvider : WebhookProviderStrategy {
         val rawType = (dto.notificationType ?: dto.event)?.trim().orEmpty()
         val effectiveInstance = callerName?.ifBlank { null } ?: "Seerr"
 
-        logger.info(
-            "Ingesting Seerr webhook event: {} (instance: {})",
-            rawType,
-            effectiveInstance
-        )
-
         val eventType = mapEventType(rawType)
         return when (eventType) {
             EventType.TEST -> {
@@ -61,6 +55,11 @@ class SeerrWebhookProvider : WebhookProviderStrategy {
                 WebhookProcessResult.Ignored("Seerr notification type '$rawType' is not supported", rawType)
             }
             else -> {
+                logger.info(
+                    "Ingesting Seerr webhook event: {} (instance: {})",
+                    rawType,
+                    effectiveInstance
+                )
                 val payload = mapToSeerrEvent(dto, eventType, rawType, effectiveInstance)
                 WebhookProcessResult.Queued(payload, rawType)
             }

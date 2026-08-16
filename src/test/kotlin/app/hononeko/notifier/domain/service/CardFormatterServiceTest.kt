@@ -1,8 +1,10 @@
 package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.EventTemplate
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationLevel
+import app.hononeko.notifier.domain.model.TemplateConfig
 import app.hononeko.notifier.domain.model.TorrentProgress
 import app.hononeko.notifier.domain.model.TorrentState
 import kotlin.test.Test
@@ -136,7 +138,7 @@ class CardFormatterServiceTest {
             )
 
         val update = CardFormatterService.buildProgressUpdate(payload, progress, "https://qbit.example.com")
-        assertEquals("Severance (S02E01)", update.title)
+        assertEquals("⏳ Downloading: Severance (S02E01)", update.title)
         assertEquals("Sonarr-Main", update.subtitle)
         assertEquals(65.0, update.percent)
         assertEquals("[██████▌░░░]", update.progressBar)
@@ -200,8 +202,8 @@ class CardFormatterServiceTest {
             )
 
         val plexCard = CardFormatterService.buildAvailableCard(plex)
-        assertEquals("🍿 Now Available: Dune: Part Two (2024)", plexCard.title)
-        assertEquals("Plex Media Server", plexCard.subtitle)
+        assertEquals("🍿 Dune: Part Two (2024) now available on Plex", plexCard.title)
+        assertEquals(null, plexCard.subtitle)
         assertEquals("8.6/10", plexCard.mediaSpecs?.score)
         assertEquals("2h 46m", plexCard.mediaSpecs?.duration)
         assertEquals(1, plexCard.actions.size)
@@ -219,8 +221,8 @@ class CardFormatterServiceTest {
             )
 
         val jellyfinCard = CardFormatterService.buildAvailableCard(jellyfin)
-        assertEquals("🍿 Now Available: Severance - Hello World", jellyfinCard.title)
-        assertEquals("Jellyfin Media Server", jellyfinCard.subtitle)
+        assertEquals("🍿 Severance - Hello World now available on Jellyfin", jellyfinCard.title)
+        assertEquals(null, jellyfinCard.subtitle)
         assertEquals("🍿 Watch on Jellyfin", jellyfinCard.actions.first().label)
     }
 
@@ -244,6 +246,10 @@ class CardFormatterServiceTest {
         assertEquals("📁 File Imported: Severance (S02E01)", importCard.title)
         assertEquals("Sonarr 4K • Library Import", importCard.subtitle)
         assertEquals(NotificationLevel.SUCCESS, importCard.level)
+        assertEquals("2160p", importCard.mediaSpecs?.resolution)
+        assertEquals("HEVC", importCard.mediaSpecs?.video)
+        assertEquals("EAC3", importCard.mediaSpecs?.audio)
+        assertEquals(null, importCard.mediaSpecs?.sizeFormatted)
 
         val upgradePayload =
             importPayload.copy(
@@ -441,5 +447,142 @@ class CardFormatterServiceTest {
         assertEquals("🔔 Severance (2022)", fallbackCard.title)
         assertEquals(NotificationLevel.INFO, fallbackCard.level)
         assertTrue(fallbackCard.actions.isEmpty())
+    }
+
+    @Test
+    fun `should render custom templates with customBody and artworkBytes across all card builders`() {
+        val customConfig =
+            TemplateConfig(
+                events =
+                    mapOf(
+                        "grab" to EventTemplate(body = "Custom Grab Body", imageEmbed = true),
+                        "download_complete" to EventTemplate(body = "Custom Complete Body"),
+                        "download_stalled" to EventTemplate(body = "Custom Stalled Body"),
+                        "import" to EventTemplate(body = "Custom Import Body", imageEmbed = true),
+                        "media_available" to EventTemplate(body = "Custom Available Body", imageEmbed = true),
+                        "request" to EventTemplate(body = "Custom Request Body", imageEmbed = true),
+                        "issue" to EventTemplate(body = "Custom Issue Body", imageEmbed = false),
+                        "manual_interaction" to EventTemplate(body = "Custom Manual Body"),
+                        "health" to EventTemplate(body = "Custom Health Body")
+                    )
+            )
+        val customEngine = TemplateEngine(customConfig)
+        val bytes = byteArrayOf(1, 2, 3)
+
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "hash123",
+                title = "Show S01E01",
+                seriesOrMovieTitle = "Show",
+                posterUrl = "https://example.com/poster.jpg"
+            )
+        val grabCard =
+            CardFormatterService.buildGrabInitialCard(
+                grab,
+                "https://qbit.example.com",
+                engine = customEngine
+            )
+        assertEquals("Custom Grab Body", grabCard.customBody)
+
+        val progress =
+            TorrentProgress(
+                hash = "hash123",
+                name = "Show.S01E01",
+                progressPercent = 100.0,
+                progressRatio = 1.0,
+                downloadSpeedBytesPerSec = 0,
+                uploadSpeedBytesPerSec = 0,
+                etaSeconds = 0,
+                totalSizeBytes = 1000L,
+                downloadedBytes = 1000L,
+                seedsCount = 0,
+                seedsTotal = 0,
+                peersCount = 0,
+                peersTotal = 0,
+                state = TorrentState.COMPLETED
+            )
+        val completeCard =
+            CardFormatterService.buildCompletionCard(
+                grab,
+                progress,
+                "https://qbit.example.com",
+                engine = customEngine
+            )
+        assertEquals("Custom Complete Body", completeCard.customBody)
+
+        val importPayload =
+            MediaPayload.ArrDownload(
+                source = AppSource.SONARR,
+                title = "Show - S01E01",
+                seriesOrMovieTitle = "Show"
+            )
+        val importCard = CardFormatterService.buildImportCard(importPayload, engine = customEngine)
+        assertEquals("Custom Import Body", importCard.customBody)
+
+        val plex =
+            MediaPayload.PlexLibraryNew(
+                title = "Movie",
+                artworkBytes = bytes
+            )
+        val availableCard = CardFormatterService.buildAvailableCard(plex, engine = customEngine)
+        assertEquals("Custom Available Body", availableCard.customBody)
+        assertNotNull(availableCard.artworkBytes)
+
+        val req =
+            MediaPayload.SeerrEvent(
+                source = AppSource.SEERR,
+                eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_PENDING,
+                notificationType = "MEDIA_PENDING",
+                subject = "Movie",
+                image = "https://example.com/poster.jpg"
+            )
+        val reqCard = CardFormatterService.buildSeerrCard(req, engine = customEngine)
+        assertEquals("Custom Request Body", reqCard.customBody)
+
+        val issue =
+            MediaPayload.SeerrEvent(
+                source = AppSource.SEERR,
+                eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_CREATED,
+                notificationType = "ISSUE_CREATED",
+                subject = "Movie Issue",
+                image = "https://example.com/poster.jpg"
+            )
+        val issueCard = CardFormatterService.buildSeerrCard(issue, engine = customEngine)
+        assertEquals("Custom Issue Body", issueCard.customBody)
+        assertNull(issueCard.artworkUrl)
+
+        val manual =
+            MediaPayload.ServarrManualInteraction(
+                source = AppSource.RADARR,
+                eventType = app.hononeko.notifier.domain.model.EventType.MANUAL_INTERACTION,
+                title = "Movie",
+                seriesOrMovieTitle = "Movie",
+                releaseTitle = "Movie.2024",
+                reason = "Sample"
+            )
+        val manualCard = CardFormatterService.buildManualInteractionCard(manual, engine = customEngine)
+        assertEquals("Custom Manual Body", manualCard.customBody)
+
+        val stalledCard =
+            CardFormatterService.buildStalledCard(
+                grab,
+                progress.copy(state = TorrentState.STALLED),
+                "https://qbit.example.com",
+                engine = customEngine
+            )
+        assertEquals("Custom Stalled Body", stalledCard.customBody)
+
+        val health =
+            MediaPayload.ServarrHealth(
+                source = AppSource.SONARR,
+                eventType = app.hononeko.notifier.domain.model.EventType.HEALTH_ISSUE,
+                level = "warning",
+                message = "Disk space low",
+                type = "DiskSpace",
+                instanceName = "Sonarr"
+            )
+        val healthCard = CardFormatterService.buildHealthCard(health, engine = customEngine)
+        assertEquals("Custom Health Body", healthCard.customBody)
     }
 }

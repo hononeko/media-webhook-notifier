@@ -25,7 +25,10 @@ class MediaServerAdapterTest {
             )
 
         val link = adapter.resolveDeepLink(payload)
-        assertEquals("https://plex.example.com/web/index.html#!/server/server-uuid-99/details?key=12345", link)
+        assertEquals(
+            "https://plex.example.com/web/index.html#!/server/server-uuid-99/details?key=%2Flibrary%2Fmetadata%2F12345",
+            link
+        )
     }
 
     @Test
@@ -41,7 +44,10 @@ class MediaServerAdapterTest {
             )
 
         val link = adapter.resolveDeepLink(payload)
-        assertEquals("https://app.plex.tv/desktop#!/server/server-uuid-99/details?key=12345", link)
+        assertEquals(
+            "https://app.plex.tv/desktop/#!/server/server-uuid-99/details?key=%2Flibrary%2Fmetadata%2F12345",
+            link
+        )
     }
 
     @Test

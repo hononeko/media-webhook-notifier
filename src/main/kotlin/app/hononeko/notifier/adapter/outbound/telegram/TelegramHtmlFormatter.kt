@@ -34,7 +34,6 @@ object TelegramHtmlFormatter {
         specs.audio?.let { items.add(it) }
         specs.score?.let { items.add("⭐ $it") }
         specs.duration?.let { items.add(it) }
-        specs.sizeFormatted?.let { items.add(it) }
         return items.joinToString(" • ")
     }
 
@@ -77,7 +76,7 @@ object TelegramHtmlFormatter {
 
     fun buildProgressHtml(update: ProgressUpdate): String {
         val sb = StringBuilder()
-        sb.append("<b>⏳ Downloading: ").append(escapeHtml(update.title)).append("</b>\n")
+        sb.append("<b>").append(escapeHtml(update.title)).append("</b>\n")
         if (!update.subtitle.isNullOrBlank()) {
             appendItalicLine(sb, update.subtitle)
         }

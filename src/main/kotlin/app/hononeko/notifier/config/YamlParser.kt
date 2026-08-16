@@ -7,7 +7,22 @@ import app.hononeko.notifier.domain.model.ThemeConfig
 
 object YamlParser {
     private val TEMPLATE_KEYS =
-        setOf("title", "subtitle", "body", "artwork_url", "poster_url", "state_text", "actions")
+        setOf(
+            "title",
+            "subtitle",
+            "body",
+            "artwork_url",
+            "poster_url",
+            "image_embed",
+            "image_embed_enabled",
+            "embed_image",
+            "send_photos",
+            "send_photo",
+            "photo",
+            "photos",
+            "state_text",
+            "actions"
+        )
 
     fun parse(yaml: String): Map<String, Any?> {
         if (yaml.isBlank()) return emptyMap()
@@ -91,14 +106,38 @@ object YamlParser {
         val rawActions = eventProps["actions"] as? List<*> ?: emptyList<Any?>()
         val actionsList = rawActions.mapNotNull { parseAction(it) }
 
+        val imageEmbed = parseImageEmbedFlag(eventProps)
+
         return EventTemplate(
             title = eventProps["title"]?.toString(),
             subtitle = eventProps["subtitle"]?.toString(),
             body = eventProps["body"]?.toString(),
             artworkUrl = eventProps["artwork_url"]?.toString() ?: eventProps["poster_url"]?.toString(),
+            imageEmbed = imageEmbed,
             stateText = eventProps["state_text"]?.toString(),
             actions = actionsList
         )
+    }
+
+    private fun parseImageEmbedFlag(eventProps: Map<String, Any?>): Boolean? {
+        val keys =
+            listOf(
+                "image_embed",
+                "image_embed_enabled",
+                "embed_image",
+                "send_photos",
+                "send_photo",
+                "photo",
+                "photos"
+            )
+        for (k in keys) {
+            val v = eventProps[k] ?: continue
+            if (v is Boolean) return v
+            val str = v.toString().trim()
+            if (str.equals("true", ignoreCase = true)) return true
+            if (str.equals("false", ignoreCase = true)) return false
+        }
+        return null
     }
 
     @Suppress("UNCHECKED_CAST")

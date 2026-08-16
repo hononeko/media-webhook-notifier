@@ -1,6 +1,7 @@
 package app.hononeko.notifier.config
 
 import app.hononeko.notifier.adapter.outbound.notification.NotificationUrlParser
+import app.hononeko.notifier.domain.model.EventTemplate
 import app.hononeko.notifier.domain.model.TemplateConfig
 import java.io.File
 
@@ -80,7 +81,21 @@ object ConfigLoader {
     ): TemplateConfig {
         val mergedEvents = base.events.toMutableMap()
         for ((key, tpl) in override.events) {
-            mergedEvents[key] = tpl
+            val baseTpl = mergedEvents[key]
+            mergedEvents[key] =
+                if (baseTpl != null) {
+                    EventTemplate(
+                        title = tpl.title ?: baseTpl.title,
+                        subtitle = tpl.subtitle ?: baseTpl.subtitle,
+                        body = tpl.body ?: baseTpl.body,
+                        artworkUrl = tpl.artworkUrl ?: baseTpl.artworkUrl,
+                        imageEmbed = tpl.imageEmbed ?: baseTpl.imageEmbed,
+                        stateText = tpl.stateText ?: baseTpl.stateText,
+                        actions = if (tpl.actions.isNotEmpty()) tpl.actions else baseTpl.actions
+                    )
+                } else {
+                    tpl
+                }
         }
         return TemplateConfig(theme = override.theme, events = mergedEvents)
     }
@@ -136,15 +151,49 @@ object ConfigLoader {
 
     private fun loadNotificationsConfig(reader: EnvReader): NotificationConfig {
         val rawUrl = reader.getSecret("NOTIFICATION_URL", "notifications.url") ?: ""
-        return if (rawUrl.isNotBlank()) {
-            NotificationUrlParser.parse(rawUrl)
-        } else {
-            NotificationConfig()
-        }
+        val baseConfig =
+            if (rawUrl.isNotBlank()) {
+                NotificationUrlParser.parse(rawUrl)
+            } else {
+                NotificationConfig()
+            }
+
+        val botToken = reader.getSecret("TELEGRAM_BOT_TOKEN", "telegram.botToken")
+        val chatId = reader.get("TELEGRAM_CHAT_ID", "telegram.chatId")
+        val topicId = reader.getLong(0L, "TELEGRAM_TOPIC_ID", "telegram.topicId").takeIf { it > 0 }
+        val sendPhotos =
+            reader.getBoolean(
+                baseConfig.sendPhotos,
+                "NOTIFICATION_SEND_PHOTOS",
+                "NOTIFICATION_PHOTOS",
+                "TELEGRAM_SEND_PHOTOS",
+                "notifications.sendPhotos"
+            )
+        val rateLimit =
+            reader.getInt(
+                baseConfig.rateLimitPerMinute,
+                "NOTIFICATION_RATE_LIMIT_PER_MINUTE",
+                "notifications.rateLimitPerMinute"
+            )
+        val timeout =
+            reader.getLong(
+                baseConfig.timeoutSeconds,
+                "NOTIFICATION_TIMEOUT_SECONDS",
+                "notifications.timeoutSeconds"
+            )
+
+        return baseConfig.copy(
+            botToken = botToken ?: baseConfig.botToken,
+            chatId = chatId ?: baseConfig.chatId,
+            topicId = topicId ?: baseConfig.topicId,
+            sendPhotos = sendPhotos,
+            rateLimitPerMinute = rateLimit,
+            timeoutSeconds = timeout
+        )
     }
 
     internal class EnvReader(
-        private val env: Map<String, String>
+        val env: Map<String, String>
     ) {
         fun get(vararg keys: String): String? {
             for (key in keys) {

@@ -91,7 +91,8 @@ data class ServarrMovieFileDto(
     val releaseGroup: String? = null,
     val size: Long? = null,
     val videoCodec: String? = null,
-    val audioCodec: String? = null
+    val audioCodec: String? = null,
+    val mediaInfo: ServarrMediaInfoDto? = null
 )
 
 @Serializable
@@ -104,5 +105,16 @@ data class ServarrEpisodeFileDto(
     val releaseGroup: String? = null,
     val size: Long? = null,
     val videoCodec: String? = null,
-    val audioCodec: String? = null
+    val audioCodec: String? = null,
+    val mediaInfo: ServarrMediaInfoDto? = null
+)
+
+@Serializable
+data class ServarrMediaInfoDto(
+    val audioChannels: Double? = null,
+    val audioCodec: String? = null,
+    val videoCodec: String? = null,
+    val videoDynamicRange: String? = null,
+    val videoDynamicRangeType: String? = null,
+    val resolution: String? = null
 )

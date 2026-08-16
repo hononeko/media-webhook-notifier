@@ -377,4 +377,71 @@ class TelegramPublisherAdapterTest {
             assertTrue(!capturedBody.contains("javascript"))
             assertTrue(!capturedBody.contains("file:///etc/passwd"))
         }
+
+    @Test
+    fun `should send photo when artworkUrl is present and sendPhotos is true, text otherwise`() =
+        runTest {
+            var endpointCalled = ""
+            val mockEngine =
+                MockEngine { request ->
+                    endpointCalled = request.url.encodedPath
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":555}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "123",
+                    sendPhotos = true
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            // Card without artworkUrl (e.g. template image_embed: false) -> should use sendMessage
+            val textOnlyCard =
+                NotificationCard(
+                    title = "Grab Event",
+                    artworkUrl = null,
+                    eventType = "grab"
+                )
+            val grabResult = adapter.sendCard(textOnlyCard)
+            assertTrue(grabResult.isRight())
+            assertEquals("/bot12345:TOKEN/sendMessage", endpointCalled)
+
+            // Card with artworkUrl -> should use sendPhoto
+            val photoCard =
+                NotificationCard(
+                    title = "Import Event",
+                    artworkUrl = "https://example.com/poster.jpg",
+                    eventType = "import"
+                )
+            val importResult = adapter.sendCard(photoCard)
+            assertTrue(importResult.isRight())
+            assertEquals("/bot12345:TOKEN/sendPhoto", endpointCalled)
+
+            // Card with binary artworkBytes -> should use sendPhoto
+            val binaryCard =
+                NotificationCard(
+                    title = "Plex Event",
+                    artworkBytes = byteArrayOf(1, 2, 3, 4),
+                    eventType = "media_available"
+                )
+            val binaryResult = adapter.sendCard(binaryCard)
+            assertTrue(binaryResult.isRight())
+            assertEquals("/bot12345:TOKEN/sendPhoto", endpointCalled)
+
+            // Card with relative artworkUrl and no bytes -> should use sendMessage to prevent 400 Bad Request
+            val relativeCard =
+                NotificationCard(
+                    title = "Relative URL Event",
+                    artworkUrl = "/library/metadata/123/thumb",
+                    eventType = "media_available"
+                )
+            val relativeResult = adapter.sendCard(relativeCard)
+            assertTrue(relativeResult.isRight())
+            assertEquals("/bot12345:TOKEN/sendMessage", endpointCalled)
+        }
 }
