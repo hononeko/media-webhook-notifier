@@ -56,11 +56,63 @@ sealed interface MediaPayload {
         val audioCodec: String? = null,
         val resolution: String? = null,
         val posterUrl: String? = null,
+        val artworkBytes: ByteArray? = null,
         val ratingKey: String? = null,
         val serverMachineIdentifier: String? = null,
         val deepLinkUrl: String? = null,
         override val instanceName: String? = null
-    ) : MediaPayload
+    ) : MediaPayload {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is PlexLibraryNew) return false
+            if (source != other.source) return false
+            if (eventType != other.eventType) return false
+            if (title != other.title) return false
+            if (grandParentTitle != other.grandParentTitle) return false
+            if (parentTitle != other.parentTitle) return false
+            if (year != other.year) return false
+            if (summary != other.summary) return false
+            if (rating != other.rating) return false
+            if (durationSeconds != other.durationSeconds) return false
+            if (videoCodec != other.videoCodec) return false
+            if (audioCodec != other.audioCodec) return false
+            if (resolution != other.resolution) return false
+            if (posterUrl != other.posterUrl) return false
+            if (artworkBytes != null) {
+                if (other.artworkBytes == null) return false
+                if (!artworkBytes.contentEquals(other.artworkBytes)) return false
+            } else if (other.artworkBytes != null) {
+                return false
+            }
+            if (ratingKey != other.ratingKey) return false
+            if (serverMachineIdentifier != other.serverMachineIdentifier) return false
+            if (deepLinkUrl != other.deepLinkUrl) return false
+            if (instanceName != other.instanceName) return false
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = source.hashCode()
+            result = 31 * result + eventType.hashCode()
+            result = 31 * result + title.hashCode()
+            result = 31 * result + (grandParentTitle?.hashCode() ?: 0)
+            result = 31 * result + (parentTitle?.hashCode() ?: 0)
+            result = 31 * result + (year?.hashCode() ?: 0)
+            result = 31 * result + (summary?.hashCode() ?: 0)
+            result = 31 * result + (rating?.hashCode() ?: 0)
+            result = 31 * result + (durationSeconds?.hashCode() ?: 0)
+            result = 31 * result + (videoCodec?.hashCode() ?: 0)
+            result = 31 * result + (audioCodec?.hashCode() ?: 0)
+            result = 31 * result + (resolution?.hashCode() ?: 0)
+            result = 31 * result + (posterUrl?.hashCode() ?: 0)
+            result = 31 * result + (artworkBytes?.contentHashCode() ?: 0)
+            result = 31 * result + (ratingKey?.hashCode() ?: 0)
+            result = 31 * result + (serverMachineIdentifier?.hashCode() ?: 0)
+            result = 31 * result + (deepLinkUrl?.hashCode() ?: 0)
+            result = 31 * result + (instanceName?.hashCode() ?: 0)
+            return result
+        }
+    }
 
     data class JellyfinItemAdded(
         override val source: AppSource = AppSource.JELLYFIN,

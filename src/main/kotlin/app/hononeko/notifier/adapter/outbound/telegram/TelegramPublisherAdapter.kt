@@ -13,11 +13,15 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.forms.formData
+import io.ktor.client.request.forms.submitFormWithBinaryData
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
@@ -173,14 +177,25 @@ class TelegramPublisherAdapter(
         val markup = buildKeyboard(card.actions)
         val textContent = buildCardHtml(card)
 
-        if (config.sendPhotos && !card.artworkUrl.isNullOrBlank()) {
+        if (config.sendPhotos) {
             val caption = truncateToLimit(textContent, 1024)
-            val photoResult = sendPhoto(card.artworkUrl, caption, markup)
-            if (photoResult is Either.Right) {
-                photoMessageRegistry[photoResult.value.messageReferenceId] = true
-                return photoResult
+            if (card.artworkBytes != null && card.artworkBytes.isNotEmpty()) {
+                val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup)
+                if (photoResult is Either.Right) {
+                    photoMessageRegistry[photoResult.value.messageReferenceId] = true
+                    return photoResult
+                }
+                logger.warn("Telegram photo binary upload failed, falling back to HTML text message")
+            } else if (!card.artworkUrl.isNullOrBlank() &&
+                (card.artworkUrl.startsWith("http://") || card.artworkUrl.startsWith("https://"))
+            ) {
+                val photoResult = sendPhoto(card.artworkUrl, caption, markup)
+                if (photoResult is Either.Right) {
+                    photoMessageRegistry[photoResult.value.messageReferenceId] = true
+                    return photoResult
+                }
+                logger.warn("Telegram photo send failed, falling back to HTML text message")
             }
-            logger.warn("Telegram photo send failed, falling back to HTML text message")
         }
 
         val textResult = sendMessage(textContent, markup)
@@ -245,6 +260,41 @@ class TelegramPublisherAdapter(
     }
 
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
+
+    private suspend fun sendPhotoBytes(
+        photoBytes: ByteArray,
+        caption: String,
+        markup: InlineKeyboardMarkup?
+    ): Either<DomainError.NotificationError, NotificationHandle> =
+        try {
+            val response =
+                httpClient.submitFormWithBinaryData(
+                    url = "$apiBaseUrl/sendPhoto",
+                    formData =
+                        formData {
+                            append("chat_id", config.chatId)
+                            config.topicId?.let { append("message_thread_id", it.toString()) }
+                            append("caption", caption)
+                            append("parse_mode", "HTML")
+                            markup?.let {
+                                append("reply_markup", jsonConfig.encodeToString(InlineKeyboardMarkup.serializer(), it))
+                            }
+                            append(
+                                "photo",
+                                photoBytes,
+                                Headers.build {
+                                    append(HttpHeaders.ContentType, "image/jpeg")
+                                    append(HttpHeaders.ContentDisposition, "filename=\"poster.jpg\"")
+                                }
+                            )
+                        }
+                )
+            handleSendResponse(response)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            logger.warn("Network error sending Telegram photo binary: {}", e.message)
+            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
+        }
 
     private suspend fun sendPhoto(
         photoUrl: String,

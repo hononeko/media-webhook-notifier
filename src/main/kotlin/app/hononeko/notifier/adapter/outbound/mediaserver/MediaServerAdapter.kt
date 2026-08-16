@@ -3,6 +3,8 @@ package app.hononeko.notifier.adapter.outbound.mediaserver
 import app.hononeko.notifier.config.MediaServerConfig
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 class MediaServerAdapter(
     private val config: MediaServerConfig
@@ -22,13 +24,21 @@ class MediaServerAdapter(
         val ratingKey = payload.ratingKey ?: return null
         val serverId = payload.serverMachineIdentifier ?: ""
 
+        val rawKey =
+            when {
+                ratingKey.startsWith("/library/metadata/") -> ratingKey
+                ratingKey.startsWith("/") -> ratingKey
+                else -> "/library/metadata/$ratingKey"
+            }
+        val encodedKey = URLEncoder.encode(rawKey, StandardCharsets.UTF_8.name())
+
         val plexBase = config.publicUrl.ifBlank { config.url }.ifBlank { "https://app.plex.tv/desktop" }
 
         val normalizedBase = plexBase.trimEnd('/')
         return if (normalizedBase.contains("app.plex.tv")) {
-            "$normalizedBase#!/server/$serverId/details?key=$ratingKey"
+            "$normalizedBase/#!/server/$serverId/details?key=$encodedKey"
         } else {
-            "$normalizedBase/web/index.html#!/server/$serverId/details?key=$ratingKey"
+            "$normalizedBase/web/index.html#!/server/$serverId/details?key=$encodedKey"
         }
     }
 
