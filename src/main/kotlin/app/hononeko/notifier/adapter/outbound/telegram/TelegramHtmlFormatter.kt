@@ -91,6 +91,9 @@ object TelegramHtmlFormatter {
                 .append(String.format(Locale.US, "%.2f", update.percent))
                 .append("%</b>\n\n")
 
+            if (update.releaseName.isNotBlank()) {
+                sb.append("▪ <b>Release:</b> ").append(escapeHtml(update.releaseName)).append("\n")
+            }
             sb.append("▪ <b>Speed:</b> ").append(escapeHtml(update.speedFormatted))
             if (update.etaFormatted.isNotBlank()) {
                 sb.append(" (ETA: ").append(escapeHtml(update.etaFormatted)).append(")")

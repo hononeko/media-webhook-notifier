@@ -99,11 +99,16 @@ class CardFormatterServiceTest {
             )
 
         val card = CardFormatterService.buildGrabInitialCard(payload, "https://qbit.example.com")
-        assertEquals("⏳ Queueing Download: Severance (S02E01)", card.title)
+        assertEquals("⏳ Downloading: Severance (S02E01)", card.title)
         assertEquals(NotificationLevel.PROGRESS, card.level)
-        assertEquals(3, card.fields.size)
+        assertEquals(4, card.fields.size)
         assertEquals("https://cdn.example.com/poster.jpg", card.artworkUrl)
         assertEquals(0, card.actions.size)
+
+        val payloadWithIndexer = payload.copy(indexer = "TorrentLeech", releaseTitle = "Severance.S02E01.2160p-NTb")
+        val cardWithIndexer = CardFormatterService.buildGrabInitialCard(payloadWithIndexer, "https://qbit.example.com")
+        assertEquals("⏳ Downloading Severance (S02E01) from TorrentLeech", cardWithIndexer.title)
+        assertEquals("Severance.S02E01.2160p-NTb", cardWithIndexer.fields.first { it.name == "Release" }.value)
     }
 
     @Test

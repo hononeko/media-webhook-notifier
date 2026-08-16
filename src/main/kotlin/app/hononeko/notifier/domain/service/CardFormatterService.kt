@@ -138,14 +138,17 @@ object CardFormatterService {
         webUiUrl: String?,
         titleText: String,
         epRange: String?
-    ): MutableMap<String, Any?> =
-        mutableMapOf(
+    ): MutableMap<String, Any?> {
+        val releaseName = payload.releaseTitle ?: payload.title
+        return mutableMapOf(
             "title" to titleText,
             "series_title" to payload.seriesOrMovieTitle,
             "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
             "episode_range" to epRange,
             "quality" to payload.quality,
             "release_group" to payload.releaseGroup,
+            "release_title" to releaseName,
+            "release_name" to releaseName,
             "indexer" to payload.indexer,
             "webui_url" to webUiUrl,
             "poster_url" to payload.posterUrl,
@@ -153,6 +156,7 @@ object CardFormatterService {
             "source_name" to payload.source.displayName,
             "download_id" to payload.downloadId
         )
+    }
 
     fun buildGrabInitialCard(
         payload: MediaPayload.ArrGrab,
@@ -171,10 +175,17 @@ object CardFormatterService {
         context["size"] = formattedSize
         context["total_size"] = formattedSize
 
+        val defaultTitle =
+            if (!payload.indexer.isNullOrBlank()) {
+                "⏳ Downloading $titleText from ${payload.indexer}"
+            } else {
+                "⏳ Downloading: $titleText"
+            }
+
         val resolved =
             engine.resolveCard(
                 eventName = "grab",
-                defaultTitle = "⏳ Queueing Download: $titleText",
+                defaultTitle = defaultTitle,
                 defaultSubtitle = payload.instanceName ?: payload.source.displayName,
                 defaultArtworkUrl = payload.posterUrl,
                 defaultActions = emptyList(),
@@ -194,6 +205,7 @@ object CardFormatterService {
         }
 
         val fields = mutableListOf<CardField>()
+        (payload.releaseTitle ?: payload.title).let { fields.add(CardField("Release", it)) }
         payload.quality?.let { fields.add(CardField("Quality", it)) }
         payload.releaseGroup?.let { fields.add(CardField("Group", it)) }
         payload.sizeBytes?.let { fields.add(CardField("Size", formatBytes(it))) }
@@ -252,7 +264,11 @@ object CardFormatterService {
                 TorrentState.UNKNOWN -> "Active"
             }
 
+        val releaseName = progress.name.ifBlank { payload.releaseTitle ?: payload.title }
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
+        context["release_title"] = releaseName
+        context["release_name"] = releaseName
+        context["torrent_name"] = progress.name
         context["progress_percent"] = String.format(Locale.US, "%.2f", progress.progressPercent)
         context["progress_bar"] = progressBar
         context["speed"] = speedFormatted
@@ -262,10 +278,17 @@ object CardFormatterService {
         context["peers_info"] = peersFormatted
         context["state"] = stateLabel
 
+        val defaultTitle =
+            if (!payload.indexer.isNullOrBlank()) {
+                "⏳ Downloading $titleText from ${payload.indexer}"
+            } else {
+                "⏳ Downloading: $titleText"
+            }
+
         val resolved =
             engine.resolveProgress(
                 eventName = "download_progress",
-                defaultTitle = "⏳ Downloading: $titleText",
+                defaultTitle = defaultTitle,
                 defaultSubtitle = payload.instanceName ?: payload.source.displayName,
                 defaultActions = emptyList(),
                 context = context
@@ -282,6 +305,7 @@ object CardFormatterService {
             sizeFormatted = sizeFormatted,
             peersInfo = peersFormatted,
             stateText = stateLabel,
+            releaseName = releaseName,
             customBody = resolved.customBody,
             actions = resolved.actions
         )
@@ -300,10 +324,14 @@ object CardFormatterService {
                 else -> payload.title
             }
 
+        val releaseName = progress.name.ifBlank { payload.releaseTitle ?: payload.title }
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
         val totalSizeFormatted = formatBytes(progress.totalSizeBytes)
         context["total_size"] = totalSizeFormatted
         context["size"] = totalSizeFormatted
+        context["release_title"] = releaseName
+        context["release_name"] = releaseName
+        context["torrent_name"] = progress.name
 
         val resolved =
             engine.resolveCard(
@@ -329,6 +357,7 @@ object CardFormatterService {
 
         val fields =
             mutableListOf(
+                CardField("Release", releaseName),
                 CardField("Status", "✅ 100% Downloaded"),
                 CardField("Total Size", formatBytes(progress.totalSizeBytes))
             )
@@ -366,9 +395,13 @@ object CardFormatterService {
                 engine.theme.progressBarStyle
             )
 
+        val releaseName = progress?.name?.ifBlank { null } ?: payload.releaseTitle ?: payload.title
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
         context["progress_percent"] = String.format(Locale.US, "%.2f", progressVal)
         context["progress_bar"] = progressBar
+        context["release_title"] = releaseName
+        context["release_name"] = releaseName
+        context["torrent_name"] = progress?.name
 
         val resolved =
             engine.resolveCard(
@@ -394,12 +427,14 @@ object CardFormatterService {
 
         val fields =
             mutableListOf(
+                CardField("Release", releaseName),
                 CardField("Status", "⚠️ Download Stalled (0 B/s)"),
                 CardField(
                     "Progress",
-                    "${String.format(Locale.US, "%.1f", progressVal)}% $progressBar"
+                    "${String.format(Locale.US, "%.2f", progressVal)}% $progressBar"
                 )
             )
+        payload.quality?.let { fields.add(CardField("Quality", it)) }
 
         return NotificationCard(
             title = resolved.title,

@@ -94,7 +94,7 @@ class TemplateEngine(
             )
         }
         matcher.appendTail(sb)
-        return sb.toString()
+        return sb.toString().replace(Regex("\\s+from\\s*$"), "").trim()
     }
 
     fun interpolateBody(

@@ -10,6 +10,7 @@ data class ProgressUpdate(
     val sizeFormatted: String,
     val peersInfo: String,
     val stateText: String,
+    val releaseName: String = "",
     val subtitle: String? = null,
     val customBody: String? = null,
     val actions: List<ActionLink> = emptyList()

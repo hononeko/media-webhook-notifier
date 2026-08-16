@@ -75,7 +75,17 @@ class TemplatePreviewController {
 
         private val BASE_TAGS =
             listOf("title", "series_title", "season", "episode_range", "poster_url", "instance_name", "source_name")
-        private val TORRENT_TAGS = BASE_TAGS + listOf("quality", "release_group", "indexer", "webui_url", "download_id")
+        private val TORRENT_TAGS =
+            BASE_TAGS +
+                listOf(
+                    "quality",
+                    "release_group",
+                    "release_title",
+                    "release_name",
+                    "indexer",
+                    "webui_url",
+                    "download_id"
+                )
         private val GRAB_TAGS = TORRENT_TAGS + listOf("size", "total_size")
         private val PROGRESS_TAGS =
             TORRENT_TAGS +
@@ -339,6 +349,7 @@ class TemplatePreviewController {
             seasonNumber = 1,
             episodeNumbers = listOf(1),
             releaseGroup = "FLUX",
+            releaseTitle = "Breaking.Bad.S01E01.Pilot.1080p.BluRay.x264-FLUX",
             quality = "WEBDL-1080p",
             sizeBytes = 2147483648L,
             indexer = "TorrentLeech",

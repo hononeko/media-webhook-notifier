@@ -47,6 +47,7 @@ class SeasonDebouncer(
                         episodeNumbers = combinedEpisodes,
                         sizeBytes = maxOf(existing.payload.sizeBytes ?: 0L, grab.sizeBytes ?: 0L).takeIf { it > 0 },
                         releaseGroup = existing.payload.releaseGroup ?: grab.releaseGroup,
+                        releaseTitle = existing.payload.releaseTitle ?: grab.releaseTitle,
                         quality = existing.payload.quality ?: grab.quality,
                         indexer = existing.payload.indexer ?: grab.indexer,
                         posterUrl = existing.payload.posterUrl ?: grab.posterUrl,

@@ -142,7 +142,7 @@ class ConfigLoaderTest {
         val grabTemplate = config.templates.events["grab"]
         assertNotNull(grabTemplate)
         assertEquals(false, grabTemplate.imageEmbed)
-        assertEquals("⏳ Queueing Download: {title}", grabTemplate.title)
+        assertEquals("⏳ Downloading {title} from {indexer}", grabTemplate.title)
         assertNotNull(grabTemplate.body)
     }
 }
