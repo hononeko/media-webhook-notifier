@@ -106,7 +106,21 @@ class CardFormatterServiceTest {
         assertEquals(0, card.actions.size)
 
         val payloadWithIndexer = payload.copy(indexer = "TorrentLeech", releaseTitle = "Severance.S02E01.2160p-NTb")
-        val cardWithIndexer = CardFormatterService.buildGrabInitialCard(payloadWithIndexer, "https://qbit.example.com")
+        val engine =
+            TemplateEngine(
+                TemplateConfig(
+                    events =
+                        mapOf(
+                            "grab" to EventTemplate(title = "⏳ Downloading {title} from {indexer}")
+                        )
+                )
+            )
+        val cardWithIndexer =
+            CardFormatterService.buildGrabInitialCard(
+                payloadWithIndexer,
+                "https://qbit.example.com",
+                engine
+            )
         assertEquals("⏳ Downloading Severance (S02E01) from TorrentLeech", cardWithIndexer.title)
         assertEquals("Severance.S02E01.2160p-NTb", cardWithIndexer.fields.first { it.name == "Release" }.value)
     }

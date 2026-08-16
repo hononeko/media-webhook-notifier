@@ -175,17 +175,10 @@ object CardFormatterService {
         context["size"] = formattedSize
         context["total_size"] = formattedSize
 
-        val defaultTitle =
-            if (!payload.indexer.isNullOrBlank()) {
-                "⏳ Downloading $titleText from ${payload.indexer}"
-            } else {
-                "⏳ Downloading: $titleText"
-            }
-
         val resolved =
             engine.resolveCard(
                 eventName = "grab",
-                defaultTitle = defaultTitle,
+                defaultTitle = "⏳ Downloading: $titleText",
                 defaultSubtitle = payload.instanceName ?: payload.source.displayName,
                 defaultArtworkUrl = payload.posterUrl,
                 defaultActions = emptyList(),
@@ -278,17 +271,10 @@ object CardFormatterService {
         context["peers_info"] = peersFormatted
         context["state"] = stateLabel
 
-        val defaultTitle =
-            if (!payload.indexer.isNullOrBlank()) {
-                "⏳ Downloading $titleText from ${payload.indexer}"
-            } else {
-                "⏳ Downloading: $titleText"
-            }
-
         val resolved =
             engine.resolveProgress(
                 eventName = "download_progress",
-                defaultTitle = defaultTitle,
+                defaultTitle = "⏳ Downloading: $titleText",
                 defaultSubtitle = payload.instanceName ?: payload.source.displayName,
                 defaultActions = emptyList(),
                 context = context
