@@ -43,7 +43,37 @@ class TemplateEngine(
 
     val theme get() = config.theme
 
-    fun getEventTemplate(eventName: String): EventTemplate? = config.events[eventName]
+    fun getEventTemplate(eventName: String): EventTemplate? =
+        config.events[eventName]
+            ?: when (eventName) {
+                "grab" ->
+                    config.events["download.grab"] ?: config.events["download_grab"]
+                        ?: config.events["torrent.grab"]
+                "download_progress", "progress" ->
+                    config.events["download_progress"] ?: config.events["download.progress"]
+                        ?: config.events["progress"]
+                "download_complete", "complete" ->
+                    config.events["download_complete"] ?: config.events["download.complete"]
+                        ?: config.events["complete"]
+                "download_stalled", "stalled" ->
+                    config.events["download_stalled"] ?: config.events["download.stalled"] ?: config.events["stalled"]
+                "import" -> config.events["import"] ?: config.events["servarr.import"] ?: config.events["arr.import"]
+                "manual_interaction" ->
+                    config.events["manual_interaction"] ?: config.events["servarr.manual_interaction"]
+                        ?: config.events["arr.manual_interaction"]
+                "health" -> config.events["health"] ?: config.events["servarr.health"] ?: config.events["system.health"]
+                "media_available", "available" ->
+                    config.events["media_available"] ?: config.events["media_server.available"]
+                        ?: config.events["media.available"]
+                        ?: config.events["available"]
+                "request" ->
+                    config.events["request"] ?: config.events["seerr.request"]
+                        ?: config.events["seerr_request"]
+                "issue" ->
+                    config.events["issue"] ?: config.events["seerr.issue"] ?: config.events["seerr_issue"]
+                        ?: getEventTemplate("request")
+                else -> null
+            }
 
     fun interpolate(
         template: String?,
@@ -138,7 +168,7 @@ class TemplateEngine(
         defaultActions: List<ActionLink>,
         context: Map<String, Any?>
     ): ResolvedTemplateCard {
-        val customTemplate = config.events[eventName]
+        val customTemplate = getEventTemplate(eventName)
         val title =
             customTemplate?.title?.takeIf { it.isNotBlank() }?.let {
                 interpolate(it, context)
@@ -182,7 +212,7 @@ class TemplateEngine(
         defaultActions: List<ActionLink>,
         context: Map<String, Any?>
     ): ResolvedTemplateProgress {
-        val customTemplate = config.events[eventName]
+        val customTemplate = getEventTemplate(eventName)
         val title =
             customTemplate?.title?.takeIf { it.isNotBlank() }?.let {
                 interpolate(it, context)

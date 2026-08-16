@@ -981,16 +981,27 @@ object CardFormatterService {
                 "source_name" to payload.source.displayName
             )
 
+        val isIssue =
+            payload.eventType in
+                setOf(
+                    EventType.ISSUE_CREATED,
+                    EventType.ISSUE_COMMENT,
+                    EventType.ISSUE_RESOLVED,
+                    EventType.ISSUE_REOPENED
+                )
+        val eventName = if (isIssue) "issue" else "request"
+
         val defaultActions =
             if (!payload.webUrl.isNullOrBlank()) {
-                listOf(ActionLink(label = "🌐 Open in $appName", url = payload.webUrl, style = ActionStyle.PRIMARY))
+                val actionLabel = if (isIssue) "⚠️ View Issue in $appName" else "🌐 Open in $appName"
+                listOf(ActionLink(label = actionLabel, url = payload.webUrl, style = ActionStyle.PRIMARY))
             } else {
                 emptyList()
             }
 
         val resolved =
             engine.resolveCard(
-                eventName = "request",
+                eventName = eventName,
                 defaultTitle = defaultTitle,
                 defaultSubtitle = defaultSubtitle,
                 defaultArtworkUrl = payload.image,

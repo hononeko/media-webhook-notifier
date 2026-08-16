@@ -152,6 +152,21 @@ class TemplatePreviewController {
                 "requested_by",
                 "media_type",
                 "quality",
+                "message",
+                "web_url",
+                "poster_url",
+                "instance_name",
+                "source_name"
+            )
+        private val ISSUE_TAGS =
+            listOf(
+                "title",
+                "subject",
+                "request_icon",
+                "request_action",
+                "request_status",
+                "requested_by",
+                "media_type",
                 "issue_type",
                 "issue_status",
                 "comment",
@@ -298,6 +313,11 @@ class TemplatePreviewController {
                 val card = CardFormatterService.buildManualInteractionCard(manual, engine)
                 Triple(card, null, MANUAL_TAGS)
             }
+            "issue" -> {
+                val issue = mockIssue()
+                val card = CardFormatterService.buildSeerrCard(issue, engine)
+                Triple(card, null, ISSUE_TAGS)
+            }
             "request" -> {
                 val seerr = mockSeerr()
                 val card = CardFormatterService.buildSeerrCard(seerr, engine)
@@ -418,6 +438,22 @@ class TemplatePreviewController {
             is4k = true,
             image = MOCK_DUNE_POSTER,
             webUrl = "http://overseerr.lan:5055/movie/1",
+            instanceName = "Overseerr"
+        )
+
+    private fun mockIssue() =
+        MediaPayload.SeerrEvent(
+            eventType = EventType.ISSUE_CREATED,
+            notificationType = "ISSUE_CREATED",
+            subject = "$MOCK_DUNE_TITLE (2024)",
+            requestedByUsername = "bob",
+            mediaType = "movie",
+            is4k = false,
+            issueType = "Video",
+            issueStatus = "Open",
+            commentMessage = "Video playback is choppy at 45m",
+            image = MOCK_DUNE_POSTER,
+            webUrl = "http://overseerr.lan:5055/issues/42",
             instanceName = "Overseerr"
         )
 }

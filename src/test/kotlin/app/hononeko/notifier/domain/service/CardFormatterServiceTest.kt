@@ -369,6 +369,7 @@ class CardFormatterServiceTest {
                 issueType = "Audio",
                 issueStatus = "OPEN",
                 commentMessage = "Audio is out of sync in second half",
+                webUrl = "https://overseerr.example.com/issues/42",
                 instanceName = "Jellyseerr"
             )
         val issueCard = CardFormatterService.buildSeerrCard(issuePayload)
@@ -377,6 +378,9 @@ class CardFormatterServiceTest {
         assertEquals(NotificationLevel.WARNING, issueCard.level)
         assertEquals("Audio", issueCard.fields.first { it.name == "Issue Type" }.value)
         assertEquals("Audio is out of sync in second half", issueCard.fields.first { it.name == "Comment" }.value)
+        assertEquals(1, issueCard.actions.size)
+        assertEquals("⚠️ View Issue in Jellyseerr", issueCard.actions.first().label)
+        assertEquals("https://overseerr.example.com/issues/42", issueCard.actions.first().url)
 
         val autoApprovedCard =
             CardFormatterService.buildSeerrCard(

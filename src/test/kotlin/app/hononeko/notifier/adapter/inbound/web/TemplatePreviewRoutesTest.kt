@@ -157,6 +157,7 @@ class TemplatePreviewRoutesTest {
                     "health",
                     "manual_interaction",
                     "request",
+                    "issue",
                     "unknown_event"
                 )
 
