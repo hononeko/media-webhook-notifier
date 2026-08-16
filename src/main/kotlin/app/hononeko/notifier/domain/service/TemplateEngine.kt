@@ -15,7 +15,8 @@ data class ResolvedTemplateCard(
     val subtitle: String?,
     val artworkUrl: String?,
     val actions: List<ActionLink>,
-    val customBody: String?
+    val customBody: String?,
+    val imageEmbedEnabled: Boolean = true
 )
 
 data class ResolvedTemplateProgress(
@@ -180,10 +181,15 @@ class TemplateEngine(
                 interpolate(it, context)
             } ?: defaultSubtitle
 
+        val imageEmbedEnabled = customTemplate?.imageEmbed != false
         val artworkUrl =
-            customTemplate?.artworkUrl?.takeIf { it.isNotBlank() }?.let {
-                interpolate(it, context).ifBlank { null }
-            } ?: defaultArtworkUrl
+            if (!imageEmbedEnabled) {
+                null
+            } else {
+                customTemplate?.artworkUrl?.takeIf { it.isNotBlank() }?.let {
+                    interpolate(it, context).ifBlank { null }
+                } ?: defaultArtworkUrl
+            }
 
         val actions =
             if (customTemplate != null && customTemplate.actions.isNotEmpty()) {
@@ -202,7 +208,8 @@ class TemplateEngine(
             subtitle = subtitle,
             artworkUrl = artworkUrl,
             actions = actions,
-            customBody = customBody
+            customBody = customBody,
+            imageEmbedEnabled = imageEmbedEnabled
         )
     }
 
@@ -265,7 +272,8 @@ class TemplateEngine(
             overview = resolved.customBody ?: defaults.body,
             level = defaults.level,
             artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+            actions = resolved.actions,
+            eventType = eventName
         )
     }
 

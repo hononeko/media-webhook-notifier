@@ -101,13 +101,15 @@ class ConfigLoaderTest {
         val config = ConfigLoader.load(emptyMap())
         assertNotNull(config.templates)
         assertNotNull(config.templates.events["grab"])
-        assertNotNull(config.templates.events["download_progress"])
-        assertNotNull(config.templates.events["download_complete"])
-        assertNotNull(config.templates.events["import"])
-        assertNotNull(config.templates.events["media_available"])
-        assertNotNull(config.templates.events["health"])
-        assertNotNull(config.templates.events["manual_interaction"])
-        assertNotNull(config.templates.events["request"])
+        assertEquals(true, config.templates.events["grab"]?.imageEmbed)
+        assertEquals(false, config.templates.events["import"]?.imageEmbed)
+        assertEquals(false, config.templates.events["manual_interaction"]?.imageEmbed)
+        assertEquals(true, config.templates.events["media_available"]?.imageEmbed)
+        assertEquals(true, config.templates.events["request"]?.imageEmbed)
+        assertEquals(false, config.templates.events["issue"]?.imageEmbed)
+        assertNull(config.templates.events["health"]?.imageEmbed)
+        assertNull(config.templates.events["download_complete"]?.imageEmbed)
+        assertNull(config.templates.events["download_stalled"]?.imageEmbed)
     }
 
     @Test
@@ -128,5 +130,19 @@ class ConfigLoaderTest {
         assertEquals("Custom Grab", config.templates.events["grab"]?.title)
         assertNotNull(config.templates.events["import"])
         assertNotNull(config.templates.events["media_available"])
+    }
+
+    @Test
+    fun `should preserve default body when user template override only toggles image_embed`() {
+        val env =
+            mapOf(
+                "TEMPLATES_YAML" to "events:\n  grab:\n    image_embed: false"
+            )
+        val config = ConfigLoader.load(env)
+        val grabTemplate = config.templates.events["grab"]
+        assertNotNull(grabTemplate)
+        assertEquals(false, grabTemplate.imageEmbed)
+        assertEquals("⏳ Queueing Download: {title}", grabTemplate.title)
+        assertNotNull(grabTemplate.body)
     }
 }

@@ -17,6 +17,7 @@ data class EventTemplate(
     val subtitle: String? = null,
     val body: String? = null,
     val artworkUrl: String? = null,
+    val imageEmbed: Boolean? = null,
     val stateText: String? = null,
     val actions: List<TemplateActionConfig> = emptyList()
 )

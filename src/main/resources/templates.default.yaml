@@ -2,7 +2,7 @@
 # Built-in Default Templates
 # ==============================================================================
 theme:
-  max_overview_length: 220
+  max_overview_length: 240
   progress_bar_length: 10
   progress_bar_style: "default"
   date_format: "yyyy-MM-dd HH:mm"
@@ -10,7 +10,7 @@ theme:
 events:
   download:
     progress:
-      title: "{title}"
+      title: "⏳ Downloading: {title}"
       subtitle: "{instance_name}"
       body: |
         <code>{progress_bar}</code> <b>{progress_percent}%</b>
@@ -26,34 +26,36 @@ events:
       body: |
         ▪ <b>Status:</b> 100% Downloaded
         ▪ <b>Total Size:</b> {total_size}
-        ▪ <b>Quality:</b> {quality}
 
     stalled:
       title: "⚠️ Download Stalled: {title}"
       subtitle: "{instance_name}"
       body: |
         ▪ <b>Status:</b> Download Stalled (0 B/s)
-        ▪ <b>Progress:</b> {progress_percent}% {progress_bar}
+        ▪ <b>Progress:</b> {progress_percent}% <code>{progress_bar}</code>
 
   servarr:
     grab:
+      image_embed: true
       title: "⏳ Queueing Download: {title}"
-      subtitle: "{instance_name}"
+      subtitle: "{instance_name} • {indexer}"
       body: |
+        ▪ <b>Release:</b> {release_group}
         ▪ <b>Quality:</b> {quality}
-        ▪ <b>Group:</b> {release_group}
         ▪ <b>Size:</b> {size}
-        ▪ <b>Indexer:</b> {indexer}
 
     import:
+      image_embed: false
       title: "{import_icon} {import_action}: {title}"
       subtitle: "{instance_name} • {import_type}"
       body: |
         ▪ <b>Specs:</b> {specs}
+        ▪ <b>Size:</b> {size}
 
         <i>{overview}</i>
 
     manual_interaction:
+      image_embed: false
       title: "✋ Manual Import Required: {title}"
       subtitle: "{instance_name} • Manual Intervention"
       body: |
@@ -61,26 +63,26 @@ events:
         ▪ <b>Release:</b> {release_title}
         ▪ <b>Quality:</b> {quality}
         ▪ <b>Size:</b> {size}
-        ▪ <b>Indexer:</b> {indexer}
-        ▪ <b>Client:</b> {download_client}
       actions:
         - label: "📁 Open in {source_name}"
-          url: "{web_url}"
+          url: "{web_url}/activity/queue"
           style: "PRIMARY"
 
     health:
       title: "{health_icon} {health_status}: {instance_name}"
       subtitle: "{instance_name} • {health_type}"
       body: |
-        ▪ <b>Message:</b> {message}
-        ▪ <b>Issue Type:</b> {issue_type}
+        ▪ <b>Issue:</b> {issue_type}
+        ▪ <b>Diagnostic:</b> {message}
 
   media_server:
     available:
-      title: "🍿 Now Available: {title}"
-      subtitle: "{media_server_name}"
+      image_embed: true
+      title: "🍿 {title} now available on {media_server_name}"
       body: |
         ▪ <b>Specs:</b> {specs}
+        ▪ <b>Rating:</b> {rating}
+        ▪ <b>Duration:</b> {duration}
 
         <i>{overview}</i>
       actions:
@@ -90,6 +92,7 @@ events:
 
   seerr:
     request:
+      image_embed: true
       title: "{request_icon} {request_action}: {subject}"
       subtitle: "{instance_name} • {request_status}"
       body: |
@@ -103,6 +106,7 @@ events:
           style: "PRIMARY"
 
     issue:
+      image_embed: false
       title: "{request_icon} {request_action}: {subject}"
       subtitle: "{instance_name} • {request_status}"
       body: |
@@ -113,5 +117,5 @@ events:
         ▪ <b>Details:</b> {message}
       actions:
         - label: "⚠️ View Issue in {source_name}"
-          url: "{web_url}"
+          url: "{web_url}/issues"
           style: "PRIMARY"
