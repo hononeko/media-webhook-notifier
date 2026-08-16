@@ -134,12 +134,23 @@ events:
       ▪ <b>Requested By:</b> {requested_by}
       ▪ <b>Media Type:</b> {media_type}
       ▪ <b>Quality:</b> {quality}
+      ▪ <b>Details:</b> {message}
+    actions:
+      - label: "🌐 Open in {source_name}"
+        url: "{web_url}"
+        style: "PRIMARY"
+
+  issue:
+    title: "{request_icon} {request_action}: {subject}"
+    subtitle: "{instance_name} • {request_status}"
+    body: |
+      ▪ <b>Reported By:</b> {requested_by}
       ▪ <b>Issue Type:</b> {issue_type}
       ▪ <b>Issue Status:</b> {issue_status}
       ▪ <b>Comment:</b> {comment}
       ▪ <b>Details:</b> {message}
     actions:
-      - label: "🌐 Open in {source_name}"
+      - label: "⚠️ View Issue in {source_name}"
         url: "{web_url}"
         style: "PRIMARY"
 ```

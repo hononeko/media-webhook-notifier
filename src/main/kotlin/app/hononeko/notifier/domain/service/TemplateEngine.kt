@@ -138,7 +138,7 @@ class TemplateEngine(
         defaultActions: List<ActionLink>,
         context: Map<String, Any?>
     ): ResolvedTemplateCard {
-        val customTemplate = config.events[eventName]
+        val customTemplate = config.events[eventName] ?: if (eventName == "issue") config.events["request"] else null
         val title =
             customTemplate?.title?.takeIf { it.isNotBlank() }?.let {
                 interpolate(it, context)
