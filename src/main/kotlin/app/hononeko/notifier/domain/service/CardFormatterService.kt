@@ -15,6 +15,8 @@ import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import java.util.Locale
 
 object CardFormatterService {
+    private const val SCORE_FORMAT = "%.1f/10"
+
     var templateEngine: TemplateEngine = TemplateEngine()
 
     fun drawProgressBar(
@@ -131,6 +133,27 @@ object CardFormatterService {
         }
     }
 
+    private fun buildArrGrabContext(
+        payload: MediaPayload.ArrGrab,
+        webUiUrl: String?,
+        titleText: String,
+        epRange: String?
+    ): MutableMap<String, Any?> =
+        mutableMapOf(
+            "title" to titleText,
+            "series_title" to payload.seriesOrMovieTitle,
+            "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+            "episode_range" to epRange,
+            "quality" to payload.quality,
+            "release_group" to payload.releaseGroup,
+            "indexer" to payload.indexer,
+            "webui_url" to webUiUrl,
+            "poster_url" to payload.posterUrl,
+            "instance_name" to (payload.instanceName ?: payload.source.displayName),
+            "source_name" to payload.source.displayName,
+            "download_id" to payload.downloadId
+        )
+
     fun buildGrabInitialCard(
         payload: MediaPayload.ArrGrab,
         webUiUrl: String?,
@@ -143,23 +166,10 @@ object CardFormatterService {
                 else -> payload.title
             }
 
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to titleText,
-                "series_title" to payload.seriesOrMovieTitle,
-                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
-                "episode_range" to epRange,
-                "quality" to payload.quality,
-                "release_group" to payload.releaseGroup,
-                "size" to payload.sizeBytes?.let { formatBytes(it) },
-                "total_size" to payload.sizeBytes?.let { formatBytes(it) },
-                "indexer" to payload.indexer,
-                "webui_url" to webUiUrl,
-                "poster_url" to payload.posterUrl,
-                "instance_name" to (payload.instanceName ?: payload.source.displayName),
-                "source_name" to payload.source.displayName,
-                "download_id" to payload.downloadId
-            )
+        val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
+        val formattedSize = payload.sizeBytes?.let { formatBytes(it) }
+        context["size"] = formattedSize
+        context["total_size"] = formattedSize
 
         val resolved =
             engine.resolveCard(
@@ -240,29 +250,15 @@ object CardFormatterService {
                 TorrentState.UNKNOWN -> "Active"
             }
 
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to titleText,
-                "series_title" to payload.seriesOrMovieTitle,
-                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
-                "episode_range" to epRange,
-                "quality" to payload.quality,
-                "release_group" to payload.releaseGroup,
-                "indexer" to payload.indexer,
-                "webui_url" to webUiUrl,
-                "poster_url" to payload.posterUrl,
-                "instance_name" to (payload.instanceName ?: payload.source.displayName),
-                "source_name" to payload.source.displayName,
-                "download_id" to payload.downloadId,
-                "progress_percent" to String.format(Locale.US, "%.2f", progress.progressPercent),
-                "progress_bar" to progressBar,
-                "speed" to speedFormatted,
-                "eta" to etaFormatted,
-                "downloaded_size" to formatBytes(progress.downloadedBytes),
-                "total_size" to formatBytes(progress.totalSizeBytes),
-                "peers_info" to peersFormatted,
-                "state" to stateLabel
-            )
+        val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
+        context["progress_percent"] = String.format(Locale.US, "%.2f", progress.progressPercent)
+        context["progress_bar"] = progressBar
+        context["speed"] = speedFormatted
+        context["eta"] = etaFormatted
+        context["downloaded_size"] = formatBytes(progress.downloadedBytes)
+        context["total_size"] = formatBytes(progress.totalSizeBytes)
+        context["peers_info"] = peersFormatted
+        context["state"] = stateLabel
 
         val resolved =
             engine.resolveProgress(
@@ -302,23 +298,10 @@ object CardFormatterService {
                 else -> payload.title
             }
 
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to titleText,
-                "series_title" to payload.seriesOrMovieTitle,
-                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
-                "episode_range" to epRange,
-                "quality" to payload.quality,
-                "release_group" to payload.releaseGroup,
-                "total_size" to formatBytes(progress.totalSizeBytes),
-                "size" to formatBytes(progress.totalSizeBytes),
-                "indexer" to payload.indexer,
-                "webui_url" to webUiUrl,
-                "poster_url" to payload.posterUrl,
-                "instance_name" to (payload.instanceName ?: payload.source.displayName),
-                "source_name" to payload.source.displayName,
-                "download_id" to payload.downloadId
-            )
+        val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
+        val totalSizeFormatted = formatBytes(progress.totalSizeBytes)
+        context["total_size"] = totalSizeFormatted
+        context["size"] = totalSizeFormatted
 
         val resolved =
             engine.resolveCard(
@@ -379,21 +362,9 @@ object CardFormatterService {
                 engine.theme.progressBarStyle
             )
 
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to titleText,
-                "series_title" to payload.seriesOrMovieTitle,
-                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
-                "episode_range" to epRange,
-                "quality" to payload.quality,
-                "progress_percent" to String.format(Locale.US, "%.2f", progressVal),
-                "progress_bar" to progressBar,
-                "webui_url" to webUiUrl,
-                "poster_url" to payload.posterUrl,
-                "instance_name" to (payload.instanceName ?: payload.source.displayName),
-                "source_name" to payload.source.displayName,
-                "download_id" to payload.downloadId
-            )
+        val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
+        context["progress_percent"] = String.format(Locale.US, "%.2f", progressVal)
+        context["progress_bar"] = progressBar
 
         val resolved =
             engine.resolveCard(
@@ -547,56 +518,72 @@ object CardFormatterService {
             is MediaPayload.SeerrEvent -> buildSeerrCard(payload, engine)
         }
 
-    private fun buildPlexCard(
-        payload: MediaPayload.PlexLibraryNew,
-        mediaServerPort: MediaServerPort?,
-        engine: TemplateEngine = templateEngine
+    private fun buildMediaServerCard(
+        sourceName: String,
+        actionEmoji: String,
+        title: String,
+        seriesTitle: String,
+        year: Int?,
+        overview: String?,
+        posterUrl: String?,
+        videoCodec: String?,
+        audioCodec: String?,
+        resolution: String?,
+        rating: Double?,
+        durationSeconds: Long?,
+        deepLinkUrl: String?,
+        instanceName: String?,
+        engine: TemplateEngine
     ): NotificationCard {
         val fullTitle =
             when {
-                !payload.grandParentTitle.isNullOrBlank() -> "${payload.grandParentTitle} - ${payload.title}"
-                payload.year != null -> "${payload.title} (${payload.year})"
-                else -> payload.title
+                seriesTitle.isNotBlank() && seriesTitle != title -> "$seriesTitle - $title"
+                year != null -> "$title ($year)"
+                else -> title
             }
 
-        val directLink = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
         val defaultSubtitle =
-            payload.instanceName?.let {
-                if (it.equals("plex", ignoreCase = true)) "Plex Media Server" else it
-            } ?: "Plex Media Server"
+            instanceName?.takeUnless { it.equals(sourceName, ignoreCase = true) }
+                ?: "$sourceName Media Server"
 
         val specsSummary =
             listOfNotNull(
-                payload.resolution,
-                payload.videoCodec,
-                payload.audioCodec,
-                payload.rating?.let { "⭐ " + String.format(Locale.US, "%.1f/10", it) },
-                payload.durationSeconds?.let { formatDuration(it) }
+                resolution,
+                videoCodec,
+                audioCodec,
+                rating?.let { "⭐ " + String.format(Locale.US, SCORE_FORMAT, it) },
+                durationSeconds?.let { formatDuration(it) }
             ).joinToString(" • ")
 
         val context =
             mutableMapOf<String, Any?>(
                 "title" to fullTitle,
-                "series_title" to (payload.grandParentTitle ?: payload.title),
-                "year" to payload.year?.toString(),
+                "series_title" to seriesTitle.ifBlank { title },
+                "year" to year?.toString(),
                 "specs" to specsSummary,
-                "overview" to truncateOverview(payload.summary, engine.theme.maxOverviewLength),
-                "video_codec" to payload.videoCodec,
-                "audio_codec" to payload.audioCodec,
-                "resolution" to payload.resolution,
-                "rating" to payload.rating?.let { String.format(Locale.US, "%.1f/10", it) },
-                "score" to payload.rating?.let { String.format(Locale.US, "%.1f/10", it) },
-                "duration" to payload.durationSeconds?.let { formatDuration(it) },
-                "deep_link_url" to directLink,
+                "overview" to truncateOverview(overview, engine.theme.maxOverviewLength),
+                "video_codec" to videoCodec,
+                "audio_codec" to audioCodec,
+                "resolution" to resolution,
+                "rating" to rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
+                "score" to rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
+                "duration" to durationSeconds?.let { formatDuration(it) },
+                "deep_link_url" to deepLinkUrl,
                 "media_server_name" to defaultSubtitle,
-                "poster_url" to payload.posterUrl,
+                "poster_url" to posterUrl,
                 "instance_name" to defaultSubtitle,
-                "source_name" to "Plex"
+                "source_name" to sourceName
             )
 
         val defaultActions =
-            if (!directLink.isNullOrBlank()) {
-                listOf(ActionLink(label = "🎬 Watch on Plex", url = directLink, style = ActionStyle.PRIMARY))
+            if (!deepLinkUrl.isNullOrBlank()) {
+                listOf(
+                    ActionLink(
+                        label = "$actionEmoji Watch on $sourceName",
+                        url = deepLinkUrl,
+                        style = ActionStyle.PRIMARY
+                    )
+                )
             } else {
                 emptyList()
             }
@@ -606,7 +593,7 @@ object CardFormatterService {
                 eventName = "media_available",
                 defaultTitle = "🍿 Now Available: $fullTitle",
                 defaultSubtitle = defaultSubtitle,
-                defaultArtworkUrl = payload.posterUrl,
+                defaultArtworkUrl = posterUrl,
                 defaultActions = defaultActions,
                 context = context
             )
@@ -624,111 +611,69 @@ object CardFormatterService {
 
         val specs =
             MediaSpecs(
-                video = payload.videoCodec,
-                audio = payload.audioCodec,
-                resolution = payload.resolution,
-                score = payload.rating?.let { String.format(Locale.US, "%.1f/10", it) },
-                duration = payload.durationSeconds?.let { formatDuration(it) }
+                video = videoCodec,
+                audio = audioCodec,
+                resolution = resolution,
+                score = rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
+                duration = durationSeconds?.let { formatDuration(it) }
             )
 
         return NotificationCard(
             title = resolved.title,
             subtitle = resolved.subtitle,
-            overview = truncateOverview(payload.summary, engine.theme.maxOverviewLength),
+            overview = truncateOverview(overview, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions
         )
     }
+
+    private fun buildPlexCard(
+        payload: MediaPayload.PlexLibraryNew,
+        mediaServerPort: MediaServerPort?,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard =
+        buildMediaServerCard(
+            sourceName = "Plex",
+            actionEmoji = "🎬",
+            title = payload.title,
+            seriesTitle = payload.grandParentTitle ?: "",
+            year = payload.year,
+            overview = payload.summary,
+            posterUrl = payload.posterUrl,
+            videoCodec = payload.videoCodec,
+            audioCodec = payload.audioCodec,
+            resolution = payload.resolution,
+            rating = payload.rating,
+            durationSeconds = payload.durationSeconds,
+            deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload),
+            instanceName = payload.instanceName,
+            engine = engine
+        )
 
     private fun buildJellyfinCard(
         payload: MediaPayload.JellyfinItemAdded,
         mediaServerPort: MediaServerPort?,
         engine: TemplateEngine = templateEngine
-    ): NotificationCard {
-        val fullTitle =
-            when {
-                !payload.seriesName.isNullOrBlank() -> "${payload.seriesName} - ${payload.title}"
-                payload.year != null -> "${payload.title} (${payload.year})"
-                else -> payload.title
-            }
-
-        val directLink = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
-        val defaultSubtitle =
-            payload.instanceName?.let {
-                if (it.equals("jellyfin", ignoreCase = true)) "Jellyfin Media Server" else it
-            } ?: "Jellyfin Media Server"
-
-        val specsSummary =
-            listOfNotNull(
-                payload.resolution,
-                payload.videoCodec,
-                payload.audioCodec
-            ).joinToString(" • ")
-
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to fullTitle,
-                "series_title" to (payload.seriesName ?: payload.title),
-                "year" to payload.year?.toString(),
-                "specs" to specsSummary,
-                "overview" to truncateOverview(payload.overview, engine.theme.maxOverviewLength),
-                "video_codec" to payload.videoCodec,
-                "audio_codec" to payload.audioCodec,
-                "resolution" to payload.resolution,
-                "deep_link_url" to directLink,
-                "media_server_name" to defaultSubtitle,
-                "poster_url" to payload.posterUrl,
-                "instance_name" to defaultSubtitle,
-                "source_name" to "Jellyfin"
-            )
-
-        val defaultActions =
-            if (!directLink.isNullOrBlank()) {
-                listOf(ActionLink(label = "🍿 Watch on Jellyfin", url = directLink, style = ActionStyle.PRIMARY))
-            } else {
-                emptyList()
-            }
-
-        val resolved =
-            engine.resolveCard(
-                eventName = "media_available",
-                defaultTitle = "🍿 Now Available: $fullTitle",
-                defaultSubtitle = defaultSubtitle,
-                defaultArtworkUrl = payload.posterUrl,
-                defaultActions = defaultActions,
-                context = context
-            )
-
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = NotificationLevel.SUCCESS,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions
-            )
-        }
-
-        val specs =
-            MediaSpecs(
-                video = payload.videoCodec,
-                audio = payload.audioCodec,
-                resolution = payload.resolution
-            )
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            overview = truncateOverview(payload.overview, engine.theme.maxOverviewLength),
-            level = NotificationLevel.SUCCESS,
-            mediaSpecs = specs,
-            artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions
+    ): NotificationCard =
+        buildMediaServerCard(
+            sourceName = "Jellyfin",
+            actionEmoji = "🍿",
+            title = payload.title,
+            seriesTitle = payload.seriesName ?: "",
+            year = payload.year,
+            overview = payload.overview,
+            posterUrl = payload.posterUrl,
+            videoCodec = payload.videoCodec,
+            audioCodec = payload.audioCodec,
+            resolution = payload.resolution,
+            rating = null,
+            durationSeconds = null,
+            deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload),
+            instanceName = payload.instanceName,
+            engine = engine
         )
-    }
 
     fun buildHealthCard(
         payload: MediaPayload.ServarrHealth,

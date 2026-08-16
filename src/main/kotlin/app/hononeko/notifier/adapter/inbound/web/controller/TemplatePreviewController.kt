@@ -69,6 +69,10 @@ data class ActionLinkDto(
 
 class TemplatePreviewController {
     companion object {
+        private const val MOCK_QBIT_URL = "http://qbittorrent.lan:8080"
+        private const val MOCK_DUNE_TITLE = "Dune: Part Two"
+        private const val MOCK_DUNE_POSTER = "https://image.tmdb.org/t/p/w500/dune2.jpg"
+
         private val BASE_TAGS =
             listOf("title", "series_title", "season", "episode_range", "poster_url", "instance_name", "source_name")
         private val TORRENT_TAGS = BASE_TAGS + listOf("quality", "release_group", "indexer", "webui_url", "download_id")
@@ -251,7 +255,7 @@ class TemplatePreviewController {
                     CardFormatterService.buildProgressUpdate(
                         grab,
                         progress,
-                        "http://qbittorrent.lan:8080",
+                        MOCK_QBIT_URL,
                         engine
                     )
                 Triple(null, update, PROGRESS_TAGS)
@@ -263,7 +267,7 @@ class TemplatePreviewController {
                     CardFormatterService.buildCompletionCard(
                         grab,
                         progress,
-                        "http://qbittorrent.lan:8080",
+                        MOCK_QBIT_URL,
                         engine
                     )
                 Triple(card, null, GRAB_TAGS)
@@ -271,7 +275,7 @@ class TemplatePreviewController {
             "download_stalled" -> {
                 val grab = mockGrab()
                 val progress = mockProgress(42.0, TorrentState.STALLED)
-                val card = CardFormatterService.buildStalledCard(grab, progress, "http://qbittorrent.lan:8080", engine)
+                val card = CardFormatterService.buildStalledCard(grab, progress, MOCK_QBIT_URL, engine)
                 Triple(card, null, STALLED_TAGS)
             }
             "import" -> {
@@ -301,7 +305,7 @@ class TemplatePreviewController {
             }
             else -> {
                 val grab = mockGrab()
-                val card = CardFormatterService.buildGrabInitialCard(grab, "http://qbittorrent.lan:8080", engine)
+                val card = CardFormatterService.buildGrabInitialCard(grab, MOCK_QBIT_URL, engine)
                 Triple(card, null, GRAB_TAGS)
             }
         }
@@ -345,15 +349,15 @@ class TemplatePreviewController {
     private fun mockDownload() =
         MediaPayload.ArrDownload(
             source = AppSource.RADARR,
-            title = "Dune: Part Two",
-            seriesOrMovieTitle = "Dune: Part Two",
+            title = MOCK_DUNE_TITLE,
+            seriesOrMovieTitle = MOCK_DUNE_TITLE,
             year = 2024,
             quality = "Remux-2160p",
             videoCodec = "HEVC",
             audioCodec = "TrueHD Atmos",
             resolution = "2160p (4K)",
             sizeBytes = 45097156608L,
-            posterUrl = "https://image.tmdb.org/t/p/w500/dune2.jpg",
+            posterUrl = MOCK_DUNE_POSTER,
             overview =
                 "Paul Atreides unites with Chani and the Fremen while seeking revenge " +
                     "against the conspirators who destroyed his family.",
@@ -363,7 +367,7 @@ class TemplatePreviewController {
 
     private fun mockPlex() =
         MediaPayload.PlexLibraryNew(
-            title = "Dune: Part Two",
+            title = MOCK_DUNE_TITLE,
             year = 2024,
             summary =
                 "Paul Atreides unites with Chani and the Fremen while seeking revenge " +
@@ -373,7 +377,7 @@ class TemplatePreviewController {
             videoCodec = "HEVC",
             audioCodec = "TrueHD Atmos",
             resolution = "2160p (4K)",
-            posterUrl = "https://image.tmdb.org/t/p/w500/dune2.jpg",
+            posterUrl = MOCK_DUNE_POSTER,
             deepLinkUrl = "https://app.plex.tv/desktop#!/server/abc/details?key=/library/metadata/12345",
             instanceName = "Plex Media Server"
         )
@@ -391,15 +395,15 @@ class TemplatePreviewController {
     private fun mockManual() =
         MediaPayload.ServarrManualInteraction(
             source = AppSource.RADARR,
-            title = "Dune: Part Two (2024)",
-            seriesOrMovieTitle = "Dune: Part Two",
+            title = "$MOCK_DUNE_TITLE (2024)",
+            seriesOrMovieTitle = MOCK_DUNE_TITLE,
             releaseTitle = "Dune.Part.Two.2024.2160p.UHD.Remux.TrueHD.Atmos-FLUX.mkv",
             quality = "Remux-2160p",
             sizeBytes = 45097156608L,
             indexer = "TorrentLeech",
             downloadClient = "qBittorrent",
             reason = "Found unknown movie file",
-            posterUrl = "https://image.tmdb.org/t/p/w500/dune2.jpg",
+            posterUrl = MOCK_DUNE_POSTER,
             webUrl = "http://radarr.lan:7878/activity/queue",
             instanceName = "Radarr-4K"
         )
@@ -408,11 +412,11 @@ class TemplatePreviewController {
         MediaPayload.SeerrEvent(
             eventType = EventType.REQUEST_PENDING,
             notificationType = "MEDIA_PENDING",
-            subject = "Dune: Part Two (2024)",
+            subject = "$MOCK_DUNE_TITLE (2024)",
             requestedByUsername = "alice",
             mediaType = "movie",
             is4k = true,
-            image = "https://image.tmdb.org/t/p/w500/dune2.jpg",
+            image = MOCK_DUNE_POSTER,
             webUrl = "http://overseerr.lan:5055/movie/1",
             instanceName = "Overseerr"
         )

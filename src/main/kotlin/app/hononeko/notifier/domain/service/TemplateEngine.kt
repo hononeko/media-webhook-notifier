@@ -25,6 +25,15 @@ data class ResolvedTemplateProgress(
     val customBody: String?
 )
 
+data class DefaultCardSpec(
+    val title: String,
+    val subtitle: String? = null,
+    val level: NotificationLevel = NotificationLevel.INFO,
+    val body: String? = null,
+    val artworkUrl: String? = null,
+    val actions: List<ActionLink> = emptyList()
+)
+
 class TemplateEngine(
     private val config: TemplateConfig = TemplateConfig()
 ) {
@@ -61,62 +70,43 @@ class TemplateEngine(
         context: Map<String, Any?>
     ): String {
         if (bodyTemplate.isNullOrBlank()) return ""
-        val lines = bodyTemplate.lines()
-        val renderedLines = mutableListOf<String>()
+        val renderedLines = bodyTemplate.lines().mapNotNull { renderBodyLine(it, context) }
+        return collapseContiguousBlankLines(renderedLines)
+    }
 
-        for (line in lines) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty()) {
-                renderedLines.add("")
-                continue
-            }
-
-            val matcher = TAG_PATTERN.matcher(line)
-            var hasMissingRequiredTag = false
-            val tagsInLine = mutableListOf<String>()
-
-            while (matcher.find()) {
-                val tag = matcher.group(1)
-                tagsInLine.add(tag)
-                val value = context[tag]?.toString()
-                if (value.isNullOrBlank()) {
-                    hasMissingRequiredTag = true
-                    break
-                }
-            }
-
-            if (hasMissingRequiredTag) {
-                // Suppress line when one of its placeholders has no value
-                continue
-            }
-
-            if (tagsInLine.isNotEmpty()) {
-                val interpolated = interpolate(line, context)
-                if (interpolated.isNotBlank()) {
-                    renderedLines.add(interpolated)
-                }
-            } else {
-                renderedLines.add(line)
+    private fun renderBodyLine(
+        line: String,
+        context: Map<String, Any?>
+    ): String? {
+        if (line.isBlank()) return ""
+        val matcher = TAG_PATTERN.matcher(line)
+        var hasTags = false
+        while (matcher.find()) {
+            hasTags = true
+            val tag = matcher.group(1)
+            if (context[tag]?.toString().isNullOrBlank()) {
+                return null
             }
         }
+        return if (hasTags) interpolate(line, context).ifBlank { null } else line
+    }
 
-        // Clean up excessive blank lines (max 1 contiguous blank line)
-        val cleanResult = mutableListOf<String>()
+    private fun collapseContiguousBlankLines(lines: List<String>): String {
+        val result = mutableListOf<String>()
         var prevBlank = false
-        for (l in renderedLines) {
+        for (l in lines) {
             val isBlank = l.isBlank()
             if (isBlank) {
-                if (!prevBlank && cleanResult.isNotEmpty()) {
-                    cleanResult.add("")
+                if (!prevBlank && result.isNotEmpty()) {
+                    result.add("")
                 }
                 prevBlank = true
             } else {
-                cleanResult.add(l)
+                result.add(l)
                 prevBlank = false
             }
         }
-
-        return cleanResult.joinToString("\n").trim()
+        return result.joinToString("\n").trim()
     }
 
     fun renderActions(
@@ -225,29 +215,24 @@ class TemplateEngine(
 
     fun renderCard(
         eventName: String,
-        defaultTitle: String,
-        defaultSubtitle: String?,
-        defaultLevel: NotificationLevel,
-        defaultBody: String?,
-        defaultArtworkUrl: String?,
-        defaultActions: List<ActionLink>,
+        defaults: DefaultCardSpec,
         context: Map<String, Any?>
     ): NotificationCard {
         val resolved =
             resolveCard(
                 eventName = eventName,
-                defaultTitle = defaultTitle,
-                defaultSubtitle = defaultSubtitle,
-                defaultArtworkUrl = defaultArtworkUrl,
-                defaultActions = defaultActions,
+                defaultTitle = defaults.title,
+                defaultSubtitle = defaults.subtitle,
+                defaultArtworkUrl = defaults.artworkUrl,
+                defaultActions = defaults.actions,
                 context = context
             )
 
         return NotificationCard(
             title = resolved.title,
             subtitle = resolved.subtitle,
-            overview = resolved.customBody ?: defaultBody,
-            level = defaultLevel,
+            overview = resolved.customBody ?: defaults.body,
+            level = defaults.level,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions
         )

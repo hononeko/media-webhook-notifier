@@ -94,7 +94,6 @@ object YamlParser {
                     break
                 }
 
-                // Check if key: value format
                 val colonIdx = findKeySeparator(trimmed)
                 if (colonIdx == -1) {
                     index++
@@ -103,31 +102,37 @@ object YamlParser {
 
                 val key = trimmed.substring(0, colonIdx).trim().trim('"', '\'')
                 val valuePart = trimmed.substring(colonIdx + 1).trim()
-
                 index++
 
-                if (valuePart.isEmpty()) {
-                    // Nested structure: map, list, or empty
-                    val peekIndent = peekNextIndent()
-                    if (peekIndent > currentIndent) {
-                        val nextTrimmed = peekNextTrimmed()
-                        if (nextTrimmed.startsWith("- ") || nextTrimmed == "-") {
-                            result[key] = parseList(currentIndent)
-                        } else {
-                            result[key] = parseMap(currentIndent)
-                        }
-                    } else {
-                        result[key] = null
-                    }
-                } else if (valuePart == "|" || valuePart == "|-" || valuePart == "|+" || valuePart == ">") {
-                    result[key] = parseBlockScalar(currentIndent, chomp = valuePart.contains("-"))
-                } else {
-                    result[key] = parseScalar(valuePart)
-                }
+                result[key] = parseMapValue(currentIndent, valuePart)
             }
 
             return result
         }
+
+        private fun parseMapValue(
+            currentIndent: Int,
+            valuePart: String
+        ): Any? =
+            when {
+                valuePart.isEmpty() -> {
+                    val peekIndent = peekNextIndent()
+                    if (peekIndent > currentIndent) {
+                        val nextTrimmed = peekNextTrimmed()
+                        if (nextTrimmed.startsWith("- ") || nextTrimmed == "-") {
+                            parseList(currentIndent)
+                        } else {
+                            parseMap(currentIndent)
+                        }
+                    } else {
+                        null
+                    }
+                }
+                valuePart == "|" || valuePart == "|-" || valuePart == "|+" || valuePart == ">" -> {
+                    parseBlockScalar(currentIndent, chomp = valuePart.contains("-"))
+                }
+                else -> parseScalar(valuePart)
+            }
 
         fun parseList(parentIndent: Int): List<Any?> {
             val result = mutableListOf<Any?>()
@@ -151,66 +156,77 @@ object YamlParser {
                 }
 
                 val itemContent = trimmed.substring(1).trim()
-
-                if (itemContent.isEmpty()) {
-                    index++
-                    val peekIndent = peekNextIndent()
-                    if (peekIndent > currentIndent) {
-                        result.add(parseMap(currentIndent))
-                    } else {
-                        result.add(null)
-                    }
-                } else {
-                    val colonIdx = findKeySeparator(itemContent)
-                    if (colonIdx != -1) {
-                        // First key of an inline object in list: - label: "Open WebUI"
-                        val subKey = itemContent.substring(0, colonIdx).trim().trim('"', '\'')
-                        val subVal = itemContent.substring(colonIdx + 1).trim()
-                        index++
-
-                        val itemMap = mutableMapOf<String, Any?>()
-                        if (subVal.isEmpty()) {
-                            val peekIndent = peekNextIndent()
-                            if (peekIndent > currentIndent) {
-                                itemMap[subKey] = parseMap(currentIndent)
-                            } else {
-                                itemMap[subKey] = null
-                            }
-                        } else {
-                            itemMap[subKey] = parseScalar(subVal)
-                        }
-
-                        // Collect sibling keys under the same list item
-                        while (index < lines.size) {
-                            val sibRaw = lines[index]
-                            val sibTrim = stripComment(sibRaw).trim()
-                            if (sibTrim.isBlank()) {
-                                index++
-                                continue
-                            }
-                            val sibIndent = countIndent(sibRaw)
-                            if (sibIndent <= currentIndent || sibTrim.startsWith("-")) {
-                                break
-                            }
-                            val sibColon = findKeySeparator(sibTrim)
-                            if (sibColon != -1) {
-                                val sKey = sibTrim.substring(0, sibColon).trim().trim('"', '\'')
-                                val sVal = sibTrim.substring(sibColon + 1).trim()
-                                index++
-                                itemMap[sKey] = parseScalar(sVal)
-                            } else {
-                                index++
-                            }
-                        }
-                        result.add(itemMap)
-                    } else {
-                        index++
-                        result.add(parseScalar(itemContent))
-                    }
-                }
+                result.add(parseListItem(itemContent, currentIndent))
             }
 
             return result
+        }
+
+        private fun parseListItem(
+            itemContent: String,
+            currentIndent: Int
+        ): Any? {
+            if (itemContent.isEmpty()) {
+                index++
+                val peekIndent = peekNextIndent()
+                return if (peekIndent > currentIndent) parseMap(currentIndent) else null
+            }
+
+            val colonIdx = findKeySeparator(itemContent)
+            return if (colonIdx != -1) {
+                index++
+                parseListItemMap(itemContent, colonIdx, currentIndent)
+            } else {
+                index++
+                parseScalar(itemContent)
+            }
+        }
+
+        private fun parseListItemMap(
+            itemContent: String,
+            colonIdx: Int,
+            currentIndent: Int
+        ): Map<String, Any?> {
+            val subKey = itemContent.substring(0, colonIdx).trim().trim('"', '\'')
+            val subVal = itemContent.substring(colonIdx + 1).trim()
+            val itemMap = mutableMapOf<String, Any?>()
+
+            if (subVal.isEmpty()) {
+                val peekIndent = peekNextIndent()
+                itemMap[subKey] = if (peekIndent > currentIndent) parseMap(currentIndent) else null
+            } else {
+                itemMap[subKey] = parseScalar(subVal)
+            }
+
+            collectSiblingKeys(itemMap, currentIndent)
+            return itemMap
+        }
+
+        private fun collectSiblingKeys(
+            itemMap: MutableMap<String, Any?>,
+            currentIndent: Int
+        ) {
+            while (index < lines.size) {
+                val sibRaw = lines[index]
+                val sibTrim = stripComment(sibRaw).trim()
+                if (sibTrim.isBlank()) {
+                    index++
+                    continue
+                }
+                val sibIndent = countIndent(sibRaw)
+                if (sibIndent <= currentIndent || sibTrim.startsWith("-")) {
+                    break
+                }
+                val sibColon = findKeySeparator(sibTrim)
+                if (sibColon != -1) {
+                    val sKey = sibTrim.substring(0, sibColon).trim().trim('"', '\'')
+                    val sVal = sibTrim.substring(sibColon + 1).trim()
+                    index++
+                    itemMap[sKey] = parseScalar(sVal)
+                } else {
+                    index++
+                }
+            }
         }
 
         private fun parseBlockScalar(
@@ -301,11 +317,12 @@ object YamlParser {
                 val c = line[i]
                 if (c == '\'' && !inDoubleQuote) inSingleQuote = !inSingleQuote
                 if (c == '"' && !inSingleQuote) inDoubleQuote = !inDoubleQuote
-                if (c == ':' && !inSingleQuote && !inDoubleQuote) {
-                    // Must be followed by space, end of line, or next character
-                    if (i == line.length - 1 || line[i + 1].isWhitespace()) {
-                        return i
-                    }
+                if (c == ':' &&
+                    !inSingleQuote &&
+                    !inDoubleQuote &&
+                    (i == line.length - 1 || line[i + 1].isWhitespace())
+                ) {
+                    return i
                 }
             }
             return -1
@@ -320,13 +337,12 @@ object YamlParser {
             trimmed.toLongOrNull()?.let { return it }
             trimmed.toDoubleOrNull()?.let { return it }
 
-            if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-                (trimmed.startsWith("'") && trimmed.endsWith("'"))
-            ) {
-                if (trimmed.length >= 2) {
-                    val inner = trimmed.substring(1, trimmed.length - 1)
-                    return inner.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
-                }
+            val isQuoted =
+                (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+                    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+            if (isQuoted && trimmed.length >= 2) {
+                val inner = trimmed.substring(1, trimmed.length - 1)
+                return inner.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
             }
 
             return trimmed

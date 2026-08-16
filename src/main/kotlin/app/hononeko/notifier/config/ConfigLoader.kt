@@ -49,8 +49,8 @@ object ConfigLoader {
             )
         if (!filePath.isNullOrBlank()) {
             val file = File(filePath)
-            if (!file.exists() || !file.canRead()) {
-                throw IllegalStateException("Configured templates file '$filePath' does not exist or is not readable")
+            check(file.exists() && file.canRead()) {
+                "Configured templates file '$filePath' does not exist or is not readable"
             }
             val userConfig = YamlParser.parseTemplateConfig(file.readText())
             return mergeTemplates(defaultConfig, userConfig)

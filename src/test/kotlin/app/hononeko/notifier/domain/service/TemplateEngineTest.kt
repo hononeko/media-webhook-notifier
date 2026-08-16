@@ -117,12 +117,15 @@ class TemplateEngineTest {
         val customCard =
             engine.renderCard(
                 eventName = "grab",
-                defaultTitle = "Default Title",
-                defaultSubtitle = "Default Subtitle",
-                defaultLevel = NotificationLevel.PROGRESS,
-                defaultBody = null,
-                defaultArtworkUrl = "http://example.com/poster.jpg",
-                defaultActions = emptyList(),
+                defaults =
+                    DefaultCardSpec(
+                        title = "Default Title",
+                        subtitle = "Default Subtitle",
+                        level = NotificationLevel.PROGRESS,
+                        body = null,
+                        artworkUrl = "http://example.com/poster.jpg",
+                        actions = emptyList()
+                    ),
                 context = context
             )
 
@@ -135,12 +138,15 @@ class TemplateEngineTest {
         val fallbackCard =
             engine.renderCard(
                 eventName = "unknown_event",
-                defaultTitle = "Default Title",
-                defaultSubtitle = "Default Subtitle",
-                defaultLevel = NotificationLevel.INFO,
-                defaultBody = "Default Body",
-                defaultArtworkUrl = "http://example.com/default.jpg",
-                defaultActions = emptyList(),
+                defaults =
+                    DefaultCardSpec(
+                        title = "Default Title",
+                        subtitle = "Default Subtitle",
+                        level = NotificationLevel.INFO,
+                        body = "Default Body",
+                        artworkUrl = "http://example.com/default.jpg",
+                        actions = emptyList()
+                    ),
                 context = emptyMap()
             )
 
