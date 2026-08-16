@@ -122,16 +122,19 @@ class EndToEndIntegrationTest {
                     scope = testScope
                 )
 
+            val mediaImportedService = MediaImportedService(notificationPublisher = mockPublisher)
+
             val seasonDebouncer =
                 SeasonDebouncer(
                     debounceMillis = 100L,
                     scope = testScope,
                     onDebouncedGrab = { grab ->
                         downloadTracker.track(grab.downloadId, grab)
+                    },
+                    onDebouncedDownload = { download ->
+                        mediaImportedService.announce(download)
                     }
                 )
-
-            val mediaImportedService = MediaImportedService(notificationPublisher = mockPublisher)
             val mediaAvailableService =
                 MediaAvailableService(
                     notificationPublisher = mockPublisher,

@@ -200,4 +200,59 @@ class IngestWebhookServiceTest {
             assertEquals(1, seerrPayloads.size)
             assertEquals("Admin", seerrPayloads.first().requestedByUsername)
         }
+
+    @Test
+    fun `should route ArrGrab and ArrDownload to SeasonDebouncer when configured`() =
+        runTest {
+            val debouncedGrabs = Collections.synchronizedList(mutableListOf<MediaPayload.ArrGrab>())
+            val debouncedDownloads = Collections.synchronizedList(mutableListOf<MediaPayload.ArrDownload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 100L,
+                    scope = this,
+                    onDebouncedGrab = { debouncedGrabs.add(it) },
+                    onDebouncedDownload = { debouncedDownloads.add(it) }
+                )
+
+            val service =
+                IngestWebhookService(
+                    seasonDebouncer = debouncer,
+                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    announceMediaImportedUseCase = { Either.Right(Unit) },
+                    announceMediaAvailableUseCase = { Either.Right(Unit) }
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash123",
+                    title = "Futurama - S01E01",
+                    seriesOrMovieTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1)
+                )
+
+            val download =
+                MediaPayload.ArrDownload(
+                    source = AppSource.SONARR,
+                    title = "Futurama - S01E01",
+                    seriesOrMovieTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1),
+                    isUpgrade = true
+                )
+
+            service.execute(grab)
+            service.execute(download)
+
+            assertEquals(2, debouncer.activeBufferCount())
+            assertEquals(0, debouncedGrabs.size)
+            assertEquals(0, debouncedDownloads.size)
+
+            debouncer.flushAll()
+
+            assertEquals(1, debouncedGrabs.size)
+            assertEquals(1, debouncedDownloads.size)
+        }
 }
