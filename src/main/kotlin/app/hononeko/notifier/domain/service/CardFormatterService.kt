@@ -15,8 +15,6 @@ import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import java.util.Locale
 
 object CardFormatterService {
-    private const val OPEN_WEBUI_LABEL = "🌐 Open WebUI"
-
     var templateEngine: TemplateEngine = TemplateEngine()
 
     fun drawProgressBar(
@@ -163,31 +161,24 @@ object CardFormatterService {
                 "download_id" to payload.downloadId
             )
 
-        val customTpl = engine.getEventTemplate("grab")
-        val defaultTitle = "⏳ Queueing Download: $titleText"
-        val defaultSubtitle = payload.instanceName ?: payload.source.displayName
-        val defaultActions = emptyList<ActionLink>()
+        val resolved =
+            engine.resolveCard(
+                eventName = "grab",
+                defaultTitle = "⏳ Queueing Download: $titleText",
+                defaultSubtitle = payload.instanceName ?: payload.source.displayName,
+                defaultArtworkUrl = payload.posterUrl,
+                defaultActions = emptyList(),
+                context = context
+            )
 
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
-        if (customBody != null) {
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = NotificationLevel.PROGRESS,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
@@ -198,12 +189,12 @@ object CardFormatterService {
         payload.indexer?.let { fields.add(CardField("Indexer", it)) }
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             level = NotificationLevel.PROGRESS,
             fields = fields,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 
@@ -273,24 +264,19 @@ object CardFormatterService {
                 "state" to stateLabel
             )
 
-        val customTpl = engine.getEventTemplate("download_progress")
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: titleText
-        val subtitle =
-            customTpl?.subtitle?.let { engine.interpolate(it, context) }
-                ?: (payload.instanceName ?: payload.source.displayName)
-        val defaultActions = emptyList<ActionLink>()
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+        val resolved =
+            engine.resolveProgress(
+                eventName = "download_progress",
+                defaultTitle = titleText,
+                defaultSubtitle = payload.instanceName ?: payload.source.displayName,
+                defaultActions = emptyList(),
+                context = context
+            )
 
         return ProgressUpdate(
             trackingKey = payload.downloadId,
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             percent = progress.progressPercent,
             progressBar = progressBar,
             speedFormatted = speedFormatted,
@@ -298,8 +284,8 @@ object CardFormatterService {
             sizeFormatted = sizeFormatted,
             peersInfo = peersFormatted,
             stateText = stateLabel,
-            customBody = customBody,
-            actions = actions
+            customBody = resolved.customBody,
+            actions = resolved.actions
         )
     }
 
@@ -334,31 +320,24 @@ object CardFormatterService {
                 "download_id" to payload.downloadId
             )
 
-        val customTpl = engine.getEventTemplate("download_complete")
-        val defaultTitle = "✅ Download Complete: $titleText"
-        val defaultSubtitle = payload.instanceName ?: payload.source.displayName
-        val defaultActions = emptyList<ActionLink>()
+        val resolved =
+            engine.resolveCard(
+                eventName = "download_complete",
+                defaultTitle = "✅ Download Complete: $titleText",
+                defaultSubtitle = payload.instanceName ?: payload.source.displayName,
+                defaultArtworkUrl = payload.posterUrl,
+                defaultActions = emptyList(),
+                context = context
+            )
 
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
-
-        if (customBody != null) {
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = NotificationLevel.SUCCESS,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
@@ -370,12 +349,12 @@ object CardFormatterService {
         payload.quality?.let { fields.add(CardField("Quality", it)) }
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             level = NotificationLevel.SUCCESS,
             fields = fields,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 
@@ -416,31 +395,24 @@ object CardFormatterService {
                 "download_id" to payload.downloadId
             )
 
-        val customTpl = engine.getEventTemplate("download_stalled")
-        val defaultTitle = "⚠️ Download Stalled: $titleText"
-        val defaultSubtitle = payload.instanceName ?: payload.source.displayName
-        val defaultActions = emptyList<ActionLink>()
+        val resolved =
+            engine.resolveCard(
+                eventName = "download_stalled",
+                defaultTitle = "⚠️ Download Stalled: $titleText",
+                defaultSubtitle = payload.instanceName ?: payload.source.displayName,
+                defaultArtworkUrl = payload.posterUrl,
+                defaultActions = emptyList(),
+                context = context
+            )
 
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
-
-        if (customBody != null) {
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = NotificationLevel.WARNING,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
@@ -449,17 +421,17 @@ object CardFormatterService {
                 CardField("Status", "⚠️ Download Stalled (0 B/s)"),
                 CardField(
                     "Progress",
-                    String.format(Locale.US, "%.2f%% %s", progressVal, progressBar)
+                    "${String.format(Locale.US, "%.1f", progressVal)}% $progressBar"
                 )
             )
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             level = NotificationLevel.WARNING,
             fields = fields,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 
@@ -489,14 +461,29 @@ object CardFormatterService {
                 "${payload.instanceName ?: payload.source.displayName} • Library Import"
             }
 
+        val mediaSpecs =
+            MediaSpecs(
+                video = payload.videoCodec,
+                audio = payload.audioCodec,
+                resolution = payload.resolution,
+                sizeFormatted = payload.sizeBytes?.let { formatBytes(it) }
+            )
+
         val context =
             mutableMapOf<String, Any?>(
                 "title" to fullTitle,
-                "series_title" to payload.seriesOrMovieTitle,
+                "series_title" to (payload.seriesOrMovieTitle ?: payload.title),
                 "year" to payload.year?.toString(),
                 "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
                 "episode_range" to epRange,
                 "quality" to payload.quality,
+                "specs" to
+                    listOfNotNull(
+                        payload.resolution,
+                        payload.videoCodec,
+                        payload.audioCodec,
+                        payload.sizeBytes?.let { formatBytes(it) }
+                    ).joinToString(" • "),
                 "video_codec" to payload.videoCodec,
                 "audio_codec" to payload.audioCodec,
                 "resolution" to payload.resolution,
@@ -513,47 +500,35 @@ object CardFormatterService {
                 "source_name" to payload.source.displayName
             )
 
-        val customTpl = engine.getEventTemplate("import")
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
-        val defaultActions = emptyList<ActionLink>()
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+        val resolved =
+            engine.resolveCard(
+                eventName = "import",
+                defaultTitle = defaultTitle,
+                defaultSubtitle = defaultSubtitle,
+                defaultArtworkUrl = payload.posterUrl,
+                defaultActions = emptyList(),
+                context = context
+            )
 
-        if (customBody != null) {
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = NotificationLevel.SUCCESS,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
-        val specs =
-            MediaSpecs(
-                video = payload.videoCodec,
-                audio = payload.audioCodec,
-                resolution = payload.resolution,
-                sizeFormatted = payload.sizeBytes?.let { formatBytes(it) }
-            )
-
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             overview = truncateOverview(payload.overview, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
-            mediaSpecs = specs,
-            artworkUrl = artworkUrl,
-            actions = actions
+            mediaSpecs = mediaSpecs,
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 
@@ -590,11 +565,21 @@ object CardFormatterService {
                 if (it.equals("plex", ignoreCase = true)) "Plex Media Server" else it
             } ?: "Plex Media Server"
 
+        val specsSummary =
+            listOfNotNull(
+                payload.resolution,
+                payload.videoCodec,
+                payload.audioCodec,
+                payload.rating?.let { "⭐ " + String.format(Locale.US, "%.1f/10", it) },
+                payload.durationSeconds?.let { formatDuration(it) }
+            ).joinToString(" • ")
+
         val context =
             mutableMapOf<String, Any?>(
                 "title" to fullTitle,
                 "series_title" to (payload.grandParentTitle ?: payload.title),
                 "year" to payload.year?.toString(),
+                "specs" to specsSummary,
                 "overview" to truncateOverview(payload.summary, engine.theme.maxOverviewLength),
                 "video_codec" to payload.videoCodec,
                 "audio_codec" to payload.audioCodec,
@@ -609,8 +594,6 @@ object CardFormatterService {
                 "source_name" to "Plex"
             )
 
-        val customTpl = engine.getEventTemplate("media_available")
-        val defaultTitle = "🍿 Now Available: $fullTitle"
         val defaultActions =
             if (!directLink.isNullOrBlank()) {
                 listOf(ActionLink(label = "🎬 Watch on Plex", url = directLink, style = ActionStyle.PRIMARY))
@@ -618,26 +601,24 @@ object CardFormatterService {
                 emptyList()
             }
 
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+        val resolved =
+            engine.resolveCard(
+                eventName = "media_available",
+                defaultTitle = "🍿 Now Available: $fullTitle",
+                defaultSubtitle = defaultSubtitle,
+                defaultArtworkUrl = payload.posterUrl,
+                defaultActions = defaultActions,
+                context = context
+            )
 
-        if (customBody != null) {
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = NotificationLevel.SUCCESS,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
@@ -651,13 +632,13 @@ object CardFormatterService {
             )
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             overview = truncateOverview(payload.summary, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 
@@ -679,11 +660,19 @@ object CardFormatterService {
                 if (it.equals("jellyfin", ignoreCase = true)) "Jellyfin Media Server" else it
             } ?: "Jellyfin Media Server"
 
+        val specsSummary =
+            listOfNotNull(
+                payload.resolution,
+                payload.videoCodec,
+                payload.audioCodec
+            ).joinToString(" • ")
+
         val context =
             mutableMapOf<String, Any?>(
                 "title" to fullTitle,
                 "series_title" to (payload.seriesName ?: payload.title),
                 "year" to payload.year?.toString(),
+                "specs" to specsSummary,
                 "overview" to truncateOverview(payload.overview, engine.theme.maxOverviewLength),
                 "video_codec" to payload.videoCodec,
                 "audio_codec" to payload.audioCodec,
@@ -695,8 +684,6 @@ object CardFormatterService {
                 "source_name" to "Jellyfin"
             )
 
-        val customTpl = engine.getEventTemplate("media_available")
-        val defaultTitle = "🍿 Now Available: $fullTitle"
         val defaultActions =
             if (!directLink.isNullOrBlank()) {
                 listOf(ActionLink(label = "🍿 Watch on Jellyfin", url = directLink, style = ActionStyle.PRIMARY))
@@ -704,26 +691,24 @@ object CardFormatterService {
                 emptyList()
             }
 
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+        val resolved =
+            engine.resolveCard(
+                eventName = "media_available",
+                defaultTitle = "🍿 Now Available: $fullTitle",
+                defaultSubtitle = defaultSubtitle,
+                defaultArtworkUrl = payload.posterUrl,
+                defaultActions = defaultActions,
+                context = context
+            )
 
-        if (customBody != null) {
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = NotificationLevel.SUCCESS,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
@@ -735,13 +720,13 @@ object CardFormatterService {
             )
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             overview = truncateOverview(payload.overview, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 
@@ -781,25 +766,23 @@ object CardFormatterService {
                 "source_name" to payload.source.displayName
             )
 
-        val customTpl = engine.getEventTemplate("health")
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val defaultActions = emptyList<ActionLink>()
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+        val resolved =
+            engine.resolveCard(
+                eventName = "health",
+                defaultTitle = defaultTitle,
+                defaultSubtitle = defaultSubtitle,
+                defaultArtworkUrl = null,
+                defaultActions = emptyList(),
+                context = context
+            )
 
-        if (customBody != null) {
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = level,
-                customBody = customBody,
-                actions = actions
+                customBody = resolved.customBody,
+                actions = resolved.actions
             )
         }
 
@@ -810,11 +793,11 @@ object CardFormatterService {
         }
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             level = level,
             fields = fields,
-            actions = actions
+            actions = resolved.actions
         )
     }
 
@@ -853,11 +836,6 @@ object CardFormatterService {
                 "source_name" to payload.source.displayName
             )
 
-        val customTpl = engine.getEventTemplate("manual_interaction")
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
         val defaultActions =
             if (!payload.webUrl.isNullOrBlank()) {
                 listOf(
@@ -870,22 +848,25 @@ object CardFormatterService {
             } else {
                 emptyList()
             }
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
 
-        if (customBody != null) {
+        val resolved =
+            engine.resolveCard(
+                eventName = "manual_interaction",
+                defaultTitle = defaultTitle,
+                defaultSubtitle = defaultSubtitle,
+                defaultArtworkUrl = payload.posterUrl,
+                defaultActions = defaultActions,
+                context = context
+            )
+
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = NotificationLevel.WARNING,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
@@ -910,12 +891,12 @@ object CardFormatterService {
         }
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             level = NotificationLevel.WARNING,
             fields = fields,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 
@@ -1055,33 +1036,31 @@ object CardFormatterService {
                 "source_name" to payload.source.displayName
             )
 
-        val customTpl = engine.getEventTemplate("request")
-        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
-        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
-        val artworkUrl =
-            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.image
         val defaultActions =
             if (!payload.webUrl.isNullOrBlank()) {
                 listOf(ActionLink(label = "🌐 Open in $appName", url = payload.webUrl, style = ActionStyle.PRIMARY))
             } else {
                 emptyList()
             }
-        val actions =
-            if (customTpl != null && customTpl.actions.isNotEmpty()) {
-                engine.renderActions(customTpl.actions, context)
-            } else {
-                defaultActions
-            }
-        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
 
-        if (customBody != null) {
+        val resolved =
+            engine.resolveCard(
+                eventName = "request",
+                defaultTitle = defaultTitle,
+                defaultSubtitle = defaultSubtitle,
+                defaultArtworkUrl = payload.image,
+                defaultActions = defaultActions,
+                context = context
+            )
+
+        if (resolved.customBody != null) {
             return NotificationCard(
-                title = title,
-                subtitle = subtitle,
+                title = resolved.title,
+                subtitle = resolved.subtitle,
                 level = level,
-                customBody = customBody,
-                artworkUrl = artworkUrl,
-                actions = actions
+                customBody = resolved.customBody,
+                artworkUrl = resolved.artworkUrl,
+                actions = resolved.actions
             )
         }
 
@@ -1109,12 +1088,12 @@ object CardFormatterService {
         }
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
             level = level,
             fields = fields,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 

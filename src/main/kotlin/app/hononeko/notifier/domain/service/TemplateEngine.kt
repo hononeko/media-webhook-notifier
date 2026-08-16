@@ -10,6 +10,21 @@ import app.hononeko.notifier.domain.model.TemplateConfig
 import java.util.Locale
 import java.util.regex.Pattern
 
+data class ResolvedTemplateCard(
+    val title: String,
+    val subtitle: String?,
+    val artworkUrl: String?,
+    val actions: List<ActionLink>,
+    val customBody: String?
+)
+
+data class ResolvedTemplateProgress(
+    val title: String,
+    val subtitle: String?,
+    val actions: List<ActionLink>,
+    val customBody: String?
+)
+
 class TemplateEngine(
     private val config: TemplateConfig = TemplateConfig()
 ) {
@@ -125,6 +140,89 @@ class TemplateEngine(
         return result
     }
 
+    fun resolveCard(
+        eventName: String,
+        defaultTitle: String,
+        defaultSubtitle: String?,
+        defaultArtworkUrl: String?,
+        defaultActions: List<ActionLink>,
+        context: Map<String, Any?>
+    ): ResolvedTemplateCard {
+        val customTemplate = config.events[eventName]
+        val title =
+            customTemplate?.title?.takeIf { it.isNotBlank() }?.let {
+                interpolate(it, context)
+            } ?: defaultTitle
+
+        val subtitle =
+            customTemplate?.subtitle?.takeIf { it.isNotBlank() }?.let {
+                interpolate(it, context)
+            } ?: defaultSubtitle
+
+        val artworkUrl =
+            customTemplate?.artworkUrl?.takeIf { it.isNotBlank() }?.let {
+                interpolate(it, context).ifBlank { null }
+            } ?: defaultArtworkUrl
+
+        val actions =
+            if (customTemplate != null && customTemplate.actions.isNotEmpty()) {
+                renderActions(customTemplate.actions, context)
+            } else {
+                defaultActions
+            }
+
+        val customBody =
+            customTemplate?.body?.takeIf { it.isNotBlank() }?.let {
+                interpolateBody(it, context)
+            }
+
+        return ResolvedTemplateCard(
+            title = title,
+            subtitle = subtitle,
+            artworkUrl = artworkUrl,
+            actions = actions,
+            customBody = customBody
+        )
+    }
+
+    fun resolveProgress(
+        eventName: String = "download_progress",
+        defaultTitle: String,
+        defaultSubtitle: String?,
+        defaultActions: List<ActionLink>,
+        context: Map<String, Any?>
+    ): ResolvedTemplateProgress {
+        val customTemplate = config.events[eventName]
+        val title =
+            customTemplate?.title?.takeIf { it.isNotBlank() }?.let {
+                interpolate(it, context)
+            } ?: defaultTitle
+
+        val subtitle =
+            customTemplate?.subtitle?.takeIf { it.isNotBlank() }?.let {
+                interpolate(it, context)
+            } ?: defaultSubtitle
+
+        val actions =
+            if (customTemplate != null && customTemplate.actions.isNotEmpty()) {
+                renderActions(customTemplate.actions, context)
+            } else {
+                defaultActions
+            }
+
+        val customBody =
+            customTemplate?.body?.takeIf { it.isNotBlank() }?.let {
+                interpolateBody(it, context)
+            }
+
+        return ResolvedTemplateProgress(
+            title = title,
+            subtitle = subtitle,
+            actions = actions,
+            customBody = customBody
+        )
+    }
+
     fun renderCard(
         eventName: String,
         defaultTitle: String,
@@ -135,51 +233,23 @@ class TemplateEngine(
         defaultActions: List<ActionLink>,
         context: Map<String, Any?>
     ): NotificationCard {
-        val customTemplate = config.events[eventName]
-
-        val title =
-            if (!customTemplate?.title.isNullOrBlank()) {
-                interpolate(customTemplate!!.title, context)
-            } else {
-                defaultTitle
-            }
-
-        val subtitle =
-            if (!customTemplate?.subtitle.isNullOrBlank()) {
-                interpolate(customTemplate!!.subtitle, context)
-            } else {
-                defaultSubtitle
-            }
-
-        val artworkUrl =
-            if (!customTemplate?.artworkUrl.isNullOrBlank()) {
-                val url = interpolate(customTemplate!!.artworkUrl, context)
-                url.ifBlank { defaultArtworkUrl }
-            } else {
-                defaultArtworkUrl
-            }
-
-        val actions =
-            if (customTemplate != null && customTemplate.actions.isNotEmpty()) {
-                renderActions(customTemplate.actions, context)
-            } else {
-                defaultActions
-            }
-
-        val bodyText =
-            if (!customTemplate?.body.isNullOrBlank()) {
-                interpolateBody(customTemplate!!.body, context)
-            } else {
-                defaultBody
-            }
+        val resolved =
+            resolveCard(
+                eventName = eventName,
+                defaultTitle = defaultTitle,
+                defaultSubtitle = defaultSubtitle,
+                defaultArtworkUrl = defaultArtworkUrl,
+                defaultActions = defaultActions,
+                context = context
+            )
 
         return NotificationCard(
-            title = title,
-            subtitle = subtitle,
-            overview = bodyText,
+            title = resolved.title,
+            subtitle = resolved.subtitle,
+            overview = resolved.customBody ?: defaultBody,
             level = defaultLevel,
-            artworkUrl = artworkUrl,
-            actions = actions
+            artworkUrl = resolved.artworkUrl,
+            actions = resolved.actions
         )
     }
 

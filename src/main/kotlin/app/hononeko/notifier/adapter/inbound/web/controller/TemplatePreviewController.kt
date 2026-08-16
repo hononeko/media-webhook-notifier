@@ -20,28 +20,36 @@ import java.util.Locale
 
 @Serializable
 data class TemplatePreviewRequestDto(
-    @SerialName("template_yaml") val templateYaml: String? = null,
-    @SerialName("event_type") val eventType: String = "grab"
+    @SerialName("template_yaml")
+    val templateYaml: String? = null,
+    @SerialName("event_type")
+    val eventType: String = "grab"
 )
 
 @Serializable
 data class TemplatePreviewResponseDto(
     val status: String = "success",
-    @SerialName("event_type") val eventType: String,
-    @SerialName("rendered_card") val renderedCard: RenderedCardDto,
-    @SerialName("telegram_html") val telegramHtml: String,
-    @SerialName("tags_available") val tagsAvailable: List<String> = emptyList()
+    @SerialName("event_type")
+    val eventType: String,
+    @SerialName("rendered_card")
+    val renderedCard: RenderedCardDto,
+    @SerialName("telegram_html")
+    val telegramHtml: String,
+    @SerialName("tags_available")
+    val tagsAvailable: List<String>
 )
 
 @Serializable
 data class RenderedCardDto(
     val title: String,
     val subtitle: String? = null,
-    val level: String,
-    @SerialName("custom_body") val customBody: String? = null,
+    val level: String = "INFO",
+    @SerialName("custom_body")
+    val customBody: String? = null,
     val overview: String? = null,
     val fields: List<CardFieldDto> = emptyList(),
-    @SerialName("artwork_url") val artworkUrl: String? = null,
+    @SerialName("artwork_url")
+    val artworkUrl: String? = null,
     val actions: List<ActionLinkDto> = emptyList()
 )
 
@@ -56,18 +64,109 @@ data class CardFieldDto(
 data class ActionLinkDto(
     val label: String,
     val url: String,
-    val style: String
+    val style: String = "DEFAULT"
 )
 
 class TemplatePreviewController {
+    companion object {
+        private val BASE_TAGS =
+            listOf("title", "series_title", "season", "episode_range", "poster_url", "instance_name", "source_name")
+        private val TORRENT_TAGS = BASE_TAGS + listOf("quality", "release_group", "indexer", "webui_url", "download_id")
+        private val GRAB_TAGS = TORRENT_TAGS + listOf("size", "total_size")
+        private val PROGRESS_TAGS =
+            TORRENT_TAGS +
+                listOf(
+                    "progress_percent",
+                    "progress_bar",
+                    "speed",
+                    "eta",
+                    "downloaded_size",
+                    "total_size",
+                    "peers_info",
+                    "state"
+                )
+        private val STALLED_TAGS = TORRENT_TAGS + listOf("progress_percent", "progress_bar")
+        private val IMPORT_TAGS =
+            BASE_TAGS +
+                listOf(
+                    "year",
+                    "quality",
+                    "specs",
+                    "video_codec",
+                    "audio_codec",
+                    "resolution",
+                    "size",
+                    "total_size",
+                    "is_upgrade",
+                    "import_action",
+                    "import_icon",
+                    "import_type",
+                    "overview",
+                    "web_url"
+                )
+        private val AVAILABLE_TAGS =
+            listOf(
+                "title",
+                "series_title",
+                "year",
+                "specs",
+                "overview",
+                "video_codec",
+                "audio_codec",
+                "resolution",
+                "rating",
+                "score",
+                "duration",
+                "deep_link_url",
+                "media_server_name",
+                "poster_url",
+                "instance_name",
+                "source_name"
+            )
+        private val HEALTH_TAGS =
+            listOf(
+                "title",
+                "health_status",
+                "health_icon",
+                "health_type",
+                "message",
+                "issue_type",
+                "wiki_url",
+                "instance_name",
+                "source_name"
+            )
+        private val MANUAL_TAGS =
+            TORRENT_TAGS +
+                listOf("reason", "release_title", "size", "total_size", "download_client", "client", "web_url")
+        private val REQUEST_TAGS =
+            listOf(
+                "title",
+                "subject",
+                "request_icon",
+                "request_action",
+                "request_status",
+                "requested_by",
+                "media_type",
+                "quality",
+                "issue_type",
+                "issue_status",
+                "comment",
+                "message",
+                "web_url",
+                "poster_url",
+                "instance_name",
+                "source_name"
+            )
+    }
+
     suspend fun handlePreview(call: ApplicationCall) {
         val request =
             try {
                 call.receive<TemplatePreviewRequestDto>()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 call.respond(
                     HttpStatusCode.BadRequest,
-                    mapOf("status" to "error", "message" to "Invalid JSON payload: ${e.message}")
+                    mapOf("status" to "error", "message" to "Invalid JSON payload")
                 )
                 return
             }
@@ -155,30 +254,7 @@ class TemplatePreviewController {
                         "http://qbittorrent.lan:8080",
                         engine
                     )
-                val tags =
-                    listOf(
-                        "title",
-                        "series_title",
-                        "season",
-                        "episode_range",
-                        "quality",
-                        "release_group",
-                        "indexer",
-                        "webui_url",
-                        "poster_url",
-                        "instance_name",
-                        "source_name",
-                        "download_id",
-                        "progress_percent",
-                        "progress_bar",
-                        "speed",
-                        "eta",
-                        "downloaded_size",
-                        "total_size",
-                        "peers_info",
-                        "state"
-                    )
-                Triple(null, update, tags)
+                Triple(null, update, PROGRESS_TAGS)
             }
             "download_complete" -> {
                 val grab = mockGrab()
@@ -190,184 +266,43 @@ class TemplatePreviewController {
                         "http://qbittorrent.lan:8080",
                         engine
                     )
-                val tags =
-                    listOf(
-                        "title",
-                        "series_title",
-                        "season",
-                        "episode_range",
-                        "quality",
-                        "release_group",
-                        "total_size",
-                        "size",
-                        "indexer",
-                        "webui_url",
-                        "poster_url",
-                        "instance_name",
-                        "source_name",
-                        "download_id"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, GRAB_TAGS)
             }
             "download_stalled" -> {
                 val grab = mockGrab()
                 val progress = mockProgress(42.0, TorrentState.STALLED)
                 val card = CardFormatterService.buildStalledCard(grab, progress, "http://qbittorrent.lan:8080", engine)
-                val tags =
-                    listOf(
-                        "title",
-                        "series_title",
-                        "season",
-                        "episode_range",
-                        "quality",
-                        "progress_percent",
-                        "progress_bar",
-                        "webui_url",
-                        "poster_url",
-                        "instance_name",
-                        "source_name",
-                        "download_id"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, STALLED_TAGS)
             }
             "import" -> {
                 val download = mockDownload()
                 val card = CardFormatterService.buildImportCard(download, engine)
-                val tags =
-                    listOf(
-                        "title",
-                        "series_title",
-                        "year",
-                        "season",
-                        "episode_range",
-                        "quality",
-                        "video_codec",
-                        "audio_codec",
-                        "resolution",
-                        "size",
-                        "total_size",
-                        "is_upgrade",
-                        "import_action",
-                        "import_icon",
-                        "import_type",
-                        "overview",
-                        "poster_url",
-                        "web_url",
-                        "instance_name",
-                        "source_name"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, IMPORT_TAGS)
             }
             "media_available" -> {
                 val plex = mockPlex()
                 val card = CardFormatterService.buildAvailableCard(plex, engine = engine)
-                val tags =
-                    listOf(
-                        "title",
-                        "series_title",
-                        "year",
-                        "overview",
-                        "video_codec",
-                        "audio_codec",
-                        "resolution",
-                        "rating",
-                        "score",
-                        "duration",
-                        "deep_link_url",
-                        "media_server_name",
-                        "poster_url",
-                        "instance_name",
-                        "source_name"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, AVAILABLE_TAGS)
             }
             "health" -> {
                 val health = mockHealth()
                 val card = CardFormatterService.buildHealthCard(health, engine)
-                val tags =
-                    listOf(
-                        "title",
-                        "health_status",
-                        "health_icon",
-                        "health_type",
-                        "message",
-                        "issue_type",
-                        "wiki_url",
-                        "instance_name",
-                        "source_name"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, HEALTH_TAGS)
             }
             "manual_interaction" -> {
                 val manual = mockManual()
                 val card = CardFormatterService.buildManualInteractionCard(manual, engine)
-                val tags =
-                    listOf(
-                        "title",
-                        "series_title",
-                        "season",
-                        "episode_range",
-                        "reason",
-                        "release_title",
-                        "quality",
-                        "size",
-                        "total_size",
-                        "indexer",
-                        "download_client",
-                        "client",
-                        "web_url",
-                        "poster_url",
-                        "instance_name",
-                        "source_name"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, MANUAL_TAGS)
             }
             "request" -> {
                 val seerr = mockSeerr()
                 val card = CardFormatterService.buildSeerrCard(seerr, engine)
-                val tags =
-                    listOf(
-                        "title",
-                        "subject",
-                        "request_icon",
-                        "request_action",
-                        "request_status",
-                        "requested_by",
-                        "media_type",
-                        "quality",
-                        "issue_type",
-                        "issue_status",
-                        "comment",
-                        "message",
-                        "web_url",
-                        "poster_url",
-                        "instance_name",
-                        "source_name"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, REQUEST_TAGS)
             }
             else -> {
-                // Default to grab
                 val grab = mockGrab()
                 val card = CardFormatterService.buildGrabInitialCard(grab, "http://qbittorrent.lan:8080", engine)
-                val tags =
-                    listOf(
-                        "title",
-                        "series_title",
-                        "season",
-                        "episode_range",
-                        "quality",
-                        "release_group",
-                        "size",
-                        "total_size",
-                        "indexer",
-                        "webui_url",
-                        "poster_url",
-                        "instance_name",
-                        "source_name",
-                        "download_id"
-                    )
-                Triple(card, null, tags)
+                Triple(card, null, GRAB_TAGS)
             }
         }
 

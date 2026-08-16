@@ -6,6 +6,7 @@ import app.hononeko.notifier.adapter.inbound.web.controller.RenderedCardDto
 import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto
 import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto
 import app.hononeko.notifier.config.ServerConfig
+import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -16,6 +17,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
+import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -33,27 +35,33 @@ class TemplatePreviewRoutesTest {
             encodeDefaults = true
         }
 
-    @Test
-    fun `preview endpoint returns 404 when enablePreview is false`() =
-        testApplication {
-            val eventRail = EventRail(capacity = 50)
-            application {
-                install(ServerContentNegotiation) {
+    private fun withPreviewApp(
+        authToken: String = testToken,
+        enablePreview: Boolean = true,
+        block: suspend ApplicationTestBuilder.(HttpClient) -> Unit
+    ) = testApplication {
+        val eventRail = EventRail(capacity = 50)
+        application {
+            install(ServerContentNegotiation) {
+                json(testJson)
+            }
+            configureWebhookRouting(
+                eventRail,
+                ServerConfig(authToken = authToken, enablePreview = enablePreview)
+            )
+        }
+        val client =
+            createClient {
+                install(ClientContentNegotiation) {
                     json(testJson)
                 }
-                configureWebhookRouting(
-                    eventRail,
-                    ServerConfig(authToken = testToken, enablePreview = false)
-                )
             }
+        block(client)
+    }
 
-            val client =
-                createClient {
-                    install(ClientContentNegotiation) {
-                        json(testJson)
-                    }
-                }
-
+    @Test
+    fun `preview endpoint returns 404 when enablePreview is false`() =
+        withPreviewApp(enablePreview = false) { client ->
             val response =
                 client.post("/api/v1/templates/preview") {
                     header(HttpHeaders.Authorization, "Bearer $testToken")
@@ -66,25 +74,7 @@ class TemplatePreviewRoutesTest {
 
     @Test
     fun `preview endpoint returns 401 when unauthenticated and token is required`() =
-        testApplication {
-            val eventRail = EventRail(capacity = 50)
-            application {
-                install(ServerContentNegotiation) {
-                    json(testJson)
-                }
-                configureWebhookRouting(
-                    eventRail,
-                    ServerConfig(authToken = testToken, enablePreview = true)
-                )
-            }
-
-            val client =
-                createClient {
-                    install(ClientContentNegotiation) {
-                        json(testJson)
-                    }
-                }
-
+        withPreviewApp { client ->
             val response =
                 client.post("/api/v1/templates/preview") {
                     contentType(ContentType.Application.Json)
@@ -96,25 +86,7 @@ class TemplatePreviewRoutesTest {
 
     @Test
     fun `preview endpoint returns 400 when json payload is invalid`() =
-        testApplication {
-            val eventRail = EventRail(capacity = 50)
-            application {
-                install(ServerContentNegotiation) {
-                    json(testJson)
-                }
-                configureWebhookRouting(
-                    eventRail,
-                    ServerConfig(authToken = testToken, enablePreview = true)
-                )
-            }
-
-            val client =
-                createClient {
-                    install(ClientContentNegotiation) {
-                        json(testJson)
-                    }
-                }
-
+        withPreviewApp { client ->
             val response =
                 client.post("/api/v1/templates/preview") {
                     header(HttpHeaders.Authorization, "Bearer $testToken")
@@ -128,25 +100,7 @@ class TemplatePreviewRoutesTest {
 
     @Test
     fun `preview endpoint renders grab event with custom yaml`() =
-        testApplication {
-            val eventRail = EventRail(capacity = 50)
-            application {
-                install(ServerContentNegotiation) {
-                    json(testJson)
-                }
-                configureWebhookRouting(
-                    eventRail,
-                    ServerConfig(authToken = testToken, enablePreview = true)
-                )
-            }
-
-            val client =
-                createClient {
-                    install(ClientContentNegotiation) {
-                        json(testJson)
-                    }
-                }
-
+        withPreviewApp { client ->
             val requestBody =
                 """
                 {
@@ -170,25 +124,7 @@ class TemplatePreviewRoutesTest {
 
     @Test
     fun `preview endpoint renders download_progress event with custom yaml`() =
-        testApplication {
-            val eventRail = EventRail(capacity = 50)
-            application {
-                install(ServerContentNegotiation) {
-                    json(testJson)
-                }
-                configureWebhookRouting(
-                    eventRail,
-                    ServerConfig(authToken = testToken, enablePreview = true)
-                )
-            }
-
-            val client =
-                createClient {
-                    install(ClientContentNegotiation) {
-                        json(testJson)
-                    }
-                }
-
+        withPreviewApp { client ->
             val requestBody =
                 """
                 {
@@ -211,25 +147,7 @@ class TemplatePreviewRoutesTest {
 
     @Test
     fun `preview endpoint renders all mock event types correctly`() =
-        testApplication {
-            val eventRail = EventRail(capacity = 50)
-            application {
-                install(ServerContentNegotiation) {
-                    json(testJson)
-                }
-                configureWebhookRouting(
-                    eventRail,
-                    ServerConfig(authToken = "", enablePreview = true)
-                )
-            }
-
-            val client =
-                createClient {
-                    install(ClientContentNegotiation) {
-                        json(testJson)
-                    }
-                }
-
+        withPreviewApp(authToken = "") { client ->
             val eventTypes =
                 listOf(
                     "download_complete",
