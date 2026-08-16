@@ -17,28 +17,45 @@ import java.util.Locale
 object CardFormatterService {
     private const val OPEN_WEBUI_LABEL = "🌐 Open WebUI"
 
+    var templateEngine: TemplateEngine = TemplateEngine()
+
     fun drawProgressBar(
         percent: Double,
-        length: Int = 10
+        length: Int = 10,
+        style: String = "default"
     ): String {
         val clamped = percent.coerceIn(0.0, 100.0)
-        val totalEighths = kotlin.math.round((clamped * length * 8) / 100.0).toInt()
-        val fullBlocks = totalEighths / 8
-        val remainder = totalEighths % 8
-        val subBlocks = charArrayOf(' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉')
-        val sb = StringBuilder()
-        sb.append("[")
-        sb.append("█".repeat(fullBlocks.coerceAtMost(length)))
-        if (fullBlocks < length) {
-            if (remainder > 0) {
-                sb.append(subBlocks[remainder])
-                sb.append("░".repeat(length - fullBlocks - 1))
-            } else {
-                sb.append("░".repeat(length - fullBlocks))
+        return when (style.lowercase(Locale.US)) {
+            "minimal" -> {
+                val filled = kotlin.math.round((clamped * length) / 100.0).toInt()
+                val empty = length - filled
+                "[${"=".repeat(filled)}${"-".repeat(empty)}]"
+            }
+            "circles" -> {
+                val filled = kotlin.math.round((clamped * length) / 100.0).toInt()
+                val empty = length - filled
+                "[${"●".repeat(filled)}${"○".repeat(empty)}]"
+            }
+            else -> {
+                val totalEighths = kotlin.math.round((clamped * length * 8) / 100.0).toInt()
+                val fullBlocks = totalEighths / 8
+                val remainder = totalEighths % 8
+                val subBlocks = charArrayOf(' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉')
+                val sb = StringBuilder()
+                sb.append("[")
+                sb.append("█".repeat(fullBlocks.coerceAtMost(length)))
+                if (fullBlocks < length) {
+                    if (remainder > 0) {
+                        sb.append(subBlocks[remainder])
+                        sb.append("░".repeat(length - fullBlocks - 1))
+                    } else {
+                        sb.append("░".repeat(length - fullBlocks))
+                    }
+                }
+                sb.append("]")
+                sb.toString()
             }
         }
-        sb.append("]")
-        return sb.toString()
     }
 
     fun drawProgressBar(
@@ -118,7 +135,8 @@ object CardFormatterService {
 
     fun buildGrabInitialCard(
         payload: MediaPayload.ArrGrab,
-        webUiUrl: String?
+        webUiUrl: String?,
+        engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
@@ -127,23 +145,64 @@ object CardFormatterService {
                 else -> payload.title
             }
 
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to titleText,
+                "series_title" to payload.seriesOrMovieTitle,
+                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "episode_range" to epRange,
+                "quality" to payload.quality,
+                "release_group" to payload.releaseGroup,
+                "size" to payload.sizeBytes?.let { formatBytes(it) },
+                "total_size" to payload.sizeBytes?.let { formatBytes(it) },
+                "indexer" to payload.indexer,
+                "webui_url" to webUiUrl,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to (payload.instanceName ?: payload.source.displayName),
+                "source_name" to payload.source.displayName,
+                "download_id" to payload.downloadId
+            )
+
+        val customTpl = engine.getEventTemplate("grab")
+        val defaultTitle = "⏳ Queueing Download: $titleText"
+        val defaultSubtitle = payload.instanceName ?: payload.source.displayName
+        val defaultActions = emptyList<ActionLink>()
+
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = NotificationLevel.PROGRESS,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
+
         val fields = mutableListOf<CardField>()
         payload.quality?.let { fields.add(CardField("Quality", it)) }
         payload.releaseGroup?.let { fields.add(CardField("Group", it)) }
         payload.sizeBytes?.let { fields.add(CardField("Size", formatBytes(it))) }
         payload.indexer?.let { fields.add(CardField("Indexer", it)) }
 
-        val actions = mutableListOf<ActionLink>()
-        if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.PRIMARY))
-        }
-
         return NotificationCard(
-            title = "⏳ Queueing Download: $titleText",
-            subtitle = payload.instanceName ?: payload.source.displayName,
+            title = title,
+            subtitle = subtitle,
             level = NotificationLevel.PROGRESS,
             fields = fields,
-            artworkUrl = payload.posterUrl,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
@@ -151,7 +210,8 @@ object CardFormatterService {
     fun buildProgressUpdate(
         payload: MediaPayload.ArrGrab,
         progress: TorrentProgress,
-        webUiUrl: String?
+        webUiUrl: String?,
+        engine: TemplateEngine = templateEngine
     ): ProgressUpdate {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
@@ -170,11 +230,12 @@ object CardFormatterService {
                 progress.peersCount,
                 progress.peersTotal
             )
-
-        val actions = mutableListOf<ActionLink>()
-        if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.PRIMARY))
-        }
+        val progressBar =
+            drawProgressBar(
+                progress.progressPercent,
+                engine.theme.progressBarLength,
+                engine.theme.progressBarStyle
+            )
 
         val stateLabel =
             when (progress.state) {
@@ -188,17 +249,56 @@ object CardFormatterService {
                 TorrentState.UNKNOWN -> "Active"
             }
 
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to titleText,
+                "series_title" to payload.seriesOrMovieTitle,
+                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "episode_range" to epRange,
+                "quality" to payload.quality,
+                "release_group" to payload.releaseGroup,
+                "indexer" to payload.indexer,
+                "webui_url" to webUiUrl,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to (payload.instanceName ?: payload.source.displayName),
+                "source_name" to payload.source.displayName,
+                "download_id" to payload.downloadId,
+                "progress_percent" to String.format(Locale.US, "%.2f", progress.progressPercent),
+                "progress_bar" to progressBar,
+                "speed" to speedFormatted,
+                "eta" to etaFormatted,
+                "downloaded_size" to formatBytes(progress.downloadedBytes),
+                "total_size" to formatBytes(progress.totalSizeBytes),
+                "peers_info" to peersFormatted,
+                "state" to stateLabel
+            )
+
+        val customTpl = engine.getEventTemplate("download_progress")
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: titleText
+        val subtitle =
+            customTpl?.subtitle?.let { engine.interpolate(it, context) }
+                ?: (payload.instanceName ?: payload.source.displayName)
+        val defaultActions = emptyList<ActionLink>()
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
         return ProgressUpdate(
             trackingKey = payload.downloadId,
-            title = titleText,
-            subtitle = payload.instanceName ?: payload.source.displayName,
+            title = title,
+            subtitle = subtitle,
             percent = progress.progressPercent,
-            progressBar = drawProgressBar(progress.progressPercent),
+            progressBar = progressBar,
             speedFormatted = speedFormatted,
             etaFormatted = etaFormatted,
             sizeFormatted = sizeFormatted,
             peersInfo = peersFormatted,
             stateText = stateLabel,
+            customBody = customBody,
             actions = actions
         )
     }
@@ -206,7 +306,8 @@ object CardFormatterService {
     fun buildCompletionCard(
         payload: MediaPayload.ArrGrab,
         progress: TorrentProgress,
-        webUiUrl: String?
+        webUiUrl: String?,
+        engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
@@ -215,6 +316,52 @@ object CardFormatterService {
                 else -> payload.title
             }
 
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to titleText,
+                "series_title" to payload.seriesOrMovieTitle,
+                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "episode_range" to epRange,
+                "quality" to payload.quality,
+                "release_group" to payload.releaseGroup,
+                "total_size" to formatBytes(progress.totalSizeBytes),
+                "size" to formatBytes(progress.totalSizeBytes),
+                "indexer" to payload.indexer,
+                "webui_url" to webUiUrl,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to (payload.instanceName ?: payload.source.displayName),
+                "source_name" to payload.source.displayName,
+                "download_id" to payload.downloadId
+            )
+
+        val customTpl = engine.getEventTemplate("download_complete")
+        val defaultTitle = "✅ Download Complete: $titleText"
+        val defaultSubtitle = payload.instanceName ?: payload.source.displayName
+        val defaultActions = emptyList<ActionLink>()
+
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = NotificationLevel.SUCCESS,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
+
         val fields =
             mutableListOf(
                 CardField("Status", "✅ 100% Downloaded"),
@@ -222,17 +369,12 @@ object CardFormatterService {
             )
         payload.quality?.let { fields.add(CardField("Quality", it)) }
 
-        val actions = mutableListOf<ActionLink>()
-        if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.SUCCESS))
-        }
-
         return NotificationCard(
-            title = "✅ Download Complete: $titleText",
-            subtitle = payload.instanceName ?: payload.source.displayName,
+            title = title,
+            subtitle = subtitle,
             level = NotificationLevel.SUCCESS,
             fields = fields,
-            artworkUrl = payload.posterUrl,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
@@ -240,7 +382,8 @@ object CardFormatterService {
     fun buildStalledCard(
         payload: MediaPayload.ArrGrab,
         progress: TorrentProgress?,
-        webUiUrl: String?
+        webUiUrl: String?,
+        engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
@@ -250,31 +393,80 @@ object CardFormatterService {
             }
 
         val progressVal = progress?.progressPercent ?: 0.0
+        val progressBar =
+            drawProgressBar(
+                progressVal,
+                engine.theme.progressBarLength,
+                engine.theme.progressBarStyle
+            )
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to titleText,
+                "series_title" to payload.seriesOrMovieTitle,
+                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "episode_range" to epRange,
+                "quality" to payload.quality,
+                "progress_percent" to String.format(Locale.US, "%.2f", progressVal),
+                "progress_bar" to progressBar,
+                "webui_url" to webUiUrl,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to (payload.instanceName ?: payload.source.displayName),
+                "source_name" to payload.source.displayName,
+                "download_id" to payload.downloadId
+            )
+
+        val customTpl = engine.getEventTemplate("download_stalled")
+        val defaultTitle = "⚠️ Download Stalled: $titleText"
+        val defaultSubtitle = payload.instanceName ?: payload.source.displayName
+        val defaultActions = emptyList<ActionLink>()
+
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = NotificationLevel.WARNING,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
+
         val fields =
             mutableListOf(
                 CardField("Status", "⚠️ Download Stalled (0 B/s)"),
                 CardField(
                     "Progress",
-                    String.format(Locale.US, "%.2f%% %s", progressVal, drawProgressBar(progressVal))
+                    String.format(Locale.US, "%.2f%% %s", progressVal, progressBar)
                 )
             )
 
-        val actions = mutableListOf<ActionLink>()
-        if (!webUiUrl.isNullOrBlank()) {
-            actions.add(ActionLink(label = OPEN_WEBUI_LABEL, url = webUiUrl, style = ActionStyle.DANGER))
-        }
-
         return NotificationCard(
-            title = "⚠️ Download Stalled: $titleText",
-            subtitle = payload.instanceName ?: payload.source.displayName,
+            title = title,
+            subtitle = subtitle,
             level = NotificationLevel.WARNING,
             fields = fields,
-            artworkUrl = payload.posterUrl,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
 
-    fun buildImportCard(payload: MediaPayload.ArrDownload): NotificationCard {
+    fun buildImportCard(
+        payload: MediaPayload.ArrDownload,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val fullTitle =
             when {
@@ -283,19 +475,68 @@ object CardFormatterService {
                 else -> payload.title
             }
 
-        val title =
+        val defaultTitle =
             if (payload.isUpgrade) {
                 "⬆️ File Upgraded: $fullTitle"
             } else {
                 "📁 File Imported: $fullTitle"
             }
 
-        val subtitle =
+        val defaultSubtitle =
             if (payload.isUpgrade) {
                 "${payload.instanceName ?: payload.source.displayName} • Quality Upgrade"
             } else {
                 "${payload.instanceName ?: payload.source.displayName} • Library Import"
             }
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to fullTitle,
+                "series_title" to payload.seriesOrMovieTitle,
+                "year" to payload.year?.toString(),
+                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "episode_range" to epRange,
+                "quality" to payload.quality,
+                "video_codec" to payload.videoCodec,
+                "audio_codec" to payload.audioCodec,
+                "resolution" to payload.resolution,
+                "size" to payload.sizeBytes?.let { formatBytes(it) },
+                "total_size" to payload.sizeBytes?.let { formatBytes(it) },
+                "is_upgrade" to payload.isUpgrade.toString(),
+                "import_action" to if (payload.isUpgrade) "File Upgraded" else "File Imported",
+                "import_icon" to if (payload.isUpgrade) "⬆️" else "📁",
+                "import_type" to if (payload.isUpgrade) "Quality Upgrade" else "Library Import",
+                "overview" to truncateOverview(payload.overview, engine.theme.maxOverviewLength),
+                "poster_url" to payload.posterUrl,
+                "web_url" to payload.webUrl,
+                "instance_name" to (payload.instanceName ?: payload.source.displayName),
+                "source_name" to payload.source.displayName
+            )
+
+        val customTpl = engine.getEventTemplate("import")
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
+        val defaultActions = emptyList<ActionLink>()
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = NotificationLevel.SUCCESS,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
 
         val specs =
             MediaSpecs(
@@ -305,45 +546,36 @@ object CardFormatterService {
                 sizeFormatted = payload.sizeBytes?.let { formatBytes(it) }
             )
 
-        val actions = mutableListOf<ActionLink>()
-        if (!payload.webUrl.isNullOrBlank()) {
-            actions.add(
-                ActionLink(
-                    label = "📁 Open in ${payload.source.displayName}",
-                    url = payload.webUrl,
-                    style = ActionStyle.DEFAULT
-                )
-            )
-        }
-
         return NotificationCard(
             title = title,
             subtitle = subtitle,
-            overview = truncateOverview(payload.overview),
+            overview = truncateOverview(payload.overview, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
-            artworkUrl = payload.posterUrl,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
 
     fun buildAvailableCard(
         payload: MediaPayload,
-        mediaServerPort: MediaServerPort? = null
+        mediaServerPort: MediaServerPort? = null,
+        engine: TemplateEngine = templateEngine
     ): NotificationCard =
         when (payload) {
-            is MediaPayload.PlexLibraryNew -> buildPlexCard(payload, mediaServerPort)
-            is MediaPayload.JellyfinItemAdded -> buildJellyfinCard(payload, mediaServerPort)
-            is MediaPayload.ArrDownload -> buildImportCard(payload)
-            is MediaPayload.ArrGrab -> buildGrabInitialCard(payload, null)
-            is MediaPayload.ServarrHealth -> buildHealthCard(payload)
-            is MediaPayload.ServarrManualInteraction -> buildManualInteractionCard(payload)
-            is MediaPayload.SeerrEvent -> buildSeerrCard(payload)
+            is MediaPayload.PlexLibraryNew -> buildPlexCard(payload, mediaServerPort, engine)
+            is MediaPayload.JellyfinItemAdded -> buildJellyfinCard(payload, mediaServerPort, engine)
+            is MediaPayload.ArrDownload -> buildImportCard(payload, engine)
+            is MediaPayload.ArrGrab -> buildGrabInitialCard(payload, null, engine)
+            is MediaPayload.ServarrHealth -> buildHealthCard(payload, engine)
+            is MediaPayload.ServarrManualInteraction -> buildManualInteractionCard(payload, engine)
+            is MediaPayload.SeerrEvent -> buildSeerrCard(payload, engine)
         }
 
     private fun buildPlexCard(
         payload: MediaPayload.PlexLibraryNew,
-        mediaServerPort: MediaServerPort?
+        mediaServerPort: MediaServerPort?,
+        engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val fullTitle =
             when {
@@ -351,6 +583,63 @@ object CardFormatterService {
                 payload.year != null -> "${payload.title} (${payload.year})"
                 else -> payload.title
             }
+
+        val directLink = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
+        val defaultSubtitle =
+            payload.instanceName?.let {
+                if (it.equals("plex", ignoreCase = true)) "Plex Media Server" else it
+            } ?: "Plex Media Server"
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to fullTitle,
+                "series_title" to (payload.grandParentTitle ?: payload.title),
+                "year" to payload.year?.toString(),
+                "overview" to truncateOverview(payload.summary, engine.theme.maxOverviewLength),
+                "video_codec" to payload.videoCodec,
+                "audio_codec" to payload.audioCodec,
+                "resolution" to payload.resolution,
+                "rating" to payload.rating?.let { String.format(Locale.US, "%.1f/10", it) },
+                "score" to payload.rating?.let { String.format(Locale.US, "%.1f/10", it) },
+                "duration" to payload.durationSeconds?.let { formatDuration(it) },
+                "deep_link_url" to directLink,
+                "media_server_name" to defaultSubtitle,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to defaultSubtitle,
+                "source_name" to "Plex"
+            )
+
+        val customTpl = engine.getEventTemplate("media_available")
+        val defaultTitle = "🍿 Now Available: $fullTitle"
+        val defaultActions =
+            if (!directLink.isNullOrBlank()) {
+                listOf(ActionLink(label = "🎬 Watch on Plex", url = directLink, style = ActionStyle.PRIMARY))
+            } else {
+                emptyList()
+            }
+
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = NotificationLevel.SUCCESS,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
 
         val specs =
             MediaSpecs(
@@ -361,31 +650,21 @@ object CardFormatterService {
                 duration = payload.durationSeconds?.let { formatDuration(it) }
             )
 
-        val actions = mutableListOf<ActionLink>()
-        val directLink = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
-        if (!directLink.isNullOrBlank()) {
-            actions.add(ActionLink(label = "🎬 Watch on Plex", url = directLink, style = ActionStyle.PRIMARY))
-        }
-
-        val subtitle =
-            payload.instanceName?.let {
-                if (it.equals("plex", ignoreCase = true)) "Plex Media Server" else it
-            } ?: "Plex Media Server"
-
         return NotificationCard(
-            title = "🍿 Now Available: $fullTitle",
+            title = title,
             subtitle = subtitle,
-            overview = truncateOverview(payload.summary),
+            overview = truncateOverview(payload.summary, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
-            artworkUrl = payload.posterUrl,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
 
     private fun buildJellyfinCard(
         payload: MediaPayload.JellyfinItemAdded,
-        mediaServerPort: MediaServerPort?
+        mediaServerPort: MediaServerPort?,
+        engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val fullTitle =
             when {
@@ -394,6 +673,60 @@ object CardFormatterService {
                 else -> payload.title
             }
 
+        val directLink = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
+        val defaultSubtitle =
+            payload.instanceName?.let {
+                if (it.equals("jellyfin", ignoreCase = true)) "Jellyfin Media Server" else it
+            } ?: "Jellyfin Media Server"
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to fullTitle,
+                "series_title" to (payload.seriesName ?: payload.title),
+                "year" to payload.year?.toString(),
+                "overview" to truncateOverview(payload.overview, engine.theme.maxOverviewLength),
+                "video_codec" to payload.videoCodec,
+                "audio_codec" to payload.audioCodec,
+                "resolution" to payload.resolution,
+                "deep_link_url" to directLink,
+                "media_server_name" to defaultSubtitle,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to defaultSubtitle,
+                "source_name" to "Jellyfin"
+            )
+
+        val customTpl = engine.getEventTemplate("media_available")
+        val defaultTitle = "🍿 Now Available: $fullTitle"
+        val defaultActions =
+            if (!directLink.isNullOrBlank()) {
+                listOf(ActionLink(label = "🍿 Watch on Jellyfin", url = directLink, style = ActionStyle.PRIMARY))
+            } else {
+                emptyList()
+            }
+
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = NotificationLevel.SUCCESS,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
+
         val specs =
             MediaSpecs(
                 video = payload.videoCodec,
@@ -401,57 +734,79 @@ object CardFormatterService {
                 resolution = payload.resolution
             )
 
-        val actions = mutableListOf<ActionLink>()
-        val directLink = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
-        if (!directLink.isNullOrBlank()) {
-            actions.add(ActionLink(label = "🍿 Watch on Jellyfin", url = directLink, style = ActionStyle.PRIMARY))
-        }
-
-        val subtitle =
-            payload.instanceName?.let {
-                if (it.equals("jellyfin", ignoreCase = true)) "Jellyfin Media Server" else it
-            } ?: "Jellyfin Media Server"
-
         return NotificationCard(
-            title = "🍿 Now Available: $fullTitle",
+            title = title,
             subtitle = subtitle,
-            overview = truncateOverview(payload.overview),
+            overview = truncateOverview(payload.overview, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
-            artworkUrl = payload.posterUrl,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
 
-    fun buildHealthCard(payload: MediaPayload.ServarrHealth): NotificationCard {
+    fun buildHealthCard(
+        payload: MediaPayload.ServarrHealth,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard {
         val isRestored =
-            payload.eventType == app.hononeko.notifier.domain.model.EventType.HEALTH_RESTORED ||
+            payload.eventType == EventType.HEALTH_RESTORED ||
                 payload.level.equals("ok", ignoreCase = true) ||
                 payload.level.equals("restored", ignoreCase = true)
         val isError =
             payload.level.equals("error", ignoreCase = true) ||
                 payload.level.equals("critical", ignoreCase = true)
 
-        val (titlePrefix, level, subtitleSuffix) =
+        val (titlePrefix, level, subtitleSuffix, statusEmoji) =
             when {
-                isRestored -> Triple("✅ Health Restored", NotificationLevel.SUCCESS, "Health Status")
-                isError -> Triple("🚨 Health Error", NotificationLevel.ERROR, "Health Alert")
-                else -> Triple("⚠️ Health Warning", NotificationLevel.WARNING, "Health Warning")
+                isRestored -> Quadruple("Health Restored", NotificationLevel.SUCCESS, "Health Status", "✅")
+                isError -> Quadruple("Health Error", NotificationLevel.ERROR, "Health Alert", "🚨")
+                else -> Quadruple("Health Warning", NotificationLevel.WARNING, "Health Warning", "⚠️")
             }
 
         val instanceLabel = payload.instanceName ?: payload.source.displayName
-        val title = "$titlePrefix: $instanceLabel"
-        val subtitle = "$instanceLabel • $subtitleSuffix"
+        val defaultTitle = "$statusEmoji $titlePrefix: $instanceLabel"
+        val defaultSubtitle = "$instanceLabel • $subtitleSuffix"
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to defaultTitle,
+                "health_status" to titlePrefix,
+                "health_icon" to statusEmoji,
+                "health_type" to subtitleSuffix,
+                "message" to payload.message,
+                "issue_type" to payload.type,
+                "wiki_url" to payload.wikiUrl,
+                "instance_name" to instanceLabel,
+                "source_name" to payload.source.displayName
+            )
+
+        val customTpl = engine.getEventTemplate("health")
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val defaultActions = emptyList<ActionLink>()
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = level,
+                customBody = customBody,
+                actions = actions
+            )
+        }
 
         val fields = mutableListOf<CardField>()
         fields.add(CardField("Message", payload.message, inline = false))
         payload.type?.takeIf { it.isNotBlank() }?.let {
             fields.add(CardField("Issue Type", it, inline = true))
-        }
-
-        val actions = mutableListOf<ActionLink>()
-        payload.wikiUrl?.takeIf { it.isNotBlank() }?.let {
-            actions.add(ActionLink(label = "📖 Open Wiki", url = it, style = ActionStyle.DEFAULT))
         }
 
         return NotificationCard(
@@ -463,13 +818,76 @@ object CardFormatterService {
         )
     }
 
-    fun buildManualInteractionCard(payload: MediaPayload.ServarrManualInteraction): NotificationCard {
+    fun buildManualInteractionCard(
+        payload: MediaPayload.ServarrManualInteraction,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val fullTitle =
             when {
                 epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
                 else -> payload.title
             }
+
+        val instanceLabel = payload.instanceName ?: payload.source.displayName
+        val defaultTitle = "✋ Manual Import Required: $fullTitle"
+        val defaultSubtitle = "$instanceLabel • Manual Intervention"
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to fullTitle,
+                "series_title" to payload.seriesOrMovieTitle,
+                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "episode_range" to epRange,
+                "reason" to payload.reason,
+                "release_title" to payload.releaseTitle,
+                "quality" to payload.quality,
+                "size" to payload.sizeBytes?.let { formatBytes(it) },
+                "total_size" to payload.sizeBytes?.let { formatBytes(it) },
+                "indexer" to payload.indexer,
+                "download_client" to payload.downloadClient,
+                "client" to payload.downloadClient,
+                "web_url" to payload.webUrl,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to instanceLabel,
+                "source_name" to payload.source.displayName
+            )
+
+        val customTpl = engine.getEventTemplate("manual_interaction")
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.posterUrl
+        val defaultActions =
+            if (!payload.webUrl.isNullOrBlank()) {
+                listOf(
+                    ActionLink(
+                        label = "📁 Open in ${payload.source.displayName}",
+                        url = payload.webUrl,
+                        style = ActionStyle.PRIMARY
+                    )
+                )
+            } else {
+                emptyList()
+            }
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = NotificationLevel.WARNING,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
 
         val fields = mutableListOf<CardField>()
         payload.reason?.takeIf { it.isNotBlank() }?.let {
@@ -491,118 +909,188 @@ object CardFormatterService {
             fields.add(CardField("Client", it, inline = true))
         }
 
-        val actions = mutableListOf<ActionLink>()
-        if (!payload.webUrl.isNullOrBlank()) {
-            actions.add(
-                ActionLink(
-                    label = "📁 Open in ${payload.source.displayName}",
-                    url = payload.webUrl,
-                    style = ActionStyle.PRIMARY
-                )
-            )
-        }
-
-        val instanceLabel = payload.instanceName ?: payload.source.displayName
         return NotificationCard(
-            title = "✋ Manual Import Required: $fullTitle",
-            subtitle = "$instanceLabel • Manual Intervention",
+            title = title,
+            subtitle = subtitle,
             level = NotificationLevel.WARNING,
             fields = fields,
-            artworkUrl = payload.posterUrl,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
 
-    fun buildSeerrCard(payload: MediaPayload.SeerrEvent): NotificationCard {
+    fun buildSeerrCard(
+        payload: MediaPayload.SeerrEvent,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard {
         val appName = payload.instanceName ?: payload.source.displayName
-        val (title, subtitle, level) =
+        val (defaultTitle, defaultSubtitle, level, requestIcon, requestAction) =
             when (payload.eventType) {
                 EventType.REQUEST_PENDING -> {
-                    Triple(
+                    Quintuple(
                         "🛎️ New Request: ${payload.subject}",
                         "$appName • Request Pending",
-                        NotificationLevel.WARNING
+                        NotificationLevel.WARNING,
+                        "🛎️",
+                        "New Request"
                     )
                 }
                 EventType.REQUEST_APPROVED, EventType.REQUEST_AUTO_APPROVED -> {
                     val approvedType =
-                        if (payload.eventType == EventType.REQUEST_AUTO_APPROVED) "Auto-Approved" else "Approved"
-                    Triple(
+                        if (payload.eventType ==
+                            EventType.REQUEST_AUTO_APPROVED
+                        ) {
+                            "Auto-Approved"
+                        } else {
+                            "Approved"
+                        }
+                    Quintuple(
                         "✅ Request $approvedType: ${payload.subject}",
                         "$appName • Request $approvedType",
-                        NotificationLevel.SUCCESS
+                        NotificationLevel.SUCCESS,
+                        "✅",
+                        "Request $approvedType"
                     )
                 }
                 EventType.REQUEST_AVAILABLE -> {
-                    Triple(
+                    Quintuple(
                         "🍿 Request Available: ${payload.subject}",
                         "$appName • Media Available",
-                        NotificationLevel.SUCCESS
+                        NotificationLevel.SUCCESS,
+                        "🍿",
+                        "Request Available"
                     )
                 }
                 EventType.REQUEST_DECLINED -> {
-                    Triple(
+                    Quintuple(
                         "❌ Request Declined: ${payload.subject}",
                         "$appName • Request Declined",
-                        NotificationLevel.ERROR
+                        NotificationLevel.ERROR,
+                        "❌",
+                        "Request Declined"
                     )
                 }
                 EventType.REQUEST_FAILED -> {
-                    Triple(
+                    Quintuple(
                         "🚨 Request Failed: ${payload.subject}",
                         "$appName • Request Processing Failed",
-                        NotificationLevel.ERROR
+                        NotificationLevel.ERROR,
+                        "🚨",
+                        "Request Failed"
                     )
                 }
                 EventType.ISSUE_CREATED -> {
-                    Triple(
+                    Quintuple(
                         "⚠️ Issue Reported: ${payload.subject}",
                         "$appName • Issue Report",
-                        NotificationLevel.WARNING
+                        NotificationLevel.WARNING,
+                        "⚠️",
+                        "Issue Reported"
                     )
                 }
                 EventType.ISSUE_COMMENT -> {
-                    Triple(
+                    Quintuple(
                         "💬 Issue Comment: ${payload.subject}",
                         "$appName • Issue Update",
-                        NotificationLevel.INFO
+                        NotificationLevel.INFO,
+                        "💬",
+                        "Issue Comment"
                     )
                 }
                 EventType.ISSUE_RESOLVED -> {
-                    Triple(
+                    Quintuple(
                         "✅ Issue Resolved: ${payload.subject}",
                         "$appName • Issue Resolved",
-                        NotificationLevel.SUCCESS
+                        NotificationLevel.SUCCESS,
+                        "✅",
+                        "Issue Resolved"
                     )
                 }
                 EventType.ISSUE_REOPENED -> {
-                    Triple(
+                    Quintuple(
                         "⚠️ Issue Reopened: ${payload.subject}",
                         "$appName • Issue Reopened",
-                        NotificationLevel.WARNING
+                        NotificationLevel.WARNING,
+                        "⚠️",
+                        "Issue Reopened"
                     )
                 }
                 else -> {
-                    Triple(
+                    Quintuple(
                         "🔔 ${payload.subject}",
                         "$appName • Notification",
-                        NotificationLevel.INFO
+                        NotificationLevel.INFO,
+                        "🔔",
+                        "Notification"
                     )
                 }
             }
 
-        val fields = mutableListOf<CardField>()
-        payload.requestedByUsername?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Requested By", it, inline = true))
-        }
-        payload.mediaType?.takeIf { it.isNotBlank() }?.let {
-            val mediaLabel =
+        val mediaLabel =
+            payload.mediaType?.takeIf { it.isNotBlank() }?.let {
                 when (it.lowercase()) {
                     "movie" -> "🎬 Movie"
                     "tv" -> "📺 TV Series"
                     else -> it.replaceFirstChar { c -> c.uppercase() }
                 }
-            fields.add(CardField("Media Type", mediaLabel, inline = true))
+            }
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to defaultTitle,
+                "subject" to payload.subject,
+                "request_icon" to requestIcon,
+                "request_action" to requestAction,
+                "request_status" to defaultSubtitle.substringAfter(" • "),
+                "requested_by" to payload.requestedByUsername,
+                "media_type" to mediaLabel,
+                "quality" to if (payload.is4k) "4K UHD" else null,
+                "issue_type" to payload.issueType,
+                "issue_status" to payload.issueStatus,
+                "comment" to payload.commentMessage,
+                "message" to payload.message?.takeIf { it != payload.subject },
+                "web_url" to payload.webUrl,
+                "poster_url" to payload.image,
+                "instance_name" to appName,
+                "source_name" to payload.source.displayName
+            )
+
+        val customTpl = engine.getEventTemplate("request")
+        val title = customTpl?.title?.let { engine.interpolate(it, context) } ?: defaultTitle
+        val subtitle = customTpl?.subtitle?.let { engine.interpolate(it, context) } ?: defaultSubtitle
+        val artworkUrl =
+            customTpl?.artworkUrl?.let { engine.interpolate(it, context).ifBlank { null } } ?: payload.image
+        val defaultActions =
+            if (!payload.webUrl.isNullOrBlank()) {
+                listOf(ActionLink(label = "🌐 Open in $appName", url = payload.webUrl, style = ActionStyle.PRIMARY))
+            } else {
+                emptyList()
+            }
+        val actions =
+            if (customTpl != null && customTpl.actions.isNotEmpty()) {
+                engine.renderActions(customTpl.actions, context)
+            } else {
+                defaultActions
+            }
+        val customBody = customTpl?.body?.let { engine.interpolateBody(it, context) }
+
+        if (customBody != null) {
+            return NotificationCard(
+                title = title,
+                subtitle = subtitle,
+                level = level,
+                customBody = customBody,
+                artworkUrl = artworkUrl,
+                actions = actions
+            )
+        }
+
+        val fields = mutableListOf<CardField>()
+        payload.requestedByUsername?.takeIf { it.isNotBlank() }?.let {
+            fields.add(CardField("Requested By", it, inline = true))
+        }
+        mediaLabel?.let {
+            fields.add(CardField("Media Type", it, inline = true))
         }
         if (payload.is4k) {
             fields.add(CardField("Quality", "4K UHD", inline = true))
@@ -620,24 +1108,28 @@ object CardFormatterService {
             fields.add(CardField("Details", it, inline = false))
         }
 
-        val actions = mutableListOf<ActionLink>()
-        if (!payload.webUrl.isNullOrBlank()) {
-            actions.add(
-                ActionLink(
-                    label = "🌐 Open in $appName",
-                    url = payload.webUrl,
-                    style = ActionStyle.PRIMARY
-                )
-            )
-        }
-
         return NotificationCard(
             title = title,
             subtitle = subtitle,
             level = level,
             fields = fields,
-            artworkUrl = payload.image,
+            artworkUrl = artworkUrl,
             actions = actions
         )
     }
+
+    private data class Quadruple<A, B, C, D>(
+        val first: A,
+        val second: B,
+        val third: C,
+        val fourth: D
+    )
+
+    private data class Quintuple<A, B, C, D, E>(
+        val first: A,
+        val second: B,
+        val third: C,
+        val fourth: D,
+        val fifth: E
+    )
 }

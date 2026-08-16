@@ -1,6 +1,5 @@
 package app.hononeko.notifier.domain.service
 
-import app.hononeko.notifier.domain.model.ActionStyle
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationLevel
@@ -102,8 +101,7 @@ class CardFormatterServiceTest {
         assertEquals(NotificationLevel.PROGRESS, card.level)
         assertEquals(3, card.fields.size)
         assertEquals("https://cdn.example.com/poster.jpg", card.artworkUrl)
-        assertEquals(1, card.actions.size)
-        assertEquals(ActionStyle.PRIMARY, card.actions.first().style)
+        assertEquals(0, card.actions.size)
     }
 
     @Test
@@ -274,7 +272,7 @@ class CardFormatterServiceTest {
         assertEquals(NotificationLevel.WARNING, warningCard.level)
         assertEquals("Indexer connection unstable", warningCard.fields.first { it.name == "Message" }.value)
         assertEquals("IndexersUnavailable", warningCard.fields.first { it.name == "Issue Type" }.value)
-        assertEquals("📖 Open Wiki", warningCard.actions.first().label)
+        assertEquals(0, warningCard.actions.size)
 
         val errorPayload =
             warningPayload.copy(

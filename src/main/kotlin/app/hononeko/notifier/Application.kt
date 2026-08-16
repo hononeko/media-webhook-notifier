@@ -20,6 +20,7 @@ import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
+import app.hononeko.notifier.domain.service.CardFormatterService
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
@@ -28,6 +29,7 @@ import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.MediaRequestService
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
+import app.hononeko.notifier.domain.service.TemplateEngine
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -90,6 +92,8 @@ fun buildDependencies(
     config: AppConfig,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ): AppDependencies {
+    CardFormatterService.templateEngine = TemplateEngine(config.templates)
+
     val torrentClient = QBittorrentClientAdapter(config = config.qbittorrent)
     val notificationPublisher = TelegramPublisherAdapter(config = config.notifications)
     val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
@@ -213,6 +217,16 @@ fun Application.module(dependencies: AppDependencies) {
                         contextual(MetricsDto::class, MetricsDto.serializer())
                         contextual(EventRailMetricsDto::class, EventRailMetricsDto.serializer())
                         contextual(MemoryMetricsDto::class, MemoryMetricsDto.serializer())
+                        contextual(
+                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto::class,
+                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto
+                                .serializer()
+                        )
+                        contextual(
+                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto::class,
+                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto
+                                .serializer()
+                        )
                     }
             }
         )

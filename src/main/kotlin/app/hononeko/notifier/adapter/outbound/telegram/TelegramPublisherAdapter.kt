@@ -435,27 +435,31 @@ class TelegramPublisherAdapter(
             appendItalicLine(sb, card.subtitle)
         }
 
-        if (card.fields.isNotEmpty()) {
-            sb.append("\n")
-            for (field in card.fields) {
-                sb
-                    .append("▪ <b>")
-                    .append(escapeHtml(field.name))
-                    .append(":</b> ")
-                    .append(escapeHtml(field.value))
-                    .append("\n")
+        if (!card.customBody.isNullOrBlank()) {
+            sb.append("\n").append(card.customBody).append("\n")
+        } else {
+            if (card.fields.isNotEmpty()) {
+                sb.append("\n")
+                for (field in card.fields) {
+                    sb
+                        .append("▪ <b>")
+                        .append(escapeHtml(field.name))
+                        .append(":</b> ")
+                        .append(escapeHtml(field.value))
+                        .append("\n")
+                }
             }
-        }
 
-        card.mediaSpecs?.let { specs ->
-            val summary = formatSpecs(specs)
-            if (summary.isNotBlank()) {
-                sb.append("▪ <b>Specs:</b> ").append(escapeHtml(summary)).append("\n")
+            card.mediaSpecs?.let { specs ->
+                val summary = formatSpecs(specs)
+                if (summary.isNotBlank()) {
+                    sb.append("▪ <b>Specs:</b> ").append(escapeHtml(summary)).append("\n")
+                }
             }
-        }
 
-        if (!card.overview.isNullOrBlank()) {
-            appendItalicLine(sb, card.overview, prefix = "\n")
+            if (!card.overview.isNullOrBlank()) {
+                appendItalicLine(sb, card.overview, prefix = "\n")
+            }
         }
 
         return sb.toString().trimEnd()
@@ -478,21 +482,26 @@ class TelegramPublisherAdapter(
         if (!update.subtitle.isNullOrBlank()) {
             appendItalicLine(sb, update.subtitle)
         }
-        sb
-            .append("\n<code>")
-            .append(update.progressBar)
-            .append("</code> <b>")
-            .append(String.format(Locale.US, "%.2f", update.percent))
-            .append("%</b>\n\n")
 
-        sb.append("▪ <b>Speed:</b> ").append(escapeHtml(update.speedFormatted))
-        if (update.etaFormatted.isNotBlank()) {
-            sb.append(" (ETA: ").append(escapeHtml(update.etaFormatted)).append(")")
+        if (!update.customBody.isNullOrBlank()) {
+            sb.append("\n").append(update.customBody)
+        } else {
+            sb
+                .append("\n<code>")
+                .append(update.progressBar)
+                .append("</code> <b>")
+                .append(String.format(Locale.US, "%.2f", update.percent))
+                .append("%</b>\n\n")
+
+            sb.append("▪ <b>Speed:</b> ").append(escapeHtml(update.speedFormatted))
+            if (update.etaFormatted.isNotBlank()) {
+                sb.append(" (ETA: ").append(escapeHtml(update.etaFormatted)).append(")")
+            }
+            sb.append("\n")
+            sb.append("▪ <b>Transferred:</b> ").append(escapeHtml(update.sizeFormatted)).append("\n")
+            sb.append("▪ <b>Peers:</b> ").append(escapeHtml(update.peersInfo)).append("\n")
+            sb.append("▪ <b>Status:</b> ").append(escapeHtml(update.stateText))
         }
-        sb.append("\n")
-        sb.append("▪ <b>Transferred:</b> ").append(escapeHtml(update.sizeFormatted)).append("\n")
-        sb.append("▪ <b>Peers:</b> ").append(escapeHtml(update.peersInfo)).append("\n")
-        sb.append("▪ <b>Status:</b> ").append(escapeHtml(update.stateText))
 
         return sb.toString()
     }
