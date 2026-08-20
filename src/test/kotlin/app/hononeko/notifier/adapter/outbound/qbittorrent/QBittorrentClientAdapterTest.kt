@@ -345,4 +345,43 @@ class QBittorrentClientAdapterTest {
             val result = adapter.getTorrentProgress("hash123")
             assertTrue(result.isLeft())
         }
+
+    @Test
+    fun `should handle zero total size and various aggregate states in multi-torrent queries`() =
+        runTest {
+            val statePairs =
+                listOf(
+                    listOf("metaDL", "downloading") to TorrentState.DOWNLOADING,
+                    listOf("metaDL", "metaDL") to TorrentState.ALLOCATING_METADATA,
+                    listOf("checkingDL", "checkingDL") to TorrentState.CHECKING,
+                    listOf("stalledDL", "stalledDL") to TorrentState.STALLED,
+                    listOf("pausedDL", "pausedDL") to TorrentState.PAUSED,
+                    listOf("queuedDL", "queuedDL") to TorrentState.QUEUED,
+                    listOf("unknown1", "unknown2") to TorrentState.DOWNLOADING
+                )
+
+            for ((mockStates, expectedAggState) in statePairs) {
+                val mockEngine =
+                    MockEngine {
+                        val items =
+                            mockStates
+                                .mapIndexed { idx, st ->
+                                    """{"hash":"h$idx","name":"Item $idx","progress":0.5,"total_size":0,"completed":0,"state":"$st","dlspeed":0,"upspeed":0,"eta":0,"num_seeds":1,"num_complete":1,"num_leechs":1,"num_incomplete":1}"""
+                                }.joinToString(",", "[", "]")
+                        respond(
+                            content = items,
+                            status = HttpStatusCode.OK,
+                            headers = headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    }
+
+                val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
+                val result = adapter.getTorrentProgress("h0|h1")
+                assertTrue(result.isRight())
+                val progress = (result as Either.Right).value
+                assertNotNull(progress)
+                assertEquals(expectedAggState, progress.state)
+                assertEquals(50.0, progress.progressPercent, 0.001)
+            }
+        }
 }

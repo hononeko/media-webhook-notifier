@@ -1073,4 +1073,92 @@ class CardFormatterServiceTest {
         assertTrue(!tracks.contains("E09"))
         assertTrue(tracks.contains("<i>...and 4 more episodes</i>"))
     }
+
+    @Test
+    fun `should format episode tracks with various TorrentState statuses`() {
+        val items =
+            listOf(
+                TorrentProgress(
+                    hash = "h1",
+                    name = "Show.S01E01",
+                    progressPercent = 0.0,
+                    progressRatio = 0.0,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 0L,
+                    state = TorrentState.STALLED
+                ),
+                TorrentProgress(
+                    hash = "h2",
+                    name = "Show.S01E02",
+                    progressPercent = 0.0,
+                    progressRatio = 0.0,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 0L,
+                    state = TorrentState.QUEUED
+                ),
+                TorrentProgress(
+                    hash = "h3",
+                    name = "Show.S01E03",
+                    progressPercent = 10.0,
+                    progressRatio = 0.1,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 100000L,
+                    state = TorrentState.PAUSED
+                ),
+                TorrentProgress(
+                    hash = "h4",
+                    name = "Show.S01E04",
+                    progressPercent = 5.0,
+                    progressRatio = 0.05,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 50000L,
+                    state = TorrentState.ALLOCATING_METADATA
+                ),
+                TorrentProgress(
+                    hash = "h5",
+                    name = "Show.S01E05",
+                    progressPercent = 50.0,
+                    progressRatio = 0.5,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 500000L,
+                    state = TorrentState.CHECKING
+                ),
+                TorrentProgress(
+                    hash = "h6",
+                    name = "Show.S01E06",
+                    progressPercent = 30.0,
+                    progressRatio = 0.3,
+                    downloadSpeedBytesPerSec = 2000000L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 300000L,
+                    state = TorrentState.DOWNLOADING
+                )
+            )
+
+        val tracks = CardFormatterService.formatEpisodeTracks(items)
+        assertNotNull(tracks)
+        assertTrue(tracks.contains("Stalled"))
+        assertTrue(tracks.contains("Queued"))
+        assertTrue(tracks.contains("Paused"))
+        assertTrue(tracks.contains("Allocating"))
+        assertTrue(tracks.contains("488.3 KB / 976.6 KB"))
+        assertTrue(tracks.contains("1.9 MB/s"))
+    }
 }

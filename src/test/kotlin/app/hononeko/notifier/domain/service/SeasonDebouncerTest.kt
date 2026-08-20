@@ -396,4 +396,81 @@ class SeasonDebouncerTest {
 
             assertEquals(0, debouncer.activeBufferCount())
         }
+
+    @Test
+    fun `should handle key computation fallbacks and individual hash flushes`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val grabs = Collections.synchronizedList(mutableListOf<MediaPayload.ArrGrab>())
+            val downloads = Collections.synchronizedList(mutableListOf<MediaPayload.ArrDownload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 60000L,
+                    scope = testScope,
+                    onDebouncedGrab = { grabs.add(it) },
+                    onDebouncedDownload = { downloads.add(it) }
+                )
+
+            // Grab with empty series title but valid downloadId
+            val grab1 =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash_only_grab",
+                    title = "Some Release",
+                    seriesOrMovieTitle = "",
+                    seasonNumber = 1
+                )
+            // Grab with empty series title and empty downloadId
+            val grab2 =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "   ",
+                    title = "Some Release 2",
+                    seriesOrMovieTitle = "  ",
+                    seasonNumber = null
+                )
+
+            // Download with empty series title but valid downloadId
+            val dl1 =
+                MediaPayload.ArrDownload(
+                    source = AppSource.SONARR,
+                    downloadId = "hash_only_dl",
+                    title = "Some Release",
+                    seriesOrMovieTitle = "",
+                    seasonNumber = 1,
+                    isUpgrade = false
+                )
+            // Download with empty series title and null downloadId
+            val dl2 =
+                MediaPayload.ArrDownload(
+                    source = AppSource.SONARR,
+                    downloadId = null,
+                    title = "Some Release 2",
+                    seriesOrMovieTitle = "   ",
+                    seasonNumber = null,
+                    isUpgrade = false
+                )
+
+            debouncer.submit(grab1)
+            debouncer.submit(grab2)
+            debouncer.submit(dl1)
+            debouncer.submit(dl2)
+
+            assertEquals(4, debouncer.activeBufferCount())
+
+            // Flush grab by downloadId matching
+            debouncer.flushGrab("hash_only_grab")
+            assertEquals(1, grabs.size)
+
+            // Flush download by downloadId matching
+            debouncer.flushDownload("hash_only_dl")
+            assertEquals(1, downloads.size)
+
+            debouncer.flushAll()
+            assertEquals(2, grabs.size)
+            assertEquals(2, downloads.size)
+            assertEquals(0, debouncer.activeBufferCount())
+        }
 }
