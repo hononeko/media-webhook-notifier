@@ -216,10 +216,43 @@ class TemplatePreviewRoutesTest {
         }
 
     @Test
+    fun `preview endpoint renders multi-track download_progress and download_complete correctly`() =
+        withPreviewApp(authToken = "") { client ->
+            val progressResp =
+                client.post("/api/v1/templates/preview") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"event_type":"download_progress","multi_track":true}""")
+                }
+
+            assertEquals(HttpStatusCode.OK, progressResp.status)
+            val progressDto = testJson.decodeFromString<TemplatePreviewResponseDto>(progressResp.bodyAsText())
+            assertTrue(progressDto.telegramHtml.contains("Love is Blind: UK (S03E01-E05)"))
+            assertTrue(progressDto.telegramHtml.contains("Total Progress"))
+            assertTrue(progressDto.tagsAvailable.contains("episode_tracks"))
+
+            val multiAliasResp =
+                client.post("/api/v1/templates/preview") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"event_type":"download_progress_multi"}""")
+                }
+            assertEquals(HttpStatusCode.OK, multiAliasResp.status)
+
+            val completeResp =
+                client.post("/api/v1/templates/preview") {
+                    contentType(ContentType.Application.Json)
+                    setBody("""{"event_type":"download_complete","multi_track":true}""")
+                }
+            assertEquals(HttpStatusCode.OK, completeResp.status)
+            val completeDto = testJson.decodeFromString<TemplatePreviewResponseDto>(completeResp.bodyAsText())
+            assertTrue(completeDto.telegramHtml.contains("Episodes"))
+        }
+
+    @Test
     fun `dto constructors and data models coverage`() {
-        val req = TemplatePreviewRequestDto(templateYaml = "foo: bar", eventType = "grab")
+        val req = TemplatePreviewRequestDto(templateYaml = "foo: bar", eventType = "grab", multiTrack = true)
         assertEquals("foo: bar", req.templateYaml)
         assertEquals("grab", req.eventType)
+        assertTrue(req.multiTrack)
 
         val field = CardFieldDto("Quality", "1080p", true)
         assertEquals("Quality", field.name)

@@ -23,7 +23,9 @@ data class TemplatePreviewRequestDto(
     @SerialName("template_yaml")
     val templateYaml: String? = null,
     @SerialName("event_type")
-    val eventType: String = "grab"
+    val eventType: String = "grab",
+    @SerialName("multi_track")
+    val multiTrack: Boolean = false
 )
 
 @Serializable
@@ -97,7 +99,10 @@ class TemplatePreviewController {
                     "downloaded_size",
                     "total_size",
                     "peers_info",
-                    "state"
+                    "state",
+                    "episode_tracks",
+                    "has_multiple_tracks",
+                    "episode_count"
                 )
         private val STALLED_TAGS = TORRENT_TAGS + listOf("progress_percent", "progress_bar")
         private val IMPORT_TAGS =
@@ -219,7 +224,7 @@ class TemplatePreviewController {
         val engine = TemplateEngine(templateConfig)
         val eventType = request.eventType.lowercase(Locale.US).trim()
 
-        val (card, progressUpdate, availableTags) = renderMockEvent(eventType, engine)
+        val (card, progressUpdate, availableTags) = renderMockEvent(eventType, request.multiTrack, engine)
 
         val renderedCardDto =
             if (card != null) {
@@ -270,12 +275,14 @@ class TemplatePreviewController {
 
     private fun renderMockEvent(
         eventType: String,
+        multiTrack: Boolean,
         engine: TemplateEngine
     ): Triple<NotificationCard?, ProgressUpdate?, List<String>> =
         when (eventType) {
-            "download_progress" -> {
-                val grab = mockGrab()
-                val progress = mockProgress(68.5, TorrentState.DOWNLOADING)
+            "download_progress", "download_progress_multi" -> {
+                val isMulti = multiTrack || eventType == "download_progress_multi"
+                val grab = if (isMulti) mockMultiGrab() else mockGrab()
+                val progress = if (isMulti) mockMultiProgress() else mockProgress(68.5, TorrentState.DOWNLOADING)
                 val update =
                     CardFormatterService.buildProgressUpdate(
                         grab,
@@ -286,8 +293,15 @@ class TemplatePreviewController {
                 Triple(null, update, PROGRESS_TAGS)
             }
             "download_complete" -> {
-                val grab = mockGrab()
-                val progress = mockProgress(100.0, TorrentState.COMPLETED)
+                val grab = if (multiTrack) mockMultiGrab() else mockGrab()
+                val progress =
+                    if (multiTrack) {
+                        mockMultiProgress().copy(
+                            state = TorrentState.COMPLETED
+                        )
+                    } else {
+                        mockProgress(100.0, TorrentState.COMPLETED)
+                    }
                 val card =
                     CardFormatterService.buildCompletionCard(
                         grab,
@@ -339,6 +353,109 @@ class TemplatePreviewController {
                 Triple(card, null, GRAB_TAGS)
             }
         }
+
+    private fun mockMultiGrab() =
+        MediaPayload.ArrGrab(
+            source = AppSource.SONARR,
+            downloadId = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
+            title = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE",
+            seriesOrMovieTitle = "Love is Blind: UK",
+            seasonNumber = 3,
+            episodeNumbers = listOf(1, 2, 3, 4, 5),
+            releaseGroup = "DEFENESTRATE",
+            releaseTitle = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE",
+            quality = "WEB-DL-1080p",
+            sizeBytes = 14173388800L,
+            indexer = "DigitalCore (API)",
+            posterUrl = "https://image.tmdb.org/t/p/w500/libuk.jpg",
+            instanceName = "Sonarr-TV"
+        )
+
+    private fun mockMultiProgress(): TorrentProgress {
+        val ep1 =
+            TorrentProgress(
+                hash = "hash_lib_01",
+                name = "Love.Is.Blind.UK.S03E01.1080p.WEB.H264-DEFENESTRATE",
+                progressPercent = 100.0,
+                progressRatio = 1.0,
+                downloadSpeedBytesPerSec = 0L,
+                uploadSpeedBytesPerSec = 100000L,
+                etaSeconds = 0L,
+                totalSizeBytes = 2834677760L,
+                downloadedBytes = 2834677760L,
+                state = TorrentState.COMPLETED
+            )
+        val ep2 =
+            TorrentProgress(
+                hash = "hash_lib_02",
+                name = "Love.Is.Blind.UK.S03E02.1080p.WEB.H264-DEFENESTRATE",
+                progressPercent = 82.5,
+                progressRatio = 0.825,
+                downloadSpeedBytesPerSec = 12582912L,
+                uploadSpeedBytesPerSec = 50000L,
+                etaSeconds = 4L,
+                totalSizeBytes = 2834677760L,
+                downloadedBytes = 2338609152L,
+                state = TorrentState.DOWNLOADING
+            )
+        val ep3 =
+            TorrentProgress(
+                hash = "hash_lib_03",
+                name = "Love.Is.Blind.UK.S03E03.1080p.WEB.H264-DEFENESTRATE",
+                progressPercent = 45.0,
+                progressRatio = 0.45,
+                downloadSpeedBytesPerSec = 8388608L,
+                uploadSpeedBytesPerSec = 20000L,
+                etaSeconds = 22L,
+                totalSizeBytes = 2834677760L,
+                downloadedBytes = 1275605000L,
+                state = TorrentState.DOWNLOADING
+            )
+        val ep4 =
+            TorrentProgress(
+                hash = "hash_lib_04",
+                name = "Love.Is.Blind.UK.S03E04.1080p.WEB.H264-DEFENESTRATE",
+                progressPercent = 21.0,
+                progressRatio = 0.21,
+                downloadSpeedBytesPerSec = 4194304L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 75L,
+                totalSizeBytes = 2834677760L,
+                downloadedBytes = 595282330L,
+                state = TorrentState.DOWNLOADING
+            )
+        val ep5 =
+            TorrentProgress(
+                hash = "hash_lib_05",
+                name = "Love.Is.Blind.UK.S03E05.1080p.WEB.H264-DEFENESTRATE",
+                progressPercent = 0.0,
+                progressRatio = 0.0,
+                downloadSpeedBytesPerSec = 0L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 0L,
+                totalSizeBytes = 2834677760L,
+                downloadedBytes = 0L,
+                state = TorrentState.QUEUED
+            )
+
+        return TorrentProgress(
+            hash = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
+            name = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE",
+            progressPercent = 49.70,
+            progressRatio = 0.4970,
+            downloadSpeedBytesPerSec = 25165824L,
+            uploadSpeedBytesPerSec = 170000L,
+            etaSeconds = 48L,
+            totalSizeBytes = 14173388800L,
+            downloadedBytes = 7044174242L,
+            seedsCount = 18,
+            seedsTotal = 45,
+            peersCount = 10,
+            peersTotal = 25,
+            state = TorrentState.DOWNLOADING,
+            items = listOf(ep1, ep2, ep3, ep4, ep5)
+        )
+    }
 
     private fun mockGrab() =
         MediaPayload.ArrGrab(

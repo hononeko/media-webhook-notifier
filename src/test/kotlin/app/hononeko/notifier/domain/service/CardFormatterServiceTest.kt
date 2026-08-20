@@ -908,4 +908,257 @@ class CardFormatterServiceTest {
             assertNotNull(update.subtitle)
         }
     }
+
+    @Test
+    fun `should extract episode labels accurately from various torrent release names`() {
+        assertEquals(
+            "E01",
+            CardFormatterService.extractEpisodeLabel("Love.Is.Blind.UK.S03E01.1080p.WEB.H264-DEFENESTRATE")
+        )
+        assertEquals("E05", CardFormatterService.extractEpisodeLabel("Futurama.S01E05.1080p.WEBDL"))
+        assertEquals("E02", CardFormatterService.extractEpisodeLabel("Severance.1x02.720p.HDTV"))
+        assertEquals("E08", CardFormatterService.extractEpisodeLabel("Show.Name - Episode 8"))
+        assertEquals("E03", CardFormatterService.extractEpisodeLabel("UnknownReleaseName", fallbackIndex = 3))
+    }
+
+    @Test
+    fun `should format single-track download progress card correctly without episodeTracks`() {
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "single_hash",
+                title = "Severance - S02E01",
+                seriesOrMovieTitle = "Severance",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1),
+                instanceName = "Sonarr-Main"
+            )
+
+        val progress =
+            TorrentProgress(
+                hash = "single_hash",
+                name = "Severance.S02E01.1080p.WEB",
+                progressPercent = 65.5,
+                progressRatio = 0.655,
+                downloadSpeedBytesPerSec = 15728640L,
+                uploadSpeedBytesPerSec = 500000L,
+                etaSeconds = 45L,
+                totalSizeBytes = 3221225472L,
+                downloadedBytes = 2109865984L,
+                seedsCount = 25,
+                seedsTotal = 50,
+                peersCount = 10,
+                peersTotal = 15,
+                state = TorrentState.DOWNLOADING,
+                items = emptyList() // Single-track
+            )
+
+        val update = CardFormatterService.buildProgressUpdate(grab, progress, "https://qbit.example.com")
+        assertEquals("⏳ Downloading: Severance (S02E01)", update.title)
+        assertEquals("Sonarr-Main", update.subtitle)
+        assertEquals(65.5, update.percent, 0.001)
+        assertNull(update.episodeTracks, "Single-track download must not have episodeTracks")
+        assertEquals("Downloading", update.stateText)
+    }
+
+    @Test
+    fun `should format multi-track download progress card correctly with individual episode tracks`() {
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "hash1|hash2|hash3",
+                title = "Love.Is.Blind.UK.S03.1080p",
+                seriesOrMovieTitle = "Love is Blind: UK",
+                seasonNumber = 3,
+                episodeNumbers = listOf(1, 2, 3),
+                instanceName = "Sonarr-TV"
+            )
+
+        val ep1 =
+            TorrentProgress(
+                hash = "hash1",
+                name = "Love.Is.Blind.UK.S03E01.1080p.WEB",
+                progressPercent = 100.0,
+                progressRatio = 1.0,
+                downloadSpeedBytesPerSec = 0L,
+                uploadSpeedBytesPerSec = 100000L,
+                etaSeconds = 0L,
+                totalSizeBytes = 2834677760L,
+                downloadedBytes = 2834677760L,
+                state = TorrentState.COMPLETED
+            )
+        val ep2 =
+            TorrentProgress(
+                hash = "hash2",
+                name = "Love.Is.Blind.UK.S03E02.1080p.WEB",
+                progressPercent = 82.5,
+                progressRatio = 0.825,
+                downloadSpeedBytesPerSec = 12582912L,
+                uploadSpeedBytesPerSec = 50000L,
+                etaSeconds = 4L,
+                totalSizeBytes = 2834677760L,
+                downloadedBytes = 2338609152L,
+                state = TorrentState.DOWNLOADING
+            )
+        val ep3 =
+            TorrentProgress(
+                hash = "hash3",
+                name = "Love.Is.Blind.UK.S03E03.1080p.WEB",
+                progressPercent = 45.0,
+                progressRatio = 0.45,
+                downloadSpeedBytesPerSec = 8388608L,
+                uploadSpeedBytesPerSec = 20000L,
+                etaSeconds = 22L,
+                totalSizeBytes = 2866937856L,
+                downloadedBytes = 1290122035L,
+                state = TorrentState.DOWNLOADING
+            )
+
+        val multiProgress =
+            TorrentProgress(
+                hash = "hash1|hash2|hash3",
+                name = "Love.Is.Blind.UK.S03.1080p",
+                progressPercent = 75.83,
+                progressRatio = 0.7583,
+                downloadSpeedBytesPerSec = 20971520L,
+                uploadSpeedBytesPerSec = 170000L,
+                etaSeconds = 22L,
+                totalSizeBytes = 8536293376L,
+                downloadedBytes = 6463408947L,
+                state = TorrentState.DOWNLOADING,
+                items = listOf(ep1, ep2, ep3)
+            )
+
+        val update = CardFormatterService.buildProgressUpdate(grab, multiProgress, "https://qbit.example.com")
+        assertEquals("⏳ Downloading: Love is Blind: UK (S03E01-E03)", update.title)
+        assertNotNull(update.episodeTracks)
+        assertTrue(update.episodeTracks!!.contains("<b>100%</b> • <b>E01:</b> 2.64 GB"))
+        assertTrue(update.episodeTracks!!.contains("<b>82.5%</b> • <b>E02:</b> 12.0 MB/s (ETA: 4s)"))
+        assertTrue(update.episodeTracks!!.contains("<b>45.0%</b> • <b>E03:</b> 8.0 MB/s (ETA: 22s)"))
+
+        // Verify completion card includes Episodes field
+        val completionCard =
+            CardFormatterService.buildCompletionCard(
+                grab,
+                multiProgress.copy(state = TorrentState.COMPLETED),
+                null
+            )
+        val episodesField = completionCard.fields.firstOrNull { it.name == "Episodes" }
+        assertNotNull(episodesField)
+        assertEquals("E01, E02, E03 (3 episodes)", episodesField.value)
+    }
+
+    @Test
+    fun `should collapse excess episode rows when more than 8 episodes in multi-track download`() {
+        val childItems =
+            (1..12).map { epNum ->
+                TorrentProgress(
+                    hash = "hash_$epNum",
+                    name = "Futurama.S01E%02d.1080p".format(epNum),
+                    progressPercent = if (epNum <= 6) 100.0 else 20.0,
+                    progressRatio = if (epNum <= 6) 1.0 else 0.2,
+                    downloadSpeedBytesPerSec = 5000000L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 60L,
+                    totalSizeBytes = 1000000000L,
+                    downloadedBytes = if (epNum <= 6) 1000000000L else 200000000L,
+                    state = if (epNum <= 6) TorrentState.COMPLETED else TorrentState.DOWNLOADING
+                )
+            }
+
+        val tracks = CardFormatterService.formatEpisodeTracks(childItems, maxItems = 8)
+        assertNotNull(tracks)
+        assertTrue(tracks.contains("E01"))
+        assertTrue(tracks.contains("E08"))
+        assertTrue(!tracks.contains("E09"))
+        assertTrue(tracks.contains("<i>...and 4 more episodes</i>"))
+    }
+
+    @Test
+    fun `should format episode tracks with various TorrentState statuses`() {
+        val items =
+            listOf(
+                TorrentProgress(
+                    hash = "h1",
+                    name = "Show.S01E01",
+                    progressPercent = 0.0,
+                    progressRatio = 0.0,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 0L,
+                    state = TorrentState.STALLED
+                ),
+                TorrentProgress(
+                    hash = "h2",
+                    name = "Show.S01E02",
+                    progressPercent = 0.0,
+                    progressRatio = 0.0,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 0L,
+                    state = TorrentState.QUEUED
+                ),
+                TorrentProgress(
+                    hash = "h3",
+                    name = "Show.S01E03",
+                    progressPercent = 10.0,
+                    progressRatio = 0.1,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 100000L,
+                    state = TorrentState.PAUSED
+                ),
+                TorrentProgress(
+                    hash = "h4",
+                    name = "Show.S01E04",
+                    progressPercent = 5.0,
+                    progressRatio = 0.05,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 50000L,
+                    state = TorrentState.ALLOCATING_METADATA
+                ),
+                TorrentProgress(
+                    hash = "h5",
+                    name = "Show.S01E05",
+                    progressPercent = 50.0,
+                    progressRatio = 0.5,
+                    downloadSpeedBytesPerSec = 0L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 500000L,
+                    state = TorrentState.CHECKING
+                ),
+                TorrentProgress(
+                    hash = "h6",
+                    name = "Show.S01E06",
+                    progressPercent = 30.0,
+                    progressRatio = 0.3,
+                    downloadSpeedBytesPerSec = 2000000L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 0L,
+                    totalSizeBytes = 1000000L,
+                    downloadedBytes = 300000L,
+                    state = TorrentState.DOWNLOADING
+                )
+            )
+
+        val tracks = CardFormatterService.formatEpisodeTracks(items)
+        assertNotNull(tracks)
+        assertTrue(tracks.contains("Stalled"))
+        assertTrue(tracks.contains("Queued"))
+        assertTrue(tracks.contains("Paused"))
+        assertTrue(tracks.contains("Allocating"))
+        assertTrue(tracks.contains("488.3 KB / 976.6 KB"))
+        assertTrue(tracks.contains("1.9 MB/s"))
+    }
 }

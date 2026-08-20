@@ -42,8 +42,20 @@ class SeasonDebouncer(
 
                 // Merge episode numbers and retain most complete metadata
                 val combinedEpisodes = (existing.payload.episodeNumbers + grab.episodeNumbers).distinct().sorted()
+                val combinedDownloadIds =
+                    (
+                        existing.payload.downloadIds + grab.downloadIds +
+                            existing.payload.downloadId
+                                .split("|")
+                                .filter { it.isNotBlank() } +
+                            grab.downloadId.split("|").filter { it.isNotBlank() }
+                    ).distinct()
+                val combinedDownloadId = combinedDownloadIds.joinToString("|")
+
                 val mergedPayload =
                     existing.payload.copy(
+                        downloadId = combinedDownloadId,
+                        downloadIds = combinedDownloadIds,
                         episodeNumbers = combinedEpisodes,
                         sizeBytes = maxOf(existing.payload.sizeBytes ?: 0L, grab.sizeBytes ?: 0L).takeIf { it > 0 },
                         releaseGroup = existing.payload.releaseGroup ?: grab.releaseGroup,
@@ -58,9 +70,15 @@ class SeasonDebouncer(
                 // Restart timer
                 existing.timerJob = launchGrabTimer(key)
             } else {
+                val initialDownloadIds =
+                    (
+                        grab.downloadIds +
+                            grab.downloadId.split("|").filter { it.isNotBlank() }
+                    ).distinct()
+                val initialDownloadId = initialDownloadIds.joinToString("|")
                 val newBuffer =
                     GrabDebounceBuffer(
-                        payload = grab,
+                        payload = grab.copy(downloadId = initialDownloadId, downloadIds = initialDownloadIds),
                         timerJob = launchGrabTimer(key)
                     )
                 grabBuffers[key] = newBuffer
@@ -120,26 +138,30 @@ class SeasonDebouncer(
     }
 
     private fun computeGrabKey(grab: MediaPayload.ArrGrab): String {
-        val downloadId = grab.downloadId.trim().lowercase()
-        return if (downloadId.isNotBlank()) {
-            downloadId
-        } else {
-            val title = grab.seriesOrMovieTitle.trim().lowercase()
-            val source = grab.source.name.lowercase()
-            val instance = (grab.instanceName ?: "").trim().lowercase()
+        val title = grab.seriesOrMovieTitle.trim().lowercase()
+        val source = grab.source.name.lowercase()
+        val instance = (grab.instanceName ?: "").trim().lowercase()
+        return if (title.isNotBlank()) {
             "$source:$instance:$title:s${grab.seasonNumber ?: 0}"
+        } else {
+            val downloadId = grab.downloadId.trim().lowercase()
+            if (downloadId.isNotBlank()) downloadId else "$source:$instance:unknown:s${grab.seasonNumber ?: 0}"
         }
     }
 
     private fun computeDownloadKey(download: MediaPayload.ArrDownload): String {
-        val downloadId = download.downloadId?.trim()?.lowercase()
-        return if (!downloadId.isNullOrBlank()) {
-            "dl:$downloadId:s${download.seasonNumber ?: 0}:${download.isUpgrade}"
-        } else {
-            val title = download.seriesOrMovieTitle.trim().lowercase()
-            val source = download.source.name.lowercase()
-            val instance = (download.instanceName ?: "").trim().lowercase()
+        val title = download.seriesOrMovieTitle.trim().lowercase()
+        val source = download.source.name.lowercase()
+        val instance = (download.instanceName ?: "").trim().lowercase()
+        return if (title.isNotBlank()) {
             "title:$source:$instance:$title:s${download.seasonNumber ?: 0}:${download.isUpgrade}"
+        } else {
+            val downloadId = download.downloadId?.trim()?.lowercase()
+            if (!downloadId.isNullOrBlank()) {
+                "dl:$downloadId:s${download.seasonNumber ?: 0}:${download.isUpgrade}"
+            } else {
+                "title:$source:$instance:unknown:s${download.seasonNumber ?: 0}:${download.isUpgrade}"
+            }
         }
     }
 
@@ -160,9 +182,16 @@ class SeasonDebouncer(
         val buffer =
             mutex.withLock {
                 grabBuffers.remove(normalized)
-                    ?: grabBuffers.entries.firstOrNull { it.key.contains(normalized) }?.let {
-                        grabBuffers.remove(it.key)
-                    }
+                    ?: grabBuffers.entries
+                        .firstOrNull {
+                            it.key.contains(normalized) ||
+                                it.value.payload.downloadId
+                                    .equals(normalized, ignoreCase = true) ||
+                                it.value.payload.downloadIds
+                                    .any { id -> id.equals(normalized, ignoreCase = true) }
+                        }?.let {
+                            grabBuffers.remove(it.key)
+                        }
             }
         buffer?.let {
             val currentJob = coroutineContext[Job]
@@ -178,9 +207,14 @@ class SeasonDebouncer(
         val buffer =
             mutex.withLock {
                 downloadBuffers.remove(normalized)
-                    ?: downloadBuffers.entries.firstOrNull { it.key.contains(normalized) }?.let {
-                        downloadBuffers.remove(it.key)
-                    }
+                    ?: downloadBuffers.entries
+                        .firstOrNull {
+                            it.key.contains(normalized) ||
+                                it.value.payload.downloadId
+                                    ?.equals(normalized, ignoreCase = true) == true
+                        }?.let {
+                            downloadBuffers.remove(it.key)
+                        }
             }
         buffer?.let {
             val currentJob = coroutineContext[Job]

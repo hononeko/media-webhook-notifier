@@ -401,4 +401,30 @@ class PlexWebhookProviderTest {
             assertEquals(4, plexEpisode.seasonNumber)
             assertEquals(10, plexEpisode.episodeNumber)
         }
+
+    @Test
+    fun `should handle missing Metadata object in library new event`() =
+        testApplication {
+            var processResult: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook") {
+                    processResult = provider.process(call, "Plex")
+                    call.respondText("OK")
+                }
+            }
+
+            val payload = """{"event": "library.new"}"""
+
+            client.post("/webhook") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val plex = (processResult as WebhookProcessResult.Queued).payload as MediaPayload.PlexLibraryNew
+            assertEquals("Unknown Media", plex.title)
+            assertNull(plex.seasonNumber)
+            assertNull(plex.episodeNumber)
+        }
 }

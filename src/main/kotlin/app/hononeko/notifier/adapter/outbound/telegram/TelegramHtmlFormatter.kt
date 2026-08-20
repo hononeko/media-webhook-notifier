@@ -84,12 +84,22 @@ object TelegramHtmlFormatter {
         if (!update.customBody.isNullOrBlank()) {
             sb.append("\n").append(update.customBody)
         } else {
-            sb
-                .append("\n<code>")
-                .append(update.progressBar)
-                .append("</code> <b>")
-                .append(String.format(Locale.US, "%.2f", update.percent))
-                .append("%</b>\n\n")
+            if (!update.episodeTracks.isNullOrBlank()) {
+                sb.append("\n").append(update.episodeTracks).append("\n\n")
+                sb
+                    .append("▪ <b>Total Progress:</b> <code>")
+                    .append(update.progressBar)
+                    .append("</code> <b>")
+                    .append(String.format(Locale.US, "%.2f", update.percent))
+                    .append("%</b>\n")
+            } else {
+                sb
+                    .append("\n<code>")
+                    .append(update.progressBar)
+                    .append("</code> <b>")
+                    .append(String.format(Locale.US, "%.2f", update.percent))
+                    .append("%</b>\n\n")
+            }
 
             sb.append("▪ <b>Speed:</b> ").append(escapeHtml(update.speedFormatted))
             if (update.etaFormatted.isNotBlank()) {

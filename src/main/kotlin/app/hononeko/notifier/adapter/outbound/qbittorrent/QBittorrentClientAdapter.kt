@@ -146,29 +146,108 @@ class QBittorrentClientAdapter(
                 return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
             }
 
-        val torrentDto =
-            torrentList.firstOrNull { it.hash.equals(hash, ignoreCase = true) }
-                ?: return Either.Right(null)
+        if (torrentList.isEmpty()) {
+            return Either.Right(null)
+        }
 
-        val progressPercent = (torrentDto.progress * 100.0).coerceIn(0.0, 100.0)
-        val state = mapState(torrentDto.state)
+        if (torrentList.size == 1) {
+            val torrentDto = torrentList.first()
+            val progressPercent = (torrentDto.progress * 100.0).coerceIn(0.0, 100.0)
+            val state = mapState(torrentDto.state)
+
+            return Either.Right(
+                TorrentProgress(
+                    hash = torrentDto.hash,
+                    name = torrentDto.name ?: "Unknown",
+                    progressPercent = progressPercent,
+                    progressRatio = torrentDto.progress,
+                    downloadSpeedBytesPerSec = torrentDto.dlspeed,
+                    uploadSpeedBytesPerSec = torrentDto.upspeed,
+                    etaSeconds = torrentDto.eta,
+                    totalSizeBytes = torrentDto.totalSize,
+                    downloadedBytes = torrentDto.completed,
+                    seedsCount = torrentDto.numSeeds,
+                    seedsTotal = torrentDto.numComplete,
+                    peersCount = torrentDto.numLeechs,
+                    peersTotal = torrentDto.numIncomplete,
+                    state = state
+                )
+            )
+        }
+
+        val totalSize = torrentList.sumOf { it.totalSize }
+        val totalCompleted = torrentList.sumOf { it.completed }
+        val totalDlSpeed = torrentList.sumOf { it.dlspeed }
+        val totalUpSpeed = torrentList.sumOf { it.upspeed }
+        val maxEta = torrentList.maxOfOrNull { it.eta } ?: 0L
+        val maxSeeds = torrentList.maxOfOrNull { it.numSeeds } ?: 0
+        val maxSeedsTotal = torrentList.maxOfOrNull { it.numComplete } ?: 0
+        val maxPeers = torrentList.maxOfOrNull { it.numLeechs } ?: 0
+        val maxPeersTotal = torrentList.maxOfOrNull { it.numIncomplete } ?: 0
+
+        val aggregateRatio =
+            if (totalSize > 0) {
+                (totalCompleted.toDouble() / totalSize.toDouble()).coerceIn(0.0, 1.0)
+            } else {
+                (torrentList.map { it.progress }.average()).coerceIn(0.0, 1.0)
+            }
+        val aggregatePercent = (aggregateRatio * 100.0).coerceIn(0.0, 100.0)
+
+        val states = torrentList.map { mapState(it.state) }
+        val aggregateState =
+            when {
+                states.all { it == TorrentState.COMPLETED } -> TorrentState.COMPLETED
+                states.any { it == TorrentState.DOWNLOADING } -> TorrentState.DOWNLOADING
+                states.any { it == TorrentState.ALLOCATING_METADATA } -> TorrentState.ALLOCATING_METADATA
+                states.any { it == TorrentState.CHECKING } -> TorrentState.CHECKING
+                states.all { it == TorrentState.STALLED } -> TorrentState.STALLED
+                states.all { it == TorrentState.PAUSED } -> TorrentState.PAUSED
+                states.all { it == TorrentState.QUEUED } -> TorrentState.QUEUED
+                else -> TorrentState.DOWNLOADING
+            }
+
+        val childItems =
+            if (torrentList.size > 1) {
+                torrentList.map { item ->
+                    val progressPercent = (item.progress * 100.0).coerceIn(0.0, 100.0)
+                    TorrentProgress(
+                        hash = item.hash,
+                        name = item.name ?: "Unknown",
+                        progressPercent = progressPercent,
+                        progressRatio = item.progress,
+                        downloadSpeedBytesPerSec = item.dlspeed,
+                        uploadSpeedBytesPerSec = item.upspeed,
+                        etaSeconds = item.eta,
+                        totalSizeBytes = item.totalSize,
+                        downloadedBytes = item.completed,
+                        seedsCount = item.numSeeds,
+                        seedsTotal = item.numComplete,
+                        peersCount = item.numLeechs,
+                        peersTotal = item.numIncomplete,
+                        state = mapState(item.state)
+                    )
+                }
+            } else {
+                emptyList()
+            }
 
         return Either.Right(
             TorrentProgress(
-                hash = torrentDto.hash,
-                name = torrentDto.name ?: "Unknown",
-                progressPercent = progressPercent,
-                progressRatio = torrentDto.progress,
-                downloadSpeedBytesPerSec = torrentDto.dlspeed,
-                uploadSpeedBytesPerSec = torrentDto.upspeed,
-                etaSeconds = torrentDto.eta,
-                totalSizeBytes = torrentDto.totalSize,
-                downloadedBytes = torrentDto.completed,
-                seedsCount = torrentDto.numSeeds,
-                seedsTotal = torrentDto.numComplete,
-                peersCount = torrentDto.numLeechs,
-                peersTotal = torrentDto.numIncomplete,
-                state = state
+                hash = hash,
+                name = torrentList.firstOrNull()?.name ?: "Multi-torrent Download",
+                progressPercent = aggregatePercent,
+                progressRatio = aggregateRatio,
+                downloadSpeedBytesPerSec = totalDlSpeed,
+                uploadSpeedBytesPerSec = totalUpSpeed,
+                etaSeconds = maxEta,
+                totalSizeBytes = totalSize,
+                downloadedBytes = totalCompleted,
+                seedsCount = maxSeeds,
+                seedsTotal = maxSeedsTotal,
+                peersCount = maxPeers,
+                peersTotal = maxPeersTotal,
+                state = aggregateState,
+                items = childItems
             )
         )
     }

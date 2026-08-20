@@ -14,7 +14,8 @@ data class TorrentProgress(
     val seedsTotal: Int = 0,
     val peersCount: Int = 0,
     val peersTotal: Int = 0,
-    val state: TorrentState = TorrentState.DOWNLOADING
+    val state: TorrentState = TorrentState.DOWNLOADING,
+    val items: List<TorrentProgress> = emptyList()
 )
 
 enum class TorrentState(
