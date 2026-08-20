@@ -215,6 +215,89 @@ object CardFormatterService {
         )
     }
 
+    private val EPISODE_REGEXES =
+        listOf(
+            Regex("""(?i)S\d+E(\d+)"""),
+            Regex("""(?i)[._ -]E(\d+)"""),
+            Regex("""(?i)(\d+)x(\d+)"""),
+            Regex("""(?i)Episode\s*(\d+)""")
+        )
+
+    fun extractEpisodeLabel(
+        torrentName: String,
+        fallbackIndex: Int = 1
+    ): String {
+        for (regex in EPISODE_REGEXES) {
+            val match = regex.find(torrentName)
+            if (match != null) {
+                val groupIdx = if (regex.pattern.contains("x")) 2 else 1
+                val epNum = match.groupValues.getOrNull(groupIdx)?.toIntOrNull()
+                if (epNum != null) {
+                    return "E%02d".format(Locale.US, epNum)
+                }
+            }
+        }
+        return "E%02d".format(Locale.US, fallbackIndex)
+    }
+
+    fun formatEpisodeTracks(
+        items: List<TorrentProgress>,
+        engine: TemplateEngine = templateEngine,
+        maxItems: Int = 8
+    ): String? {
+        if (items.isEmpty() || items.size <= 1) return null
+
+        val sb = StringBuilder()
+        val displayItems = items.take(maxItems)
+        for ((idx, item) in displayItems.withIndex()) {
+            val epLabel = extractEpisodeLabel(item.name, idx + 1)
+            val miniBar = drawProgressBar(item.progressPercent, 8, engine.theme.progressBarStyle)
+            val percentStr =
+                if (item.progressPercent >= 100.0 || item.state.isComplete) {
+                    "100%"
+                } else {
+                    String.format(Locale.US, "%.1f%%", item.progressPercent)
+                }
+
+            val statusInfo =
+                when {
+                    item.state.isComplete || item.progressPercent >= 100.0 ->
+                        formatBytes(item.totalSizeBytes)
+                    item.state == TorrentState.DOWNLOADING -> {
+                        val speed = formatSpeed(item.downloadSpeedBytesPerSec)
+                        if (item.etaSeconds > 0) {
+                            "$speed (ETA: ${formatDuration(item.etaSeconds)})"
+                        } else {
+                            speed
+                        }
+                    }
+                    item.state == TorrentState.STALLED -> "Stalled"
+                    item.state == TorrentState.QUEUED -> "Queued"
+                    item.state == TorrentState.PAUSED -> "Paused"
+                    item.state == TorrentState.ALLOCATING_METADATA -> "Allocating"
+                    else -> "${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalSizeBytes)}"
+                }
+
+            sb
+                .append("<code>")
+                .append(miniBar)
+                .append("</code> <b>")
+                .append(percentStr)
+                .append("</b> • <b>")
+                .append(epLabel)
+                .append(":</b> ")
+                .append(statusInfo)
+                .append("\n")
+        }
+
+        if (items.size > maxItems) {
+            val remaining = items.size - maxItems
+            sb.append("<i>...and ").append(remaining).append(" more episodes</i>\n")
+        }
+
+        return sb.toString().trimEnd()
+    }
+
     fun buildProgressUpdate(
         payload: MediaPayload.ArrGrab,
         progress: TorrentProgress,
@@ -257,6 +340,7 @@ object CardFormatterService {
                 TorrentState.UNKNOWN -> "Active"
             }
 
+        val episodeTracks = formatEpisodeTracks(progress.items, engine)
         val releaseName = progress.name.ifBlank { payload.releaseTitle ?: payload.title }
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
         context["release_title"] = releaseName
@@ -270,6 +354,9 @@ object CardFormatterService {
         context["total_size"] = formatBytes(progress.totalSizeBytes)
         context["peers_info"] = peersFormatted
         context["state"] = stateLabel
+        context["episode_tracks"] = episodeTracks
+        context["has_multiple_tracks"] = progress.items.size > 1
+        context["episode_count"] = progress.items.size
 
         val resolved =
             engine.resolveProgress(
@@ -292,6 +379,7 @@ object CardFormatterService {
             peersInfo = peersFormatted,
             stateText = stateLabel,
             customBody = resolved.customBody,
+            episodeTracks = episodeTracks,
             actions = resolved.actions
         )
     }
@@ -317,6 +405,7 @@ object CardFormatterService {
         context["release_title"] = releaseName
         context["release_name"] = releaseName
         context["torrent_name"] = progress.name
+        context["episode_count"] = progress.items.size
 
         val resolved =
             engine.resolveCard(
@@ -340,12 +429,14 @@ object CardFormatterService {
             )
         }
 
-        val fields =
-            mutableListOf(
-                CardField("Release", releaseName),
-                CardField("Status", "✅ 100% Downloaded"),
-                CardField("Total Size", formatBytes(progress.totalSizeBytes))
-            )
+        val fields = mutableListOf<CardField>()
+        fields.add(CardField("Release", releaseName))
+        if (progress.items.size > 1) {
+            val epSummary = progress.items.joinToString(", ") { extractEpisodeLabel(it.name) }
+            fields.add(CardField("Episodes", "$epSummary (${progress.items.size} episodes)"))
+        }
+        fields.add(CardField("Status", "✅ 100% Downloaded"))
+        fields.add(CardField("Total Size", formatBytes(progress.totalSizeBytes)))
         payload.quality?.let { fields.add(CardField("Quality", it)) }
 
         return NotificationCard(

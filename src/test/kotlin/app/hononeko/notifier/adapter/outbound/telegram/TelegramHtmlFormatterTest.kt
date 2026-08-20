@@ -122,6 +122,41 @@ class TelegramHtmlFormatterTest {
     }
 
     @Test
+    fun `buildProgressHtml formats multi-track progress with episode tracks and total progress line`() {
+        val tracks =
+            """
+            <code>[██████████]</code> <b>100%</b> • <b>E01:</b> 2.64 GB
+            <code>[████████░░]</code> <b>82.5%</b> • <b>E02:</b> 12.1 MB/s (ETA: 4s)
+            <code>[████░░░░░░]</code> <b>45.0%</b> • <b>E03:</b> 8.5 MB/s (ETA: 22s)
+            """.trimIndent()
+
+        val multiTrackUpdate =
+            ProgressUpdate(
+                trackingKey = "multi_key",
+                title = "⏳ Downloading: Love is Blind: UK (S03E01-E03)",
+                subtitle = "Sonarr-TV",
+                percent = 75.83,
+                progressBar = "[███████░░░]",
+                speedFormatted = "20.6 MB/s",
+                etaFormatted = "15s",
+                sizeFormatted = "6.0 GB / 7.92 GB",
+                peersInfo = "15 seeds • 20 peers",
+                stateText = "Downloading",
+                episodeTracks = tracks
+            )
+
+        val html = TelegramHtmlFormatter.buildProgressHtml(multiTrackUpdate)
+        assertTrue(html.contains("<b>⏳ Downloading: Love is Blind: UK (S03E01-E03)</b>"))
+        assertTrue(html.contains("<i>Sonarr-TV</i>"))
+        assertTrue(html.contains("<code>[██████████]</code> <b>100%</b> • <b>E01:</b> 2.64 GB"))
+        assertTrue(html.contains("<code>[████████░░]</code> <b>82.5%</b> • <b>E02:</b> 12.1 MB/s (ETA: 4s)"))
+        assertTrue(html.contains("<code>[████░░░░░░]</code> <b>45.0%</b> • <b>E03:</b> 8.5 MB/s (ETA: 22s)"))
+        assertTrue(html.contains("▪ <b>Total Progress:</b> <code>[███████░░░]</code> <b>75.83%</b>"))
+        assertTrue(html.contains("▪ <b>Speed:</b> 20.6 MB/s (ETA: 15s)"))
+        assertTrue(html.contains("▪ <b>Transferred:</b> 6.0 GB / 7.92 GB"))
+    }
+
+    @Test
     fun `buildCardHtml skips specs and empty italic lines when blank`() {
         val cardWithEmptySpecs =
             NotificationCard(

@@ -66,6 +66,57 @@ class SeasonDebouncerTest {
         }
 
     @Test
+    fun `should batch rapid multi-episode grabs with different downloadIds for same season`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val received = Collections.synchronizedList(mutableListOf<MediaPayload.ArrGrab>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 2000L,
+                    scope = testScope,
+                    onDebouncedGrab = { received.add(it) }
+                )
+
+            // Simulate Love is Blind UK S03E01 to S03E05 individual grabs arriving rapidly with separate torrent hashes
+            for (i in 1..5) {
+                val grab =
+                    MediaPayload.ArrGrab(
+                        source = AppSource.SONARR,
+                        downloadId = "hash_ep_$i",
+                        title = "Love.Is.Blind.UK.S03E%02d.1080p.WEB.H264-DEFENESTRATE".format(i),
+                        seriesOrMovieTitle = "Love is Blind: UK",
+                        seasonNumber = 3,
+                        episodeNumbers = listOf(i),
+                        sizeBytes = 2_640_000_000L,
+                        instanceName = "Sonarr-TV"
+                    )
+                debouncer.submit(grab)
+                testScope.advanceTimeBy(200L)
+            }
+
+            assertEquals(0, received.size)
+            assertEquals(1, debouncer.activeBufferCount())
+            assertEquals(1, debouncer.activeGrabBufferCount())
+
+            testScope.advanceTimeBy(2100L)
+
+            assertEquals(1, received.size)
+            val consolidated = received.first()
+            assertEquals("Love is Blind: UK", consolidated.seriesOrMovieTitle)
+            assertEquals(3, consolidated.seasonNumber)
+            assertEquals(listOf(1, 2, 3, 4, 5), consolidated.episodeNumbers)
+            assertEquals(
+                listOf("hash_ep_1", "hash_ep_2", "hash_ep_3", "hash_ep_4", "hash_ep_5"),
+                consolidated.downloadIds
+            )
+            assertEquals("hash_ep_1|hash_ep_2|hash_ep_3|hash_ep_4|hash_ep_5", consolidated.downloadId)
+            assertEquals("Sonarr-TV", consolidated.instanceName)
+            assertEquals(0, debouncer.activeBufferCount())
+        }
+
+    @Test
     fun `should flush immediately when requested`() =
         runTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)

@@ -9,6 +9,7 @@ sealed interface MediaPayload {
         override val source: AppSource,
         override val eventType: EventType = EventType.GRAB,
         val downloadId: String,
+        val downloadIds: List<String> = if (downloadId.isNotBlank()) listOf(downloadId) else emptyList(),
         val title: String,
         val seriesOrMovieTitle: String,
         val seasonNumber: Int? = null,

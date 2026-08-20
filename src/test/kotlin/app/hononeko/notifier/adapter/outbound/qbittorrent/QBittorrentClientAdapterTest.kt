@@ -91,6 +91,84 @@ class QBittorrentClientAdapterTest {
         }
 
     @Test
+    fun `should aggregate multiple torrents when querying multiple hashes`() =
+        runTest {
+            val combinedHash = "hash1|hash2"
+            val mockEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/api/v2/torrents/info" -> {
+                            val jsonResponse =
+                                """
+                                [
+                                  {
+                                    "hash": "hash1",
+                                    "name": "Love.Is.Blind.UK.S03E01",
+                                    "progress": 1.0,
+                                    "dlspeed": 0,
+                                    "upspeed": 500000,
+                                    "eta": 0,
+                                    "total_size": 2640000000,
+                                    "completed": 2640000000,
+                                    "state": "uploading",
+                                    "num_seeds": 10,
+                                    "num_complete": 20,
+                                    "num_leechs": 2,
+                                    "num_incomplete": 5
+                                  },
+                                  {
+                                    "hash": "hash2",
+                                    "name": "Love.Is.Blind.UK.S03E02",
+                                    "progress": 0.5,
+                                    "dlspeed": 10000000,
+                                    "upspeed": 100000,
+                                    "eta": 132,
+                                    "total_size": 2640000000,
+                                    "completed": 1320000000,
+                                    "state": "downloading",
+                                    "num_seeds": 8,
+                                    "num_complete": 15,
+                                    "num_leechs": 3,
+                                    "num_incomplete": 4
+                                  }
+                                ]
+                                """.trimIndent()
+                            respond(
+                                content = jsonResponse,
+                                status = HttpStatusCode.OK,
+                                headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                        else -> respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val config = QBittorrentConfig(url = "http://localhost:8080")
+            val adapter = QBittorrentClientAdapter(config, mockEngine)
+
+            val result = adapter.getTorrentProgress(combinedHash)
+            assertTrue(result.isRight())
+
+            val progress = (result as Either.Right).value
+            assertNotNull(progress)
+            assertEquals(combinedHash, progress.hash)
+            assertEquals(5280000000L, progress.totalSizeBytes)
+            assertEquals(3960000000L, progress.downloadedBytes)
+            assertEquals(75.0, progress.progressPercent, 0.001)
+            assertEquals(10000000L, progress.downloadSpeedBytesPerSec)
+            assertEquals(600000L, progress.uploadSpeedBytesPerSec)
+            assertEquals(132L, progress.etaSeconds)
+            assertEquals(TorrentState.DOWNLOADING, progress.state)
+            assertEquals(2, progress.items.size)
+            assertEquals("hash1", progress.items[0].hash)
+            assertEquals(100.0, progress.items[0].progressPercent, 0.001)
+            assertEquals(TorrentState.COMPLETED, progress.items[0].state)
+            assertEquals("hash2", progress.items[1].hash)
+            assertEquals(50.0, progress.items[1].progressPercent, 0.001)
+            assertEquals(TorrentState.DOWNLOADING, progress.items[1].state)
+        }
+
+    @Test
     fun `should re-authenticate when receiving 403 Forbidden on expired session`() =
         runTest {
             val hash = "hash_reauth"

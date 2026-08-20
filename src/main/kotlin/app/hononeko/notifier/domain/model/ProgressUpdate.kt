@@ -12,5 +12,6 @@ data class ProgressUpdate(
     val stateText: String,
     val subtitle: String? = null,
     val customBody: String? = null,
+    val episodeTracks: String? = null,
     val actions: List<ActionLink> = emptyList()
 )
