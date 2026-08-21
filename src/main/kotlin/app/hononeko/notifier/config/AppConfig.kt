@@ -14,7 +14,8 @@ data class ServerConfig(
     val port: Int = 8080,
     val authToken: String = "",
     val rateLimitPerMinute: Int = 120,
-    val enablePreview: Boolean = false
+    val enablePreview: Boolean = false,
+    val eventRailWorkers: Int = 4
 )
 
 data class MediaServerConfig(
@@ -32,7 +33,9 @@ data class QBittorrentConfig(
     val stalledTimeoutMinutes: Long = 15,
     val missingGraceAttempts: Int = 6,
     val debounceSeconds: Long = 5,
-    val webuiPublicUrl: String = ""
+    val webuiPublicUrl: String = "",
+    val reconciliationEnabled: Boolean = true,
+    val reconciliationIntervalMinutes: Long = 5
 )
 
 data class NotificationConfig(

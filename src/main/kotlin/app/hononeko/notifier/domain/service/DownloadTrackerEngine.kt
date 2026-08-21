@@ -1,10 +1,14 @@
 package app.hononeko.notifier.domain.service
 
+import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.domain.error.DomainError
+import app.hononeko.notifier.domain.model.ActiveTrackerSession
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.TorrentProgress
+import app.hononeko.notifier.domain.model.TrackerSnapshot
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
+import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
@@ -15,11 +19,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
-import java.util.concurrent.ConcurrentHashMap
 
 class DownloadTrackerEngine(
     private val torrentClient: TorrentClientPort,
     private val notificationPublisher: NotificationPublisherPort,
+    private val activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
     private val pollIntervalSeconds: Long = 5,
     private val maxPollingMinutes: Long = 30,
     private val stalledTimeoutMinutes: Long = 15,
@@ -28,7 +32,6 @@ class DownloadTrackerEngine(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : TrackDownloadUseCase {
     private val logger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
-    private val activeTrackers = ConcurrentHashMap<String, Job>()
 
     private data class TrackerStep(
         val isTerminal: Boolean,
@@ -45,7 +48,7 @@ class DownloadTrackerEngine(
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
         }
 
-        if (activeTrackers.containsKey(normalizedHash)) {
+        if (activeTrackerStore.isTracking(normalizedHash)) {
             logger.info("Download tracker already running for hash: {}", normalizedHash)
             return Either.Right(Unit)
         }
@@ -62,15 +65,66 @@ class DownloadTrackerEngine(
                 }
             }
 
-        val trackingJob =
+        val isPhoto = initialCard.artworkBytes != null || !initialCard.artworkUrl.isNullOrBlank()
+
+        // Tag torrent in qBittorrent so it can be resumed after container restart
+        torrentClient.addTorrentTags(
+            normalizedHash,
+            listOf("mwn_msg:${handle.messageReferenceId}", "mwn_photo:${if (isPhoto) 1 else 0}")
+        )
+
+        lateinit var trackingJob: Job
+        trackingJob =
             scope.launch {
                 runTrackingLoop(normalizedHash, initialPayload, handle)
             }
 
-        activeTrackers[normalizedHash] = trackingJob
-        trackingJob.invokeOnCompletion {
-            activeTrackers.remove(normalizedHash)
+        val session =
+            ActiveTrackerSession(
+                hash = normalizedHash,
+                payload = initialPayload,
+                handle = handle,
+                isPhoto = isPhoto,
+                job = trackingJob
+            )
+        activeTrackerStore.register(session)
+
+        return Either.Right(Unit)
+    }
+
+    override suspend fun trackExisting(
+        hash: String,
+        payload: MediaPayload.ArrGrab,
+        handle: NotificationHandle,
+        isPhoto: Boolean
+    ): Either<DomainError, Unit> {
+        val normalizedHash = hash.trim().lowercase()
+        if (normalizedHash.isBlank()) {
+            return Either.Left(DomainError.WebhookError.MissingTorrentHash)
         }
+
+        if (activeTrackerStore.isTracking(normalizedHash)) {
+            logger.info("Download tracker already running for restored hash: {}", normalizedHash)
+            return Either.Right(Unit)
+        }
+
+        logger.info("Resuming active tracking loop for existing card {} ({})", payload.title, normalizedHash)
+
+        lateinit var trackingJob: Job
+        trackingJob =
+            scope.launch {
+                runTrackingLoop(normalizedHash, payload, handle)
+            }
+
+        val session =
+            ActiveTrackerSession(
+                hash = normalizedHash,
+                payload = payload,
+                handle = handle,
+                isPhoto = isPhoto,
+                job = trackingJob
+            )
+        activeTrackerStore.register(session)
 
         return Either.Right(Unit)
     }
@@ -114,12 +168,13 @@ class DownloadTrackerEngine(
                             stalledDurationSeconds = stalledDurationSeconds
                         )
 
+                    stalledDurationSeconds = step.newStalledDurationSeconds
+                    lastDownloadedBytes = step.newDownloadedBytes
+                    activeTrackerStore.updateProgress(hash, progress, stalledDurationSeconds)
+
                     if (step.isTerminal) {
                         break
                     }
-
-                    stalledDurationSeconds = step.newStalledDurationSeconds
-                    lastDownloadedBytes = step.newDownloadedBytes
                 }
             }
 
@@ -127,11 +182,13 @@ class DownloadTrackerEngine(
                 logger.warn("Tracking for {} reached max limit of {}m. Halting.", hash, maxPollingMinutes)
                 val stalledCard = CardFormatterService.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
                 notificationPublisher.cancelProgress(handle, stalledCard)
+                cleanupTags(hash, handle)
+                activeTrackerStore.cancel(hash)
             }
         } catch (e: Exception) {
             logger.error("Unexpected error in tracking loop for {}", hash, e)
         } finally {
-            activeTrackers.remove(hash)
+            activeTrackerStore.cancel(hash)
         }
     }
 
@@ -158,6 +215,8 @@ class DownloadTrackerEngine(
         logger.warn("Torrent {} missing after {} attempts. Halting.", hash, missingCount)
         val stalledCard = CardFormatterService.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
         notificationPublisher.cancelProgress(handle, stalledCard)
+        cleanupTags(hash, handle)
+        activeTrackerStore.cancel(hash)
         return true
     }
 
@@ -173,6 +232,8 @@ class DownloadTrackerEngine(
             logger.info("Torrent {} reached 100%. Dispatching completion card.", hash)
             val completionCard = CardFormatterService.buildCompletionCard(payload, progress, webuiPublicUrl)
             notificationPublisher.completeProgress(handle, completionCard)
+            cleanupTags(hash, handle)
+            activeTrackerStore.complete(hash)
             return TrackerStep(
                 isTerminal = true,
                 newStalledDurationSeconds = 0L,
@@ -191,6 +252,8 @@ class DownloadTrackerEngine(
             logger.warn("Torrent {} stalled for {}s. Halting.", hash, updatedStalledSeconds)
             val stalledCard = CardFormatterService.buildStalledCard(payload, progress, webuiPublicUrl)
             notificationPublisher.cancelProgress(handle, stalledCard)
+            cleanupTags(hash, handle)
+            activeTrackerStore.cancel(hash)
             return TrackerStep(
                 isTerminal = true,
                 newStalledDurationSeconds = updatedStalledSeconds,
@@ -219,13 +282,24 @@ class DownloadTrackerEngine(
         }
     }
 
-    fun stopAll() {
-        logger.info("Stopping all active download trackers (count: {})", activeTrackers.size)
-        activeTrackers.values.forEach { it.cancel() }
-        activeTrackers.clear()
+    private suspend fun cleanupTags(
+        hash: String,
+        handle: NotificationHandle
+    ) {
+        torrentClient.removeTorrentTags(
+            hash,
+            listOf("mwn_msg:${handle.messageReferenceId}", "mwn_photo:0", "mwn_photo:1")
+        )
     }
 
-    fun activeTrackerCount(): Int = activeTrackers.size
+    fun stopAll() {
+        logger.info("Stopping all active download trackers (count: {})", activeTrackerStore.activeCount())
+        activeTrackerStore.stopAll()
+    }
 
-    fun isTracking(hash: String): Boolean = activeTrackers.containsKey(hash.trim().lowercase())
+    fun activeTrackerCount(): Int = activeTrackerStore.activeCount()
+
+    fun isTracking(hash: String): Boolean = activeTrackerStore.isTracking(hash)
+
+    fun getAllSnapshots(): List<TrackerSnapshot> = activeTrackerStore.getAllSnapshots()
 }

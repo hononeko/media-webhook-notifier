@@ -2,6 +2,7 @@ package app.hononeko.notifier.adapter.inbound.web.controller
 
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
+import app.hononeko.notifier.domain.service.TorrentReconciliationService
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -32,7 +33,16 @@ data class ProbeStatusDto(
 @Serializable
 data class EventRailMetricsDto(
     val closed: Boolean,
-    val running: Boolean
+    val running: Boolean,
+    val activeWorkers: Int = 0,
+    val deadLetterCount: Int = 0
+)
+
+@Serializable
+data class ReconciliationMetricsDto(
+    val enabled: Boolean = false,
+    val runCount: Long = 0,
+    val resumedCount: Long = 0
 )
 
 @Serializable
@@ -50,6 +60,7 @@ data class MetricsDto(
     val uptimeMillis: Long,
     val activeTrackersCount: Int,
     val eventRail: EventRailMetricsDto,
+    val reconciliation: ReconciliationMetricsDto = ReconciliationMetricsDto(),
     val memory: MemoryMetricsDto,
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -57,6 +68,7 @@ data class MetricsDto(
 class HealthController(
     private val eventRail: EventRail? = null,
     private val downloadTracker: DownloadTrackerEngine? = null,
+    private val reconciliationService: TorrentReconciliationService? = null,
     private val startTimeMillis: Long = System.currentTimeMillis()
 ) {
     companion object {
@@ -163,7 +175,15 @@ class HealthController(
                 eventRail =
                     EventRailMetricsDto(
                         closed = eventRail?.isClosed ?: false,
-                        running = eventRail?.isRunning ?: false
+                        running = eventRail?.isRunning ?: false,
+                        activeWorkers = eventRail?.activeWorkersCount ?: 0,
+                        deadLetterCount = eventRail?.deadLetterBuffer?.size() ?: 0
+                    ),
+                reconciliation =
+                    ReconciliationMetricsDto(
+                        enabled = reconciliationService?.enabled ?: false,
+                        runCount = reconciliationService?.runCount ?: 0L,
+                        resumedCount = reconciliationService?.resumedCount ?: 0L
                     ),
                 memory =
                     MemoryMetricsDto(
@@ -196,6 +216,10 @@ class HealthController(
         val activeTrackers = downloadTracker?.activeTrackerCount() ?: 0
         val railRunning = if (eventRail?.isRunning == true) 1 else 0
         val railClosed = if (eventRail?.isClosed == true) 1 else 0
+        val workers = eventRail?.activeWorkersCount ?: 0
+        val deadLetterCount = eventRail?.deadLetterBuffer?.size() ?: 0
+        val reconRuns = reconciliationService?.runCount ?: 0L
+        val reconResumed = reconciliationService?.resumedCount ?: 0L
 
         return buildString {
             appendLine("# HELP process_uptime_seconds Process uptime in seconds")
@@ -222,6 +246,18 @@ class HealthController(
             appendLine("# HELP media_webhook_event_rail_closed Event rail closed state (1 = closed, 0 = open)")
             appendLine("# TYPE media_webhook_event_rail_closed gauge")
             appendLine("media_webhook_event_rail_closed $railClosed")
+            appendLine("# HELP media_webhook_event_rail_workers Number of active EventRail worker coroutines")
+            appendLine("# TYPE media_webhook_event_rail_workers gauge")
+            appendLine("media_webhook_event_rail_workers $workers")
+            appendLine("# HELP media_webhook_dead_letter_total Number of items currently in the Dead Letter Buffer")
+            appendLine("# TYPE media_webhook_dead_letter_total gauge")
+            appendLine("media_webhook_dead_letter_total $deadLetterCount")
+            appendLine("# HELP media_webhook_reconciliation_runs_total Total reconciliation sweeps executed")
+            appendLine("# TYPE media_webhook_reconciliation_runs_total counter")
+            appendLine("media_webhook_reconciliation_runs_total $reconRuns")
+            appendLine("# HELP media_webhook_reconciliation_resumed_total Total downloads resumed by reconciliation")
+            appendLine("# TYPE media_webhook_reconciliation_resumed_total counter")
+            appendLine("media_webhook_reconciliation_resumed_total $reconResumed")
         }
     }
 }

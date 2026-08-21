@@ -26,7 +26,7 @@ class HealthControllerTest {
     @Test
     fun `should respond 200 OK for health and healthz endpoints`() =
         testApplication {
-            val eventRail = EventRail(capacity = 10)
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
             val healthController = HealthController(eventRail = eventRail)
             application {
                 install(ContentNegotiation) { json(testJson) }
@@ -49,7 +49,7 @@ class HealthControllerTest {
     @Test
     fun `should respond 200 OK for liveness probe endpoints`() =
         testApplication {
-            val eventRail = EventRail(capacity = 10)
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
             val healthController = HealthController(eventRail = eventRail)
             application {
                 install(ContentNegotiation) { json(testJson) }
@@ -74,7 +74,7 @@ class HealthControllerTest {
     @Test
     fun `should respond 200 OK for readiness probe when healthy and 503 when rail is closed`() =
         testApplication {
-            val eventRail = EventRail(capacity = 10)
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
             val healthController = HealthController(eventRail = eventRail)
             application {
                 install(ContentNegotiation) { json(testJson) }
@@ -108,7 +108,7 @@ class HealthControllerTest {
     @Test
     fun `should respond 200 OK for startup probe endpoints`() =
         testApplication {
-            val eventRail = EventRail(capacity = 10)
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
             val healthController = HealthController(eventRail = eventRail)
             application {
                 install(ContentNegotiation) { json(testJson) }
@@ -132,7 +132,7 @@ class HealthControllerTest {
     @Test
     fun `should report runtime memory, uptime, and tracker telemetry via metrics endpoint`() =
         testApplication {
-            val eventRail = EventRail(capacity = 10)
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
             val healthController = HealthController(eventRail = eventRail)
             application {
                 install(ContentNegotiation) { json(testJson) }
@@ -150,12 +150,13 @@ class HealthControllerTest {
             assertTrue(body.contains("memory"))
             assertTrue(body.contains("activeTrackersCount"))
             assertTrue(body.contains("eventRail"))
+            assertTrue(body.contains("reconciliation"))
         }
 
     @Test
     fun `should report prometheus text metrics when requested via format param or accept header or direct path`() =
         testApplication {
-            val eventRail = EventRail(capacity = 10)
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
             val healthController = HealthController(eventRail = eventRail)
             application {
                 install(ContentNegotiation) { json(testJson) }
@@ -173,6 +174,9 @@ class HealthControllerTest {
             assertTrue(directBody.contains("jvm_memory_used_bytes"))
             assertTrue(directBody.contains("media_webhook_active_tracking_jobs"))
             assertTrue(directBody.contains("media_webhook_event_rail_running"))
+            assertTrue(directBody.contains("media_webhook_event_rail_workers"))
+            assertTrue(directBody.contains("media_webhook_dead_letter_total"))
+            assertTrue(directBody.contains("media_webhook_reconciliation_runs_total"))
 
             val paramPromRes = client.get("/metrics?format=prometheus")
             assertEquals(HttpStatusCode.OK, paramPromRes.status)
@@ -209,10 +213,13 @@ class HealthControllerTest {
         val eventRailMetrics =
             app.hononeko.notifier.adapter.inbound.web.controller.EventRailMetricsDto(
                 closed = false,
-                running = true
+                running = true,
+                activeWorkers = 4,
+                deadLetterCount = 0
             )
         assertEquals(false, eventRailMetrics.closed)
         assertEquals(true, eventRailMetrics.running)
+        assertEquals(4, eventRailMetrics.activeWorkers)
 
         val memoryMetrics =
             app.hononeko.notifier.adapter.inbound.web.controller.MemoryMetricsDto(

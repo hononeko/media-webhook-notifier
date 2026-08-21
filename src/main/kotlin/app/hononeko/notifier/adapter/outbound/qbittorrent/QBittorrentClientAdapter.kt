@@ -76,6 +76,8 @@ class QBittorrentClientAdapter(
         val totalSize: Long = 0,
         val completed: Long = 0,
         val state: String = "unknown",
+        val tags: String? = null,
+        val category: String? = null,
         @SerialName("num_seeds")
         val numSeeds: Int = 0,
         @SerialName("num_complete")
@@ -114,6 +116,102 @@ class QBittorrentClientAdapter(
         }
     }
 
+    override suspend fun getActiveTorrents(
+        filter: String
+    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+        try {
+            ensureAuthenticated()
+
+            val baseUrl = config.url.trimEnd('/')
+            val endpoint = "$baseUrl/api/v2/torrents/info?filter=$filter"
+
+            val response = executeRequestWithAuth(endpoint)
+
+            val finalResponse =
+                if (response.status == HttpStatusCode.Forbidden || response.status == HttpStatusCode.Unauthorized) {
+                    sidCookie.set(null)
+                    ensureAuthenticated(force = true)
+                    executeRequestWithAuth(endpoint)
+                } else {
+                    response
+                }
+
+            if (!finalResponse.status.value
+                    .toString()
+                    .startsWith("2")
+            ) {
+                Either.Left(
+                    DomainError.TorrentClientError.InvalidResponse(
+                        "HTTP ${finalResponse.status.value}: ${finalResponse.status.description}"
+                    )
+                )
+            } else {
+                val rawBody: String = finalResponse.bodyAsText()
+                val torrentList: List<QBitTorrentDto> =
+                    try {
+                        jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
+                    } catch (e: Exception) {
+                        logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
+                        return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
+                    }
+
+                Either.Right(torrentList.map { it.toTorrentProgress() })
+            }
+        } catch (e: Exception) {
+            logger.debug("Failed to fetch active torrents: {}", e.message)
+            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
+        }
+
+    override suspend fun addTorrentTags(
+        hash: String,
+        tags: List<String>
+    ): Either<DomainError.TorrentClientError, Unit> =
+        mutateTorrentTags(endpointPath = "/api/v2/torrents/addTags", hash = hash, tags = tags, action = "add")
+
+    override suspend fun removeTorrentTags(
+        hash: String,
+        tags: List<String>
+    ): Either<DomainError.TorrentClientError, Unit> =
+        mutateTorrentTags(endpointPath = "/api/v2/torrents/removeTags", hash = hash, tags = tags, action = "remove")
+
+    private suspend fun mutateTorrentTags(
+        endpointPath: String,
+        hash: String,
+        tags: List<String>,
+        action: String
+    ): Either<DomainError.TorrentClientError, Unit> {
+        val normalizedHash = hash.trim().lowercase()
+        val tagString =
+            tags
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .joinToString(",")
+        if (normalizedHash.isBlank() || tagString.isBlank()) {
+            return Either.Right(Unit)
+        }
+
+        return try {
+            ensureAuthenticated()
+            val baseUrl = config.url.trimEnd('/')
+            val endpoint = "$baseUrl$endpointPath"
+            val params =
+                Parameters.build {
+                    append("hashes", normalizedHash)
+                    append("tags", tagString)
+                }
+            val response = executePostWithAuth(endpoint, params)
+            if (response.status == HttpStatusCode.Forbidden || response.status == HttpStatusCode.Unauthorized) {
+                sidCookie.set(null)
+                ensureAuthenticated(force = true)
+                executePostWithAuth(endpoint, params)
+            }
+            Either.Right(Unit)
+        } catch (e: Exception) {
+            logger.debug("Failed to {} tags for torrent {}: {}", action, normalizedHash, e.message)
+            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
+        }
+    }
+
     private suspend fun executeRequestWithAuth(url: String): HttpResponse =
         httpClient.get(url) {
             val cookie = sidCookie.get()
@@ -121,6 +219,46 @@ class QBittorrentClientAdapter(
                 header(HttpHeaders.Cookie, cookie)
             }
         }
+
+    private suspend fun executePostWithAuth(
+        url: String,
+        formParameters: Parameters
+    ): HttpResponse =
+        httpClient.submitForm(
+            url = url,
+            formParameters = formParameters
+        ) {
+            val cookie = sidCookie.get()
+            if (!cookie.isNullOrBlank()) {
+                header(HttpHeaders.Cookie, cookie)
+            }
+        }
+
+    private fun QBitTorrentDto.toTorrentProgress(): TorrentProgress {
+        val progressPercent = (progress * 100.0).coerceIn(0.0, 100.0)
+        val parsedTags =
+            tags
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() } ?: emptyList()
+        return TorrentProgress(
+            hash = hash,
+            name = name ?: "Unknown",
+            progressPercent = progressPercent,
+            progressRatio = progress,
+            downloadSpeedBytesPerSec = dlspeed,
+            uploadSpeedBytesPerSec = upspeed,
+            etaSeconds = eta,
+            totalSizeBytes = totalSize,
+            downloadedBytes = completed,
+            seedsCount = numSeeds,
+            seedsTotal = numComplete,
+            peersCount = numLeechs,
+            peersTotal = numIncomplete,
+            state = mapState(state),
+            tags = parsedTags
+        )
+    }
 
     private suspend fun parseTorrentResponse(
         response: HttpResponse,
@@ -151,28 +289,7 @@ class QBittorrentClientAdapter(
         }
 
         if (torrentList.size == 1) {
-            val torrentDto = torrentList.first()
-            val progressPercent = (torrentDto.progress * 100.0).coerceIn(0.0, 100.0)
-            val state = mapState(torrentDto.state)
-
-            return Either.Right(
-                TorrentProgress(
-                    hash = torrentDto.hash,
-                    name = torrentDto.name ?: "Unknown",
-                    progressPercent = progressPercent,
-                    progressRatio = torrentDto.progress,
-                    downloadSpeedBytesPerSec = torrentDto.dlspeed,
-                    uploadSpeedBytesPerSec = torrentDto.upspeed,
-                    etaSeconds = torrentDto.eta,
-                    totalSizeBytes = torrentDto.totalSize,
-                    downloadedBytes = torrentDto.completed,
-                    seedsCount = torrentDto.numSeeds,
-                    seedsTotal = torrentDto.numComplete,
-                    peersCount = torrentDto.numLeechs,
-                    peersTotal = torrentDto.numIncomplete,
-                    state = state
-                )
-            )
+            return Either.Right(torrentList.first().toTorrentProgress())
         }
 
         val totalSize = torrentList.sumOf { it.totalSize }
@@ -206,27 +323,16 @@ class QBittorrentClientAdapter(
                 else -> TorrentState.DOWNLOADING
             }
 
+        val allTags =
+            torrentList
+                .flatMap { it.tags?.split(",") ?: emptyList() }
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+
         val childItems =
             if (torrentList.size > 1) {
-                torrentList.map { item ->
-                    val progressPercent = (item.progress * 100.0).coerceIn(0.0, 100.0)
-                    TorrentProgress(
-                        hash = item.hash,
-                        name = item.name ?: "Unknown",
-                        progressPercent = progressPercent,
-                        progressRatio = item.progress,
-                        downloadSpeedBytesPerSec = item.dlspeed,
-                        uploadSpeedBytesPerSec = item.upspeed,
-                        etaSeconds = item.eta,
-                        totalSizeBytes = item.totalSize,
-                        downloadedBytes = item.completed,
-                        seedsCount = item.numSeeds,
-                        seedsTotal = item.numComplete,
-                        peersCount = item.numLeechs,
-                        peersTotal = item.numIncomplete,
-                        state = mapState(item.state)
-                    )
-                }
+                torrentList.map { it.toTorrentProgress() }
             } else {
                 emptyList()
             }
@@ -247,7 +353,8 @@ class QBittorrentClientAdapter(
                 peersCount = maxPeers,
                 peersTotal = maxPeersTotal,
                 state = aggregateState,
-                items = childItems
+                items = childItems,
+                tags = allTags
             )
         )
     }

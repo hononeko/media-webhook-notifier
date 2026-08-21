@@ -9,14 +9,17 @@ import app.hononeko.notifier.adapter.inbound.web.controller.HealthStatusDto
 import app.hononeko.notifier.adapter.inbound.web.controller.MemoryMetricsDto
 import app.hononeko.notifier.adapter.inbound.web.controller.MetricsDto
 import app.hononeko.notifier.adapter.inbound.web.controller.ProbeStatusDto
+import app.hononeko.notifier.adapter.inbound.web.controller.ReconciliationMetricsDto
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerAdapter
 import app.hononeko.notifier.adapter.outbound.qbittorrent.QBittorrentClientAdapter
 import app.hononeko.notifier.adapter.outbound.telegram.TelegramPublisherAdapter
+import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.ConfigLoader
 import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
+import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
@@ -30,6 +33,7 @@ import app.hononeko.notifier.domain.service.MediaRequestService
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
 import app.hononeko.notifier.domain.service.TemplateEngine
+import app.hononeko.notifier.domain.service.TorrentReconciliationService
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -63,7 +67,9 @@ data class AppDependencies(
     val torrentClient: TorrentClientPort,
     val notificationPublisher: NotificationPublisherPort,
     val mediaServerPort: MediaServerPort,
+    val activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
     val downloadTracker: DownloadTrackerEngine,
+    val reconciliationService: TorrentReconciliationService? = null,
     val seasonDebouncer: SeasonDebouncer,
     val mediaImportedService: MediaImportedService,
     val mediaAvailableService: MediaAvailableService,
@@ -97,17 +103,30 @@ fun buildDependencies(
     val torrentClient = QBittorrentClientAdapter(config = config.qbittorrent)
     val notificationPublisher = TelegramPublisherAdapter(config = config.notifications)
     val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
+    val activeTrackerStore = InMemoryActiveTrackerStore()
 
     val downloadTracker =
         DownloadTrackerEngine(
             torrentClient = torrentClient,
             notificationPublisher = notificationPublisher,
+            activeTrackerStore = activeTrackerStore,
             pollIntervalSeconds = config.qbittorrent.pollIntervalSeconds,
             maxPollingMinutes = config.qbittorrent.maxPollingMinutes,
             stalledTimeoutMinutes = config.qbittorrent.stalledTimeoutMinutes,
             webuiPublicUrl = config.qbittorrent.webuiPublicUrl,
             scope = scope
         )
+
+    val reconciliationService =
+        TorrentReconciliationService(
+            torrentClient = torrentClient,
+            trackDownloadUseCase = downloadTracker,
+            activeTrackerStore = activeTrackerStore,
+            notificationPublisher = notificationPublisher,
+            intervalMinutes = config.qbittorrent.reconciliationIntervalMinutes,
+            enabled = config.qbittorrent.reconciliationEnabled
+        )
+    reconciliationService.start(scope)
 
     val mediaImportedService =
         MediaImportedService(
@@ -158,15 +177,16 @@ fun buildDependencies(
             announceMediaRequestUseCase = mediaRequestService
         )
 
-    val eventRail = EventRail(capacity = 1000)
-    eventRail.start(scope, ingestWebhookService)
+    val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)
+    eventRail.start(scope, ingestWebhookService, workerCount = config.server.eventRailWorkers)
 
     val rateLimiter = InboundRateLimiter(limitPerMinute = config.server.rateLimitPerMinute)
     val providerRegistry = WebhookProviderRegistry()
     val healthController =
         HealthController(
             eventRail = eventRail,
-            downloadTracker = downloadTracker
+            downloadTracker = downloadTracker,
+            reconciliationService = reconciliationService
         )
 
     return AppDependencies(
@@ -175,7 +195,9 @@ fun buildDependencies(
         torrentClient = torrentClient,
         notificationPublisher = notificationPublisher,
         mediaServerPort = mediaServerPort,
+        activeTrackerStore = activeTrackerStore,
         downloadTracker = downloadTracker,
+        reconciliationService = reconciliationService,
         seasonDebouncer = seasonDebouncer,
         mediaImportedService = mediaImportedService,
         mediaAvailableService = mediaAvailableService,
@@ -219,6 +241,7 @@ fun Application.module(dependencies: AppDependencies) {
                         contextual(ProbeStatusDto::class, ProbeStatusDto.serializer())
                         contextual(MetricsDto::class, MetricsDto.serializer())
                         contextual(EventRailMetricsDto::class, EventRailMetricsDto.serializer())
+                        contextual(ReconciliationMetricsDto::class, ReconciliationMetricsDto.serializer())
                         contextual(MemoryMetricsDto::class, MemoryMetricsDto.serializer())
                         contextual(
                             app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto::class,
