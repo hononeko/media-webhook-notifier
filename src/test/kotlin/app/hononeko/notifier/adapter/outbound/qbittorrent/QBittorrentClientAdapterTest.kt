@@ -384,4 +384,113 @@ class QBittorrentClientAdapterTest {
                 assertEquals(50.0, progress.progressPercent, 0.001)
             }
         }
+
+    @Test
+    fun `should fetch active torrents list with tags`() =
+        runTest {
+            val mockEngine =
+                MockEngine { request ->
+                    if (request.url.encodedPath == "/api/v2/torrents/info" &&
+                        request.url.parameters["filter"] == "downloading"
+                    ) {
+                        val json =
+                            """
+                            [
+                              {
+                                "hash": "hash_dl_1",
+                                "name": "Show.1",
+                                "progress": 0.3,
+                                "dlspeed": 5000,
+                                "upspeed": 0,
+                                "eta": 100,
+                                "total_size": 1000,
+                                "completed": 300,
+                                "state": "downloading",
+                                "tags": "tv-sonarr, mwn_msg:123, mwn_photo:1"
+                              }
+                            ]
+                            """.trimIndent()
+                        respond(json, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                    } else {
+                        respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
+            val result = adapter.getActiveTorrents("downloading")
+            assertTrue(result.isRight())
+            val list = (result as Either.Right).value
+            assertEquals(1, list.size)
+            assertEquals("hash_dl_1", list.first().hash)
+            assertEquals(listOf("tv-sonarr", "mwn_msg:123", "mwn_photo:1"), list.first().tags)
+        }
+
+    @Test
+    fun `should add and remove torrent tags successfully`() =
+        runTest {
+            val addedParams = mutableListOf<String>()
+            val removedParams = mutableListOf<String>()
+
+            val mockEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/api/v2/torrents/addTags" -> {
+                            addedParams.add(request.body.toString())
+                            respond("Ok.", HttpStatusCode.OK)
+                        }
+                        "/api/v2/torrents/removeTags" -> {
+                            removedParams.add(request.body.toString())
+                            respond("Ok.", HttpStatusCode.OK)
+                        }
+                        else -> respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
+
+            val addResult = adapter.addTorrentTags("hash1", listOf("mwn_msg:100", "mwn_photo:1"))
+            assertTrue(addResult.isRight())
+
+            val removeResult = adapter.removeTorrentTags("hash1", listOf("mwn_msg:100", "mwn_photo:1"))
+            assertTrue(removeResult.isRight())
+
+            // Blank hash / empty tags fast return
+            val blankAdd = adapter.addTorrentTags("   ", listOf("tag"))
+            assertTrue(blankAdd.isRight())
+            val emptyTagsAdd = adapter.addTorrentTags("hash1", emptyList())
+            assertTrue(emptyTagsAdd.isRight())
+        }
+
+    @Test
+    fun `should handle error responses in active torrents and tag mutations`() =
+        runTest {
+            val failingEngine =
+                MockEngine { _ ->
+                    respond("Server Error", HttpStatusCode.InternalServerError)
+                }
+            val adapter = QBittorrentClientAdapter(QBittorrentConfig(), failingEngine)
+
+            val activeResult = adapter.getActiveTorrents("downloading")
+            assertTrue(activeResult.isLeft())
+
+            val invalidJsonEngine =
+                MockEngine { _ ->
+                    respond(
+                        "Invalid json content",
+                        HttpStatusCode.OK,
+                        headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+            val invalidJsonAdapter = QBittorrentClientAdapter(QBittorrentConfig(), invalidJsonEngine)
+            val invalidResult = invalidJsonAdapter.getActiveTorrents("downloading")
+            assertTrue(invalidResult.isLeft())
+
+            val exceptionEngine =
+                MockEngine { _ ->
+                    throw RuntimeException("Network crash")
+                }
+            val exceptionAdapter = QBittorrentClientAdapter(QBittorrentConfig(), exceptionEngine)
+            val tagResult = exceptionAdapter.addTorrentTags("hash1", listOf("tag1"))
+            assertTrue(tagResult.isLeft())
+        }
 }

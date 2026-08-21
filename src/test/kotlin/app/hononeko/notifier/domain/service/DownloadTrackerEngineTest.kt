@@ -431,4 +431,77 @@ class DownloadTrackerEngineTest {
             assertTrue(engine.isTracking("hashErr"))
             engine.stopAll()
         }
+
+    @Test
+    fun `should support trackExisting and track to completion without sending initial card`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            var callCount = 0
+            val torrentClient =
+                TorrentClientPort {
+                    callCount++
+                    val progressPercent = if (callCount == 1) 50.0 else 100.0
+                    val state = if (callCount == 1) TorrentState.DOWNLOADING else TorrentState.COMPLETED
+                    Either.Right(
+                        TorrentProgress(
+                            hash = "hash_exist",
+                            name = "Severance.S02E01",
+                            progressPercent = progressPercent,
+                            progressRatio = progressPercent / 100.0,
+                            downloadSpeedBytesPerSec = 500000L,
+                            uploadSpeedBytesPerSec = 0L,
+                            etaSeconds = if (progressPercent == 100.0) 0L else 30L,
+                            totalSizeBytes = 1000000L,
+                            downloadedBytes = (1000000L * (progressPercent / 100.0)).toLong(),
+                            state = state
+                        )
+                    )
+                }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = torrentClient,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 1,
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash_exist",
+                    title = "Severance.S02E01",
+                    seriesOrMovieTitle = "Severance"
+                )
+
+            val handle = NotificationHandle("telegram", "chat123", "msg999")
+
+            // Test blank hash
+            val blankResult = engine.trackExisting("   ", grab, handle, isPhoto = true)
+            assertTrue(blankResult.isLeft())
+
+            // Test valid trackExisting
+            val trackResult = engine.trackExisting("hash_exist", grab, handle, isPhoto = true)
+            assertTrue(trackResult.isRight())
+            assertTrue(engine.isTracking("hash_exist"))
+
+            // Initial card should NOT be sent via publisher (because it was resumed)
+            assertEquals(0, publisher.sentCards.size)
+
+            // Test already tracking check
+            val duplicateResult = engine.trackExisting("hash_exist", grab, handle, isPhoto = true)
+            assertTrue(duplicateResult.isRight())
+
+            // Advance time for progress poll
+            testScope.advanceTimeBy(1100L)
+            assertEquals(1, publisher.progressUpdates.size)
+
+            // Advance time to completion
+            testScope.advanceTimeBy(1100L)
+            assertEquals(1, publisher.completedCards.size)
+            assertEquals(0, engine.activeTrackerCount())
+        }
 }
