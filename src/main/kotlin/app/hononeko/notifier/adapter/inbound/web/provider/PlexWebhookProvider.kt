@@ -103,11 +103,16 @@ class PlexWebhookProvider(
         val durationSec = meta?.duration?.let { it / 1000 }
         val mediaType = meta?.type?.lowercase()
 
+        val isExplicitEpisode =
+            mediaType == "episode" ||
+                meta?.parentIndex != null ||
+                (meta?.grandparentTitle != null && meta?.parentTitle != null)
+
         val seasonNumber =
             if (meta != null) {
-                when (mediaType) {
-                    "season" -> meta.index ?: extractSeasonNumber(meta.title)
-                    "episode" -> meta.parentIndex ?: extractSeasonNumber(meta.parentTitle)
+                when {
+                    mediaType == "season" -> meta.index ?: extractSeasonNumber(meta.title)
+                    isExplicitEpisode -> meta.parentIndex ?: extractSeasonNumber(meta.parentTitle)
                     else -> meta.index
                 }
             } else {
@@ -115,7 +120,7 @@ class PlexWebhookProvider(
             }
 
         val episodeNumber =
-            if (meta != null && mediaType == "episode") {
+            if (meta != null && isExplicitEpisode) {
                 meta.index
             } else {
                 null
