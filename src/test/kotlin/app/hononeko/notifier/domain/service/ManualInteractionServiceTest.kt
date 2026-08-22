@@ -67,6 +67,7 @@ class ManualInteractionServiceTest {
                     seriesOrMovieTitle = "Severance",
                     seasonNumber = 2,
                     episodeNumbers = listOf(1),
+                    episodeTitle = "Hello World",
                     releaseTitle = "Severance.S02E01.Sample.1080p",
                     reason = "Sample file detected",
                     instanceName = "Sonarr-TV"
@@ -75,7 +76,17 @@ class ManualInteractionServiceTest {
             val result = service.announce(payload)
             assertTrue(result.isRight())
             assertEquals(1, publisher.sentCards.size)
-            assertEquals("✋ Manual Import Required: Severance (S02E01)", publisher.sentCards.first().title)
+            assertEquals(
+                "✋ Manual Import Required: Severance - S02E01 - Hello World",
+                publisher.sentCards.first().title
+            )
+
+            // Without episodeTitle
+            val payloadNoEpTitle = payload.copy(episodeTitle = null)
+            val resultNoEpTitle = service.announce(payloadNoEpTitle)
+            assertTrue(resultNoEpTitle.isRight())
+            assertEquals(2, publisher.sentCards.size)
+            assertEquals("✋ Manual Import Required: Severance (S02E01)", publisher.sentCards.last().title)
         }
 
     @Test
