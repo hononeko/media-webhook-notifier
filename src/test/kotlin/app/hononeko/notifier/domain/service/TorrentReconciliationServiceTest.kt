@@ -136,14 +136,14 @@ class TorrentReconciliationServiceTest {
             val store = InMemoryActiveTrackerStore()
             val publisher = FakeNotificationPublisher()
 
-            val newTrackCalls = Collections.synchronizedList(mutableListOf<String>())
+            val newTrackCalls = Collections.synchronizedList(mutableListOf<Pair<String, MediaPayload.ArrGrab>>())
             val trackUseCase =
                 object : TrackDownloadUseCase {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
                     ): Either<DomainError, Unit> {
-                        newTrackCalls.add(hash)
+                        newTrackCalls.add(hash to initialPayload)
                         return Either.Right(Unit)
                     }
                 }
@@ -151,7 +151,7 @@ class TorrentReconciliationServiceTest {
             val untrackedTorrent =
                 TorrentProgress(
                     hash = "hash_untracked",
-                    name = "New.Movie.2026",
+                    name = "Severance.S02E01.Hello.World.1080p.WEB-DL-FLUX",
                     progressPercent = 10.0,
                     progressRatio = 0.1,
                     downloadSpeedBytesPerSec = 500000L,
@@ -160,7 +160,7 @@ class TorrentReconciliationServiceTest {
                     totalSizeBytes = 2000000000L,
                     downloadedBytes = 200000000L,
                     state = TorrentState.DOWNLOADING,
-                    tags = listOf("radarr")
+                    tags = listOf("sonarr")
                 )
 
             val torrentClient =
@@ -186,7 +186,14 @@ class TorrentReconciliationServiceTest {
             val count = reconciliationService.reconcile()
             assertEquals(1, count)
             assertEquals(1, newTrackCalls.size)
-            assertEquals("hash_untracked", newTrackCalls.first())
+            val (hash, payload) = newTrackCalls.first()
+            assertEquals("hash_untracked", hash)
+            assertEquals("Severance", payload.seriesOrMovieTitle)
+            assertEquals(2, payload.seasonNumber)
+            assertEquals(listOf(1), payload.episodeNumbers)
+            assertEquals("Hello World", payload.episodeTitle)
+            assertEquals("WEB-DL", payload.quality)
+            assertEquals("FLUX", payload.releaseGroup)
         }
 
     @Test

@@ -63,12 +63,22 @@ class TorrentReconciliationService(
             val msgTag = torrent.tags.firstOrNull { it.startsWith("mwn_msg:") }
             val photoTag = torrent.tags.firstOrNull { it.startsWith("mwn_photo:") }
 
+            val parsed = ReleaseNameParser.parse(torrent.name)
+            val isMovie = parsed.seasonNumber == null && parsed.episodeNumbers.isEmpty()
+            val source = if (isMovie) AppSource.RADARR else AppSource.SONARR
+
             val synthesizedGrab =
                 MediaPayload.ArrGrab(
-                    source = AppSource.SONARR,
+                    source = source,
                     downloadId = normalizedHash,
                     title = torrent.name,
-                    seriesOrMovieTitle = torrent.name,
+                    seriesOrMovieTitle = parsed.title.ifBlank { torrent.name },
+                    seasonNumber = parsed.seasonNumber,
+                    episodeNumbers = parsed.episodeNumbers,
+                    episodeTitle = parsed.episodeTitle,
+                    quality = parsed.quality ?: parsed.resolution,
+                    releaseGroup = parsed.releaseGroup,
+                    releaseTitle = torrent.name,
                     sizeBytes = torrent.totalSizeBytes
                 )
 

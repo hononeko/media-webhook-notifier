@@ -247,6 +247,39 @@ class JellyfinAndServarrWebhookProviderTest {
             assertEquals("Freedom's Day", grabEpPayload.episodeTitle)
             assertEquals("TorrentLeech", grabEpPayload.indexer)
             assertEquals("hash_silo_101", grabEpPayload.downloadId)
+
+            // Sonarr Episode Grab with ReleaseNameParser fallback (no episode metadata in payload)
+            val fallbackGrabPayload =
+                """
+                {
+                    "eventType": "Grab",
+                    "instanceName": "Sonarr-TV",
+                    "series": {
+                        "id": 10,
+                        "title": "Severance"
+                    },
+                    "release": {
+                        "releaseTitle": "Severance.S02E01.Hello.World.1080p.WEB-DL-FLUX",
+                        "indexer": "TorrentLeech",
+                        "size": 3000000000
+                    },
+                    "downloadId": "hash_sev_201"
+                }
+                """.trimIndent()
+
+            client.post("/webhook/sonarr") {
+                contentType(ContentType.Application.Json)
+                setBody(fallbackGrabPayload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val fallbackEpPayload = (processResult as WebhookProcessResult.Queued).payload
+            assertIs<MediaPayload.ArrGrab>(fallbackEpPayload)
+            assertEquals("Severance", fallbackEpPayload.seriesOrMovieTitle)
+            assertEquals(2, fallbackEpPayload.seasonNumber)
+            assertEquals(listOf(1), fallbackEpPayload.episodeNumbers)
+            assertEquals("Hello World", fallbackEpPayload.episodeTitle)
+            assertEquals("FLUX", fallbackEpPayload.releaseGroup)
         }
 
     @Test

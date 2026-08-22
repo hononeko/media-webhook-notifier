@@ -3,6 +3,7 @@ package app.hononeko.notifier.adapter.inbound.web.provider
 import app.hononeko.notifier.adapter.inbound.web.dto.ServarrWebhookDto
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.MediaPayload
+import app.hononeko.notifier.domain.service.ReleaseNameParser
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveText
 import kotlinx.serialization.json.Json
@@ -83,25 +84,37 @@ abstract class AbstractServarrWebhookProvider(
         callerName: String?
     ): MediaPayload.ArrGrab {
         val title = extractTitle(dto)
-        val seriesOrMovieTitle = dto.series?.title ?: dto.movie?.title ?: title
+        val releaseParsed = dto.release?.releaseTitle?.let { ReleaseNameParser.parse(it) }
+        val seriesOrMovieTitle =
+            dto.series?.title ?: dto.movie?.title ?: releaseParsed?.title?.takeIf { it.isNotBlank() } ?: title
         val poster = extractPosterUrl(dto)
         val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
+
+        val seasonNumber = dto.episodes.firstOrNull()?.seasonNumber ?: releaseParsed?.seasonNumber
+        val episodeNumbers =
+            dto.episodes.mapNotNull { it.episodeNumber }.ifEmpty {
+                releaseParsed?.episodeNumbers
+                    ?: emptyList()
+            }
+        val episodeTitle =
+            dto.episodes
+                .firstOrNull()
+                ?.title
+                ?.ifBlank { null } ?: releaseParsed?.episodeTitle
 
         return MediaPayload.ArrGrab(
             source = source,
             downloadId = dto.downloadId ?: dto.release?.releaseTitle ?: "",
             title = title,
             seriesOrMovieTitle = seriesOrMovieTitle,
-            seasonNumber = dto.episodes.firstOrNull()?.seasonNumber,
-            episodeNumbers = dto.episodes.mapNotNull { it.episodeNumber },
-            episodeTitle =
-                dto.episodes
-                    .firstOrNull()
-                    ?.title
-                    ?.ifBlank { null },
-            releaseGroup = dto.release?.releaseGroup,
+            seasonNumber = seasonNumber,
+            episodeNumbers = episodeNumbers,
+            episodeTitle = episodeTitle,
+            releaseGroup = dto.release?.releaseGroup ?: releaseParsed?.releaseGroup,
             releaseTitle = dto.release?.releaseTitle,
-            quality = dto.release?.quality ?: dto.release?.qualityVersion?.toString(),
+            quality =
+                dto.release?.quality ?: dto.release?.qualityVersion?.toString() ?: releaseParsed?.quality
+                    ?: releaseParsed?.resolution,
             sizeBytes = dto.release?.size,
             indexer = dto.release?.indexer,
             posterUrl = poster,
@@ -238,23 +251,35 @@ abstract class AbstractServarrWebhookProvider(
         callerName: String?
     ): MediaPayload.ServarrManualInteraction {
         val title = extractTitle(dto)
-        val seriesOrMovieTitle = dto.series?.title ?: dto.movie?.title ?: title
+        val releaseParsed = (dto.release?.releaseTitle ?: dto.downloadId)?.let { ReleaseNameParser.parse(it) }
+        val seriesOrMovieTitle =
+            dto.series?.title ?: dto.movie?.title ?: releaseParsed?.title?.takeIf { it.isNotBlank() } ?: title
         val poster = extractPosterUrl(dto)
         val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
+
+        val seasonNumber = dto.episodes.firstOrNull()?.seasonNumber ?: releaseParsed?.seasonNumber
+        val episodeNumbers =
+            dto.episodes.mapNotNull { it.episodeNumber }.ifEmpty {
+                releaseParsed?.episodeNumbers
+                    ?: emptyList()
+            }
+        val episodeTitle =
+            dto.episodes
+                .firstOrNull()
+                ?.title
+                ?.ifBlank { null } ?: releaseParsed?.episodeTitle
 
         return MediaPayload.ServarrManualInteraction(
             source = source,
             title = title,
             seriesOrMovieTitle = seriesOrMovieTitle,
-            seasonNumber = dto.episodes.firstOrNull()?.seasonNumber,
-            episodeNumbers = dto.episodes.mapNotNull { it.episodeNumber },
-            episodeTitle =
-                dto.episodes
-                    .firstOrNull()
-                    ?.title
-                    ?.ifBlank { null },
+            seasonNumber = seasonNumber,
+            episodeNumbers = episodeNumbers,
+            episodeTitle = episodeTitle,
             releaseTitle = dto.release?.releaseTitle ?: dto.downloadId,
-            quality = dto.release?.quality ?: dto.release?.qualityVersion?.toString(),
+            quality =
+                dto.release?.quality ?: dto.release?.qualityVersion?.toString() ?: releaseParsed?.quality
+                    ?: releaseParsed?.resolution,
             sizeBytes = dto.release?.size,
             indexer = dto.release?.indexer,
             downloadClient = dto.downloadClient,
