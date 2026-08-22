@@ -530,6 +530,16 @@ object CardFormatterService {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val fullTitle =
             when {
+                epRange != null && !payload.episodeTitle.isNullOrBlank() && payload.episodeNumbers.size == 1 -> {
+                    val epTitle = payload.episodeTitle.trim()
+                    if (!epTitle.equals(epRange, ignoreCase = true) &&
+                        !epTitle.startsWith("Episode ", ignoreCase = true)
+                    ) {
+                        "${payload.seriesOrMovieTitle} - $epRange - $epTitle"
+                    } else {
+                        "${payload.seriesOrMovieTitle} - $epRange"
+                    }
+                }
                 epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
                 payload.year != null -> "${payload.title} (${payload.year})"
                 else -> payload.title
@@ -843,17 +853,21 @@ object CardFormatterService {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val mediaType = payload.mediaType?.lowercase()
-        val isSeason =
-            mediaType == "season" ||
-                (
-                    payload.parentTitle != null &&
-                        payload.grandParentTitle == null &&
-                        (payload.title.startsWith("Season", ignoreCase = true) || payload.seasonNumber != null)
-                )
         val isEpisode =
             mediaType == "episode" ||
+                payload.episodeNumber != null ||
                 payload.grandParentTitle != null ||
                 (payload.parentTitle != null && payload.episodeNumber != null)
+        val isSeason =
+            !isEpisode &&
+                (
+                    mediaType == "season" ||
+                        (
+                            payload.parentTitle != null &&
+                                payload.grandParentTitle == null &&
+                                (payload.title.startsWith("Season", ignoreCase = true) || payload.seasonNumber != null)
+                        )
+                )
 
         val seriesTitle =
             when {
@@ -876,7 +890,12 @@ object CardFormatterService {
             )
 
         val effectivePosterUrl = payload.posterUrl ?: payload.parentPosterUrl ?: payload.grandparentPosterUrl
-        val effectiveDuration = if (isSeason) null else payload.durationSeconds
+        val effectiveDuration =
+            if (isSeason || mediaType == "show" || mediaType == "series") {
+                null
+            } else {
+                payload.durationSeconds
+            }
         val resolvedMediaType = resolveMediaType(isSeason, isEpisode, mediaType, seriesTitle, payload.year)
 
         return buildMediaServerCard(
@@ -910,12 +929,16 @@ object CardFormatterService {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val type = payload.mediaType?.lowercase()
-        val isSeason =
-            type == "season" ||
-                (payload.seriesName != null && payload.seasonNumber != null && payload.episodeNumber == null)
         val isEpisode =
             type == "episode" ||
+                payload.episodeNumber != null ||
                 (payload.seriesName != null && payload.episodeNumber != null)
+        val isSeason =
+            !isEpisode &&
+                (
+                    type == "season" ||
+                        (payload.seriesName != null && payload.seasonNumber != null && payload.episodeNumber == null)
+                )
 
         val seriesTitle = payload.seriesName ?: ""
         val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)

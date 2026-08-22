@@ -118,6 +118,10 @@ class JellyfinAndServarrWebhookProviderTest {
                     processResult = radarrProvider.process(call, null)
                     call.respondText("OK")
                 }
+                post("/webhook/sonarr") {
+                    processResult = sonarrProvider.process(call, null)
+                    call.respondText("OK")
+                }
             }
 
             val moviePayload =
@@ -162,6 +166,44 @@ class JellyfinAndServarrWebhookProviderTest {
             assertEquals("https://image.tmdb.org/poster.jpg", payload.posterUrl)
             assertEquals("Radarr-4K", payload.instanceName)
             assertEquals("http://radarr.lan:7878", payload.webUrl)
+
+            // Sonarr Episode Download
+            val episodePayload =
+                """
+                {
+                    "eventType": "Download",
+                    "instanceName": "Sonarr-TV",
+                    "applicationUrl": "http://sonarr.lan:8989",
+                    "series": {
+                        "id": 10,
+                        "title": "Silo",
+                        "year": 2023
+                    },
+                    "episodes": [
+                        {
+                            "id": 101,
+                            "episodeNumber": 1,
+                            "seasonNumber": 1,
+                            "title": "Freedom's Day"
+                        }
+                    ],
+                    "isUpgrade": false
+                }
+                """.trimIndent()
+
+            client.post("/webhook/sonarr") {
+                contentType(ContentType.Application.Json)
+                setBody(episodePayload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val epPayload = (processResult as WebhookProcessResult.Queued).payload
+            assertIs<MediaPayload.ArrDownload>(epPayload)
+            assertEquals("Silo", epPayload.seriesOrMovieTitle)
+            assertEquals(1, epPayload.seasonNumber)
+            assertEquals(listOf(1), epPayload.episodeNumbers)
+            assertEquals("Freedom's Day", epPayload.episodeTitle)
+            assertEquals("Sonarr-TV", epPayload.instanceName)
         }
 
     @Test

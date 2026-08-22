@@ -455,6 +455,7 @@ class CardFormatterServiceTest {
                 seriesOrMovieTitle = "Severance",
                 seasonNumber = 2,
                 episodeNumbers = listOf(1),
+                episodeTitle = "Hello World",
                 videoCodec = "HEVC",
                 audioCodec = "EAC3",
                 resolution = "2160p",
@@ -463,7 +464,7 @@ class CardFormatterServiceTest {
             )
 
         val importCard = CardFormatterService.buildImportCard(importPayload)
-        assertEquals("📁 File Imported: Severance (S02E01)", importCard.title)
+        assertEquals("📁 File Imported: Severance - S02E01 - Hello World", importCard.title)
         assertEquals("Sonarr 4K • Library Import", importCard.subtitle)
         assertEquals(NotificationLevel.SUCCESS, importCard.level)
         assertEquals("2160p", importCard.mediaSpecs?.resolution)
@@ -476,8 +477,13 @@ class CardFormatterServiceTest {
                 isUpgrade = true
             )
         val upgradeCard = CardFormatterService.buildImportCard(upgradePayload)
-        assertEquals("⬆️ File Upgraded: Severance (S02E01)", upgradeCard.title)
+        assertEquals("⬆️ File Upgraded: Severance - S02E01 - Hello World", upgradeCard.title)
         assertEquals("Sonarr 4K • Quality Upgrade", upgradeCard.subtitle)
+
+        // Fallback without episodeTitle
+        val noEpTitlePayload = importPayload.copy(episodeTitle = null)
+        val noEpTitleCard = CardFormatterService.buildImportCard(noEpTitlePayload)
+        assertEquals("📁 File Imported: Severance (S02E01)", noEpTitleCard.title)
     }
 
     @Test
