@@ -105,6 +105,11 @@ class CardFormatterServiceTest {
         assertEquals("https://cdn.example.com/poster.jpg", card.artworkUrl)
         assertEquals(0, card.actions.size)
 
+        // Single episode with episodeTitle
+        val payloadWithEpTitle = payload.copy(episodeTitle = "Hello World")
+        val cardWithEpTitle = CardFormatterService.buildGrabInitialCard(payloadWithEpTitle, "https://qbit.example.com")
+        assertEquals("⏳ Downloading: Severance - S02E01 - Hello World", cardWithEpTitle.title)
+
         val payloadWithIndexer = payload.copy(indexer = "TorrentLeech", releaseTitle = "Severance.S02E01.2160p-NTb")
         val engine =
             TemplateEngine(
@@ -135,6 +140,7 @@ class CardFormatterServiceTest {
                 seriesOrMovieTitle = "Severance",
                 seasonNumber = 2,
                 episodeNumbers = listOf(1),
+                episodeTitle = "Hello World",
                 instanceName = "Sonarr-Main"
             )
 
@@ -157,7 +163,7 @@ class CardFormatterServiceTest {
             )
 
         val update = CardFormatterService.buildProgressUpdate(payload, progress, "https://qbit.example.com")
-        assertEquals("⏳ Downloading: Severance (S02E01)", update.title)
+        assertEquals("⏳ Downloading: Severance - S02E01 - Hello World", update.title)
         assertEquals("Sonarr-Main", update.subtitle)
         assertEquals(65.0, update.percent)
         assertEquals("[██████▌░░░]", update.progressBar)
@@ -203,6 +209,29 @@ class CardFormatterServiceTest {
             )
         assertEquals("⚠️ Download Stalled: Dune: Part Two (2024)", stalledCard.title)
         assertEquals(NotificationLevel.WARNING, stalledCard.level)
+
+        // TV Episode with episodeTitle
+        val tvPayload =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "hash789",
+                title = "Severance - S02E01",
+                seriesOrMovieTitle = "Severance",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1),
+                episodeTitle = "Hello World",
+                quality = "2160p"
+            )
+        val tvCompletionCard = CardFormatterService.buildCompletionCard(tvPayload, progress, "https://qbit.example.com")
+        assertEquals("✅ Download Complete: Severance - S02E01 - Hello World", tvCompletionCard.title)
+
+        val tvStalledCard =
+            CardFormatterService.buildStalledCard(
+                tvPayload,
+                progress.copy(state = TorrentState.STALLED),
+                "https://qbit.example.com"
+            )
+        assertEquals("⚠️ Download Stalled: Severance - S02E01 - Hello World", tvStalledCard.title)
     }
 
     @Test

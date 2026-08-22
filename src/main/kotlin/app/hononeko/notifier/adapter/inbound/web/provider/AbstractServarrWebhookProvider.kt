@@ -94,6 +94,11 @@ abstract class AbstractServarrWebhookProvider(
             seriesOrMovieTitle = seriesOrMovieTitle,
             seasonNumber = dto.episodes.firstOrNull()?.seasonNumber,
             episodeNumbers = dto.episodes.mapNotNull { it.episodeNumber },
+            episodeTitle =
+                dto.episodes
+                    .firstOrNull()
+                    ?.title
+                    ?.ifBlank { null },
             releaseGroup = dto.release?.releaseGroup,
             releaseTitle = dto.release?.releaseTitle,
             quality = dto.release?.quality ?: dto.release?.qualityVersion?.toString(),

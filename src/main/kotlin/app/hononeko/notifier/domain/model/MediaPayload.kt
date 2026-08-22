@@ -14,6 +14,7 @@ sealed interface MediaPayload {
         val seriesOrMovieTitle: String,
         val seasonNumber: Int? = null,
         val episodeNumbers: List<Int> = emptyList(),
+        val episodeTitle: String? = null,
         val releaseGroup: String? = null,
         val releaseTitle: String? = null,
         val quality: String? = null,

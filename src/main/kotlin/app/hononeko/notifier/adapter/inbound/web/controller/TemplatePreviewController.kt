@@ -80,6 +80,11 @@ class TemplatePreviewController {
         private val TORRENT_TAGS =
             BASE_TAGS +
                 listOf(
+                    "season_number",
+                    "episode",
+                    "episode_number",
+                    "episode_title",
+                    "episode_name",
                     "quality",
                     "release_group",
                     "release_title",
@@ -162,13 +167,7 @@ class TemplatePreviewController {
         private val MANUAL_TAGS =
             TORRENT_TAGS +
                 listOf(
-                    "season_number",
-                    "episode",
-                    "episode_number",
-                    "episode_title",
-                    "episode_name",
                     "reason",
-                    "release_title",
                     "size",
                     "total_size",
                     "download_client",

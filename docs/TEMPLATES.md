@@ -200,8 +200,8 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | `{episode}` | Grab, Import, Manual, Available | 2-digit zero-padded episode number | `01` |
 | `{episode_number}` | Grab, Import, Manual, Available | Raw unpadded episode number integer | `1` |
 | `{episode_range}` | Grab, Import, Manual | Formatted episode range notation | `S02E01-E04` |
-| `{episode_title}` | Import, Manual, Available | Episode title name | `Roswell That Ends Well` |
-| `{episode_name}` | Import, Manual, Available | Alias for episode title name | `Roswell That Ends Well` |
+| `{episode_title}` | Grab, Progress, Complete, Stalled, Import, Manual, Available | Episode title name | `Roswell That Ends Well` |
+| `{episode_name}` | Grab, Progress, Complete, Stalled, Import, Manual, Available | Alias for episode title name | `Roswell That Ends Well` |
 | `{media_type}` | Available, Request | Media type (`season`, `episode`, `movie`, `show` in media servers) | `season`, `movie` |
 | `{quality}` | Grab, Import, Manual, Request | Quality profile or resolution label | `WEBDL-1080p`, `Remux-2160p` |
 | `{release_group}` | Grab, Import, Manual | Torrent/Usenet scene or release group | `FLUX`, `NTb`, `FraMeSToR` |

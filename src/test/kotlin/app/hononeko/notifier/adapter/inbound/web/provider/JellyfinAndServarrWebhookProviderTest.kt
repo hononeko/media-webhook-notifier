@@ -204,6 +204,49 @@ class JellyfinAndServarrWebhookProviderTest {
             assertEquals(listOf(1), epPayload.episodeNumbers)
             assertEquals("Freedom's Day", epPayload.episodeTitle)
             assertEquals("Sonarr-TV", epPayload.instanceName)
+
+            // Sonarr Episode Grab
+            val grabPayload =
+                """
+                {
+                    "eventType": "Grab",
+                    "instanceName": "Sonarr-TV",
+                    "series": {
+                        "id": 10,
+                        "title": "Silo",
+                        "year": 2023
+                    },
+                    "episodes": [
+                        {
+                            "id": 101,
+                            "episodeNumber": 1,
+                            "seasonNumber": 1,
+                            "title": "Freedom's Day"
+                        }
+                    ],
+                    "release": {
+                        "releaseTitle": "Silo.S01E01.1080p.mkv",
+                        "indexer": "TorrentLeech",
+                        "size": 2500000000
+                    },
+                    "downloadId": "hash_silo_101"
+                }
+                """.trimIndent()
+
+            client.post("/webhook/sonarr") {
+                contentType(ContentType.Application.Json)
+                setBody(grabPayload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val grabEpPayload = (processResult as WebhookProcessResult.Queued).payload
+            assertIs<MediaPayload.ArrGrab>(grabEpPayload)
+            assertEquals("Silo", grabEpPayload.seriesOrMovieTitle)
+            assertEquals(1, grabEpPayload.seasonNumber)
+            assertEquals(listOf(1), grabEpPayload.episodeNumbers)
+            assertEquals("Freedom's Day", grabEpPayload.episodeTitle)
+            assertEquals("TorrentLeech", grabEpPayload.indexer)
+            assertEquals("hash_silo_101", grabEpPayload.downloadId)
         }
 
     @Test

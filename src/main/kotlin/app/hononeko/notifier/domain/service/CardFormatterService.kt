@@ -133,6 +133,30 @@ object CardFormatterService {
         }
     }
 
+    private fun formatArrTitle(
+        seriesOrMovieTitle: String,
+        fallbackTitle: String,
+        seasonNumber: Int?,
+        episodeNumbers: List<Int>,
+        episodeTitle: String?,
+        year: Int? = null
+    ): String {
+        val epRange = formatEpisodeRange(seasonNumber, episodeNumbers)
+        return when {
+            epRange != null && !episodeTitle.isNullOrBlank() && episodeNumbers.size == 1 -> {
+                val epTitle = episodeTitle.trim()
+                if (!epTitle.equals(epRange, ignoreCase = true) && !epTitle.startsWith("Episode ", ignoreCase = true)) {
+                    "$seriesOrMovieTitle - $epRange - $epTitle"
+                } else {
+                    "$seriesOrMovieTitle - $epRange"
+                }
+            }
+            epRange != null -> "$seriesOrMovieTitle ($epRange)"
+            year != null -> "$fallbackTitle ($year)"
+            else -> fallbackTitle
+        }
+    }
+
     private fun buildArrGrabContext(
         payload: MediaPayload.ArrGrab,
         webUiUrl: String?,
@@ -140,10 +164,19 @@ object CardFormatterService {
         epRange: String?
     ): MutableMap<String, Any?> {
         val releaseName = payload.releaseTitle ?: payload.title
+        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val firstEpisode = payload.episodeNumbers.firstOrNull()
+        val formattedEpisode = firstEpisode?.let { String.format(Locale.US, "%02d", it) }
+
         return mutableMapOf(
             "title" to titleText,
             "series_title" to payload.seriesOrMovieTitle,
-            "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+            "season" to formattedSeason,
+            "season_number" to payload.seasonNumber?.toString(),
+            "episode" to formattedEpisode,
+            "episode_number" to firstEpisode?.toString(),
+            "episode_title" to payload.episodeTitle,
+            "episode_name" to payload.episodeTitle,
             "episode_range" to epRange,
             "quality" to payload.quality,
             "release_group" to payload.releaseGroup,
@@ -165,10 +198,13 @@ object CardFormatterService {
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+            formatArrTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                fallbackTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumbers = payload.episodeNumbers,
+                episodeTitle = payload.episodeTitle
+            )
 
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
         val formattedSize = payload.sizeBytes?.let { formatBytes(it) }
@@ -306,10 +342,13 @@ object CardFormatterService {
     ): ProgressUpdate {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+            formatArrTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                fallbackTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumbers = payload.episodeNumbers,
+                episodeTitle = payload.episodeTitle
+            )
 
         val sizeFormatted = "${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalSizeBytes)}"
         val speedFormatted = formatSpeed(progress.downloadSpeedBytesPerSec)
@@ -392,10 +431,13 @@ object CardFormatterService {
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+            formatArrTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                fallbackTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumbers = payload.episodeNumbers,
+                episodeTitle = payload.episodeTitle
+            )
 
         val releaseName = progress.name.ifBlank { payload.releaseTitle ?: payload.title }
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
@@ -458,10 +500,13 @@ object CardFormatterService {
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+            formatArrTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                fallbackTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumbers = payload.episodeNumbers,
+                episodeTitle = payload.episodeTitle
+            )
 
         val progressVal = progress?.progressPercent ?: 0.0
         val progressBar =
@@ -529,21 +574,14 @@ object CardFormatterService {
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val fullTitle =
-            when {
-                epRange != null && !payload.episodeTitle.isNullOrBlank() && payload.episodeNumbers.size == 1 -> {
-                    val epTitle = payload.episodeTitle.trim()
-                    if (!epTitle.equals(epRange, ignoreCase = true) &&
-                        !epTitle.startsWith("Episode ", ignoreCase = true)
-                    ) {
-                        "${payload.seriesOrMovieTitle} - $epRange - $epTitle"
-                    } else {
-                        "${payload.seriesOrMovieTitle} - $epRange"
-                    }
-                }
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                payload.year != null -> "${payload.title} (${payload.year})"
-                else -> payload.title
-            }
+            formatArrTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                fallbackTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumbers = payload.episodeNumbers,
+                episodeTitle = payload.episodeTitle,
+                year = payload.year
+            )
 
         val defaultTitle =
             if (payload.isUpgrade) {
@@ -1060,20 +1098,13 @@ object CardFormatterService {
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val fullTitle =
-            when {
-                epRange != null && !payload.episodeTitle.isNullOrBlank() && payload.episodeNumbers.size == 1 -> {
-                    val epTitle = payload.episodeTitle.trim()
-                    if (!epTitle.equals(epRange, ignoreCase = true) &&
-                        !epTitle.startsWith("Episode ", ignoreCase = true)
-                    ) {
-                        "${payload.seriesOrMovieTitle} - $epRange - $epTitle"
-                    } else {
-                        "${payload.seriesOrMovieTitle} - $epRange"
-                    }
-                }
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+            formatArrTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                fallbackTitle = payload.title,
+                seasonNumber = payload.seasonNumber,
+                episodeNumbers = payload.episodeNumbers,
+                episodeTitle = payload.episodeTitle
+            )
 
         val instanceLabel = payload.instanceName ?: payload.source.displayName
         val defaultTitle = "✋ Manual Import Required: $fullTitle"
