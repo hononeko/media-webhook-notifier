@@ -193,14 +193,15 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | **Media & Episode Details** | | | |
 | `{title}` | All Media Events | Full formatted title (e.g. `Futurama - Season 3`, `Dune: Part Two (2024)`) | `Futurama - Season 3` |
 | `{item_title}` | Available | Direct raw item title from media server | `Season 3`, `Roswell That Ends Well` |
-| `{series_title}` | Grab, Import, Available | Series title without season or episode suffix | `Futurama`, `Severance` |
-| `{season}` | Grab, Import, Available | 2-digit zero-padded season number | `03` |
-| `{season_number}` | Grab, Import, Available | Raw unpadded season number integer | `3` |
+| `{series_title}` | Grab, Import, Manual, Available | Series title without season or episode suffix | `Futurama`, `Severance` |
+| `{season}` | Grab, Import, Manual, Available | 2-digit zero-padded season number | `03` |
+| `{season_number}` | Grab, Import, Manual, Available | Raw unpadded season number integer | `3` |
 | `{season_title}` | Available | Season title label | `Season 3` |
-| `{episode}` | Grab, Import, Available | 2-digit zero-padded episode number | `01` |
-| `{episode_number}` | Grab, Import, Available | Raw unpadded episode number integer | `1` |
-| `{episode_range}` | Grab, Import | Formatted episode range notation | `S02E01-E04` |
-| `{episode_title}` | Import, Available | Episode title name | `Roswell That Ends Well` |
+| `{episode}` | Grab, Import, Manual, Available | 2-digit zero-padded episode number | `01` |
+| `{episode_number}` | Grab, Import, Manual, Available | Raw unpadded episode number integer | `1` |
+| `{episode_range}` | Grab, Import, Manual | Formatted episode range notation | `S02E01-E04` |
+| `{episode_title}` | Import, Manual, Available | Episode title name | `Roswell That Ends Well` |
+| `{episode_name}` | Import, Manual, Available | Alias for episode title name | `Roswell That Ends Well` |
 | `{media_type}` | Available, Request | Media type (`season`, `episode`, `movie`, `show` in media servers) | `season`, `movie` |
 | `{quality}` | Grab, Import, Manual, Request | Quality profile or resolution label | `WEBDL-1080p`, `Remux-2160p` |
 | `{release_group}` | Grab, Import, Manual | Torrent/Usenet scene or release group | `FLUX`, `NTb`, `FraMeSToR` |
@@ -208,7 +209,7 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | `---` | `---` | `---` | `---` |
 | **Download & Client Metrics** | | | |
 | `{client}` / `{download_client}` | Grab, Progress, Stalled, Manual | Download client identifier | `qBittorrent` |
-| `{download_id}` | Grab, Progress, Complete, Stalled | Torrent hash or download identifier | `a1b2c3d4...` |
+| `{download_id}` | Grab, Progress, Complete, Stalled, Manual | Torrent hash or download identifier | `a1b2c3d4...` |
 | `{downloaded_size}` | Progress, Stalled | Downloaded byte count formatted | `1.85 GB` |
 | `{download_time}` / `{duration}` | Progress, Complete | Elapsed time or estimated completion time | `4m 12s` |
 | `{eta}` | Progress | Estimated time remaining | `1m 45s` |
@@ -216,7 +217,7 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | `{peers_info}` | Progress | Connected seeds and peers formatted | `45 (120) seeds • 12 peers` |
 | `{progress_bar}` | Progress, Stalled | Visual Unicode progress bar | `[███████░░░]` |
 | `{progress_percent}` | Progress, Stalled | Progress percentage formatted to 2 decimals | `74.50` |
-| `{size}` / `{total_size}` | Grab, Progress, Complete, Import | Total file/torrent size formatted | `4.25 GB` |
+| `{size}` / `{total_size}` | Grab, Progress, Complete, Import, Manual | Total file/torrent size formatted | `4.25 GB` |
 | `{speed}` | Progress | Transfer speed formatted | `25.4 MB/s` |
 | `{state}` | Progress | Current status label | `Downloading`, `Stalled` |
 | `{webui_url}` | Grab, Progress, Complete, Stalled | Public WebUI link for download client | `http://qbittorrent.lan:8080` |

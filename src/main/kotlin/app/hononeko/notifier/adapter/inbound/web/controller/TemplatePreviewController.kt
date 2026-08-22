@@ -108,6 +108,11 @@ class TemplatePreviewController {
         private val IMPORT_TAGS =
             BASE_TAGS +
                 listOf(
+                    "season_number",
+                    "episode",
+                    "episode_number",
+                    "episode_title",
+                    "episode_name",
                     "year",
                     "quality",
                     "specs",
@@ -156,7 +161,20 @@ class TemplatePreviewController {
             )
         private val MANUAL_TAGS =
             TORRENT_TAGS +
-                listOf("reason", "release_title", "size", "total_size", "download_client", "client", "web_url")
+                listOf(
+                    "season_number",
+                    "episode",
+                    "episode_number",
+                    "episode_title",
+                    "episode_name",
+                    "reason",
+                    "release_title",
+                    "size",
+                    "total_size",
+                    "download_client",
+                    "client",
+                    "web_url"
+                )
         private val REQUEST_TAGS =
             listOf(
                 "title",

@@ -563,12 +563,21 @@ object CardFormatterService {
                 resolution = payload.quality ?: payload.resolution
             )
 
+        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val firstEpisode = payload.episodeNumbers.firstOrNull()
+        val formattedEpisode = firstEpisode?.let { String.format(Locale.US, "%02d", it) }
+
         val context =
             mutableMapOf<String, Any?>(
                 "title" to fullTitle,
-                "series_title" to (payload.seriesOrMovieTitle ?: payload.title),
+                "series_title" to payload.seriesOrMovieTitle.ifBlank { payload.title },
                 "year" to payload.year?.toString(),
-                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "season" to formattedSeason,
+                "season_number" to payload.seasonNumber?.toString(),
+                "episode" to formattedEpisode,
+                "episode_number" to firstEpisode?.toString(),
+                "episode_title" to payload.episodeTitle,
+                "episode_name" to payload.episodeTitle,
                 "episode_range" to epRange,
                 "quality" to payload.quality,
                 "specs" to specsSummary,
@@ -1029,6 +1038,16 @@ object CardFormatterService {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
         val fullTitle =
             when {
+                epRange != null && !payload.episodeTitle.isNullOrBlank() && payload.episodeNumbers.size == 1 -> {
+                    val epTitle = payload.episodeTitle.trim()
+                    if (!epTitle.equals(epRange, ignoreCase = true) &&
+                        !epTitle.startsWith("Episode ", ignoreCase = true)
+                    ) {
+                        "${payload.seriesOrMovieTitle} - $epRange - $epTitle"
+                    } else {
+                        "${payload.seriesOrMovieTitle} - $epRange"
+                    }
+                }
                 epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
                 else -> payload.title
             }
@@ -1037,20 +1056,31 @@ object CardFormatterService {
         val defaultTitle = "✋ Manual Import Required: $fullTitle"
         val defaultSubtitle = "$instanceLabel • Manual Intervention"
 
+        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val firstEpisode = payload.episodeNumbers.firstOrNull()
+        val formattedEpisode = firstEpisode?.let { String.format(Locale.US, "%02d", it) }
+
         val context =
             mutableMapOf<String, Any?>(
                 "title" to fullTitle,
                 "series_title" to payload.seriesOrMovieTitle,
-                "season" to payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) },
+                "season" to formattedSeason,
+                "season_number" to payload.seasonNumber?.toString(),
+                "episode" to formattedEpisode,
+                "episode_number" to firstEpisode?.toString(),
+                "episode_title" to payload.episodeTitle,
+                "episode_name" to payload.episodeTitle,
                 "episode_range" to epRange,
                 "reason" to payload.reason,
                 "release_title" to payload.releaseTitle,
+                "release_name" to payload.releaseTitle,
                 "quality" to payload.quality,
                 "size" to payload.sizeBytes?.let { formatBytes(it) },
                 "total_size" to payload.sizeBytes?.let { formatBytes(it) },
                 "indexer" to payload.indexer,
                 "download_client" to payload.downloadClient,
                 "client" to payload.downloadClient,
+                "download_id" to payload.downloadId,
                 "web_url" to payload.webUrl,
                 "poster_url" to payload.posterUrl,
                 "instance_name" to instanceLabel,

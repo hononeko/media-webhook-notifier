@@ -204,7 +204,7 @@ class JellyfinAndServarrWebhookProviderTest {
                 {
                     "eventType": "ManualInteractionRequired",
                     "series": { "title": "Severance" },
-                    "episodes": [{ "episodeNumber": 1, "seasonNumber": 2 }],
+                    "episodes": [{ "episodeNumber": 1, "seasonNumber": 2, "title": "Hello World" }],
                     "release": {
                         "releaseTitle": "Severance.S02E01.1080p",
                         "size": 2000000000,
@@ -228,6 +228,7 @@ class JellyfinAndServarrWebhookProviderTest {
             assertEquals("Severance", manual.seriesOrMovieTitle)
             assertEquals(2, manual.seasonNumber)
             assertEquals(listOf(1), manual.episodeNumbers)
+            assertEquals("Hello World", manual.episodeTitle)
             assertEquals("Unknown series folder", manual.reason)
             assertEquals("qBittorrent", manual.downloadClient)
         }

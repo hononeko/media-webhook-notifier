@@ -167,6 +167,9 @@ class DomainModelTest {
                 eventType = EventType.MANUAL_INTERACTION,
                 title = "Dune 2",
                 seriesOrMovieTitle = "Dune: Part Two",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1),
+                episodeTitle = "Episode One",
                 releaseTitle = "Dune.2.2024.UHD",
                 reason = "Sample file detected",
                 instanceName = "Radarr-4K"
@@ -176,6 +179,9 @@ class DomainModelTest {
         assertEquals(EventType.MANUAL_INTERACTION, manual.eventType)
         assertEquals("Dune 2", manual.title)
         assertEquals("Dune: Part Two", manual.seriesOrMovieTitle)
+        assertEquals(2, manual.seasonNumber)
+        assertEquals(listOf(1), manual.episodeNumbers)
+        assertEquals("Episode One", manual.episodeTitle)
         assertEquals("Sample file detected", manual.reason)
         assertEquals("Radarr-4K", manual.instanceName)
     }

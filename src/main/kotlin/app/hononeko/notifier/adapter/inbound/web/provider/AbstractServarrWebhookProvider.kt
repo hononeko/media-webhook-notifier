@@ -142,6 +142,11 @@ abstract class AbstractServarrWebhookProvider(
             seriesOrMovieTitle = seriesOrMovieTitle,
             seasonNumber = dto.episodes.firstOrNull()?.seasonNumber,
             episodeNumbers = dto.episodes.mapNotNull { it.episodeNumber },
+            episodeTitle =
+                dto.episodes
+                    .firstOrNull()
+                    ?.title
+                    ?.ifBlank { null },
             videoCodec = videoCodec,
             audioCodec = audioCodec,
             resolution = resolution,
@@ -238,6 +243,11 @@ abstract class AbstractServarrWebhookProvider(
             seriesOrMovieTitle = seriesOrMovieTitle,
             seasonNumber = dto.episodes.firstOrNull()?.seasonNumber,
             episodeNumbers = dto.episodes.mapNotNull { it.episodeNumber },
+            episodeTitle =
+                dto.episodes
+                    .firstOrNull()
+                    ?.title
+                    ?.ifBlank { null },
             releaseTitle = dto.release?.releaseTitle ?: dto.downloadId,
             quality = dto.release?.quality ?: dto.release?.qualityVersion?.toString(),
             sizeBytes = dto.release?.size,

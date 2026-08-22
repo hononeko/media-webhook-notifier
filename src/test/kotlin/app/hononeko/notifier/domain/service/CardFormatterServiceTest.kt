@@ -551,6 +551,82 @@ class CardFormatterServiceTest {
         assertEquals("2160p", card.fields.first { it.name == "Quality" }.value)
         assertEquals("qBittorrent", card.fields.first { it.name == "Client" }.value)
         assertEquals("📁 Open in Radarr", card.actions.first().label)
+
+        // TV series single episode with season number and episode name
+        val sonarrManualSingleEp =
+            MediaPayload.ServarrManualInteraction(
+                source = AppSource.SONARR,
+                title = "Severance - S02E01",
+                seriesOrMovieTitle = "Severance",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1),
+                episodeTitle = "Hello World",
+                releaseTitle = "Severance.S02E01.1080p",
+                reason = "Sample file detected",
+                instanceName = "Sonarr-TV"
+            )
+        val sonarrCard = CardFormatterService.buildManualInteractionCard(sonarrManualSingleEp)
+        assertEquals("✋ Manual Import Required: Severance - S02E01 - Hello World", sonarrCard.title)
+        assertEquals("Sonarr-TV • Manual Intervention", sonarrCard.subtitle)
+
+        // TV series single episode with code title (no duplicate code in output)
+        val sonarrManualCodeTitle =
+            sonarrManualSingleEp.copy(
+                episodeTitle = "S02E01"
+            )
+        val sonarrCodeCard = CardFormatterService.buildManualInteractionCard(sonarrManualCodeTitle)
+        assertEquals("✋ Manual Import Required: Severance - S02E01", sonarrCodeCard.title)
+
+        // TV series single episode with generic 'Episode 1' title
+        val sonarrManualGenericTitle =
+            sonarrManualSingleEp.copy(
+                episodeTitle = "Episode 1"
+            )
+        val sonarrGenericCard = CardFormatterService.buildManualInteractionCard(sonarrManualGenericTitle)
+        assertEquals("✋ Manual Import Required: Severance - S02E01", sonarrGenericCard.title)
+
+        // TV series multi-episode manual interaction
+        val sonarrManualMultiEp =
+            MediaPayload.ServarrManualInteraction(
+                source = AppSource.SONARR,
+                title = "Severance - S02E01-E03",
+                seriesOrMovieTitle = "Severance",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1, 2, 3),
+                releaseTitle = "Severance.S02E01-E03.1080p",
+                reason = "Multiple episodes in release",
+                instanceName = "Sonarr-TV"
+            )
+        val sonarrMultiCard = CardFormatterService.buildManualInteractionCard(sonarrManualMultiEp)
+        assertEquals("✋ Manual Import Required: Severance (S02E01-E03)", sonarrMultiCard.title)
+
+        // TV series template resolution with season and episode tags
+        val manualTemplateEngine =
+            TemplateEngine(
+                TemplateConfig(
+                    events =
+                        mapOf(
+                            "manual_interaction" to
+                                EventTemplate(
+                                    title = "✋ Fix: {series_title} S{season}E{episode} - {episode_title}",
+                                    body =
+                                        "▪ <b>Reason:</b> {reason}\n" +
+                                            "▪ <b>Season:</b> {season_number}\n" +
+                                            "▪ <b>Ep:</b> {episode_number}"
+                                )
+                        )
+                )
+            )
+        val templateCard =
+            CardFormatterService.buildManualInteractionCard(
+                sonarrManualSingleEp,
+                engine = manualTemplateEngine
+            )
+        assertEquals("✋ Fix: Severance S02E01 - Hello World", templateCard.title)
+        assertEquals(
+            "▪ <b>Reason:</b> Sample file detected\n▪ <b>Season:</b> 2\n▪ <b>Ep:</b> 1",
+            templateCard.customBody
+        )
     }
 
     @Test
