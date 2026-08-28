@@ -26,6 +26,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -46,6 +48,9 @@ class TelegramPublisherAdapter(
     // Tracks if a message was posted as photo or text so edits use the matching endpoint
     private val photoMessageRegistry = ConcurrentHashMap<String, Boolean>()
 
+    // Serializes outbound deliveries to avoid socket contention, rate-limiting drops, and out-of-order race conditions
+    private val sendMutex = Mutex()
+
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     private val jsonConfig =
         Json {
@@ -60,18 +65,18 @@ class TelegramPublisherAdapter(
             HttpClient(engine) {
                 install(ContentNegotiation) { json(jsonConfig) }
                 install(HttpTimeout) {
-                    requestTimeoutMillis = 5000
+                    requestTimeoutMillis = 15000
                     connectTimeoutMillis = 5000
-                    socketTimeoutMillis = 5000
+                    socketTimeoutMillis = 10000
                 }
             }
         } else {
             HttpClient(CIO) {
                 install(ContentNegotiation) { json(jsonConfig) }
                 install(HttpTimeout) {
-                    requestTimeoutMillis = 5000
+                    requestTimeoutMillis = 15000
                     connectTimeoutMillis = 5000
-                    socketTimeoutMillis = 5000
+                    socketTimeoutMillis = 10000
                 }
             }
         }
@@ -173,37 +178,38 @@ class TelegramPublisherAdapter(
         initialCard: NotificationCard
     ): Either<DomainError.NotificationError, NotificationHandle> = deliverCard(initialCard)
 
-    private suspend fun deliverCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> {
-        val markup = buildKeyboard(card.actions)
-        val textContent = buildCardHtml(card)
+    private suspend fun deliverCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> =
+        sendMutex.withLock {
+            val markup = buildKeyboard(card.actions)
+            val textContent = buildCardHtml(card)
 
-        if (config.sendPhotos) {
-            val caption = truncateToLimit(textContent, 1024)
-            if (card.artworkBytes != null && card.artworkBytes.isNotEmpty()) {
-                val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup)
-                if (photoResult is Either.Right) {
-                    photoMessageRegistry[photoResult.value.messageReferenceId] = true
-                    return photoResult
+            if (config.sendPhotos) {
+                val caption = truncateToLimit(textContent, 1024)
+                if (card.artworkBytes != null && card.artworkBytes.isNotEmpty()) {
+                    val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup)
+                    if (photoResult is Either.Right) {
+                        photoMessageRegistry[photoResult.value.messageReferenceId] = true
+                        return@withLock photoResult
+                    }
+                    logger.warn("Telegram photo binary upload failed, falling back to HTML text message")
+                } else if (!card.artworkUrl.isNullOrBlank() &&
+                    (card.artworkUrl.startsWith("http://") || card.artworkUrl.startsWith("https://"))
+                ) {
+                    val photoResult = sendPhoto(card.artworkUrl, caption, markup)
+                    if (photoResult is Either.Right) {
+                        photoMessageRegistry[photoResult.value.messageReferenceId] = true
+                        return@withLock photoResult
+                    }
+                    logger.warn("Telegram photo send failed, falling back to HTML text message")
                 }
-                logger.warn("Telegram photo binary upload failed, falling back to HTML text message")
-            } else if (!card.artworkUrl.isNullOrBlank() &&
-                (card.artworkUrl.startsWith("http://") || card.artworkUrl.startsWith("https://"))
-            ) {
-                val photoResult = sendPhoto(card.artworkUrl, caption, markup)
-                if (photoResult is Either.Right) {
-                    photoMessageRegistry[photoResult.value.messageReferenceId] = true
-                    return photoResult
-                }
-                logger.warn("Telegram photo send failed, falling back to HTML text message")
             }
-        }
 
-        val textResult = sendMessage(textContent, markup)
-        if (textResult is Either.Right) {
-            photoMessageRegistry[textResult.value.messageReferenceId] = false
+            val textResult = sendMessage(textContent, markup)
+            if (textResult is Either.Right) {
+                photoMessageRegistry[textResult.value.messageReferenceId] = false
+            }
+            textResult
         }
-        return textResult
-    }
 
     override suspend fun updateProgress(
         handle: NotificationHandle,

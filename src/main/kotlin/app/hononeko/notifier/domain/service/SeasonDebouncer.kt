@@ -16,11 +16,16 @@ class SeasonDebouncer(
     private val debounceMillis: Long = 5000L,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val onDebouncedGrab: (suspend (MediaPayload.ArrGrab) -> Unit)? = null,
-    private val onDebouncedDownload: (suspend (MediaPayload.ArrDownload) -> Unit)? = null
+    private val onDebouncedDownload: (suspend (MediaPayload.ArrDownload) -> Unit)? = null,
+    private val onDebouncedAvailable: (suspend (MediaPayload) -> Unit)? = null
 ) {
     private val grabBuffers = ConcurrentHashMap<String, GrabDebounceBuffer>()
     private val downloadBuffers = ConcurrentHashMap<String, DownloadDebounceBuffer>()
+    private val availableBuffers = ConcurrentHashMap<String, AvailableDebounceBuffer>()
     private val mutex = Mutex()
+
+    val supportsAvailable: Boolean
+        get() = onDebouncedAvailable != null
 
     private class GrabDebounceBuffer(
         var payload: MediaPayload.ArrGrab,
@@ -29,6 +34,11 @@ class SeasonDebouncer(
 
     private class DownloadDebounceBuffer(
         var payload: MediaPayload.ArrDownload,
+        var timerJob: Job
+    )
+
+    private class AvailableDebounceBuffer(
+        var payload: MediaPayload,
         var timerJob: Job
     )
 
@@ -129,10 +139,82 @@ class SeasonDebouncer(
         }
     }
 
+    suspend fun submit(plex: MediaPayload.PlexLibraryNew) {
+        if (onDebouncedAvailable == null) return
+        val key = computePlexKey(plex)
+        mutex.withLock {
+            val existing = availableBuffers[key]
+            if (existing != null && existing.payload is MediaPayload.PlexLibraryNew) {
+                val prev = existing.payload as MediaPayload.PlexLibraryNew
+                existing.timerJob.cancel()
+
+                val combinedEpisodes = (prev.episodeNumbers + plex.episodeNumbers).distinct().sorted()
+                val merged =
+                    prev.copy(
+                        episodeNumbers = combinedEpisodes,
+                        artworkBytes = prev.artworkBytes ?: plex.artworkBytes,
+                        posterUrl = prev.posterUrl ?: plex.posterUrl,
+                        parentPosterUrl = prev.parentPosterUrl ?: plex.parentPosterUrl,
+                        grandparentPosterUrl = prev.grandparentPosterUrl ?: plex.grandparentPosterUrl,
+                        summary = prev.summary ?: plex.summary,
+                        rating = prev.rating ?: plex.rating,
+                        videoCodec = prev.videoCodec ?: plex.videoCodec,
+                        audioCodec = prev.audioCodec ?: plex.audioCodec,
+                        resolution = prev.resolution ?: plex.resolution,
+                        instanceName = prev.instanceName ?: plex.instanceName
+                    )
+                existing.payload = merged
+                existing.timerJob = launchAvailableTimer(key)
+            } else {
+                val newBuffer =
+                    AvailableDebounceBuffer(
+                        payload = plex,
+                        timerJob = launchAvailableTimer(key)
+                    )
+                availableBuffers[key] = newBuffer
+            }
+        }
+    }
+
+    suspend fun submit(jellyfin: MediaPayload.JellyfinItemAdded) {
+        if (onDebouncedAvailable == null) return
+        val key = computeJellyfinKey(jellyfin)
+        mutex.withLock {
+            val existing = availableBuffers[key]
+            if (existing != null && existing.payload is MediaPayload.JellyfinItemAdded) {
+                val prev = existing.payload as MediaPayload.JellyfinItemAdded
+                existing.timerJob.cancel()
+
+                val combinedEpisodes = (prev.episodeNumbers + jellyfin.episodeNumbers).distinct().sorted()
+                val merged =
+                    prev.copy(
+                        episodeNumbers = combinedEpisodes,
+                        posterUrl = prev.posterUrl ?: jellyfin.posterUrl,
+                        overview = prev.overview ?: jellyfin.overview,
+                        videoCodec = prev.videoCodec ?: jellyfin.videoCodec,
+                        audioCodec = prev.audioCodec ?: jellyfin.audioCodec,
+                        resolution = prev.resolution ?: jellyfin.resolution,
+                        instanceName = prev.instanceName ?: jellyfin.instanceName
+                    )
+                existing.payload = merged
+                existing.timerJob = launchAvailableTimer(key)
+            } else {
+                val newBuffer =
+                    AvailableDebounceBuffer(
+                        payload = jellyfin,
+                        timerJob = launchAvailableTimer(key)
+                    )
+                availableBuffers[key] = newBuffer
+            }
+        }
+    }
+
     suspend fun submit(payload: MediaPayload) {
         when (payload) {
             is MediaPayload.ArrGrab -> submit(payload)
             is MediaPayload.ArrDownload -> submit(payload)
+            is MediaPayload.PlexLibraryNew -> submit(payload)
+            is MediaPayload.JellyfinItemAdded -> submit(payload)
             else -> Unit
         }
     }
@@ -165,6 +247,41 @@ class SeasonDebouncer(
         }
     }
 
+    private fun computePlexKey(plex: MediaPayload.PlexLibraryNew): String {
+        val instance = (plex.instanceName ?: "").trim().lowercase()
+        val isSeries =
+            plex.seasonNumber != null ||
+                !plex.parentTitle.isNullOrBlank() ||
+                !plex.grandParentTitle.isNullOrBlank() ||
+                plex.mediaType?.lowercase() == "episode" ||
+                plex.mediaType?.lowercase() == "season"
+        return if (isSeries) {
+            val series = (plex.grandParentTitle ?: plex.parentTitle ?: plex.title).trim().lowercase()
+            "plex:$instance:show:$series:s${plex.seasonNumber ?: 0}"
+        } else {
+            val title = plex.title.trim().lowercase()
+            val year = plex.year ?: 0
+            "plex:$instance:movie:$title:$year"
+        }
+    }
+
+    private fun computeJellyfinKey(jellyfin: MediaPayload.JellyfinItemAdded): String {
+        val instance = (jellyfin.instanceName ?: "").trim().lowercase()
+        val isSeries =
+            jellyfin.seasonNumber != null ||
+                !jellyfin.seriesName.isNullOrBlank() ||
+                jellyfin.mediaType?.lowercase() == "episode" ||
+                jellyfin.mediaType?.lowercase() == "season"
+        return if (isSeries) {
+            val series = (jellyfin.seriesName ?: jellyfin.title).trim().lowercase()
+            "jellyfin:$instance:show:$series:s${jellyfin.seasonNumber ?: 0}"
+        } else {
+            val title = jellyfin.title.trim().lowercase()
+            val year = jellyfin.year ?: 0
+            "jellyfin:$instance:movie:$title:$year"
+        }
+    }
+
     private fun launchGrabTimer(key: String): Job =
         scope.launch {
             delay(debounceMillis)
@@ -175,6 +292,12 @@ class SeasonDebouncer(
         scope.launch {
             delay(debounceMillis)
             flushDownload(key)
+        }
+
+    private fun launchAvailableTimer(key: String): Job =
+        scope.launch {
+            delay(debounceMillis)
+            flushAvailable(key)
         }
 
     suspend fun flushGrab(key: String) {
@@ -225,20 +348,44 @@ class SeasonDebouncer(
         }
     }
 
+    suspend fun flushAvailable(key: String) {
+        val normalized = key.trim().lowercase()
+        val buffer =
+            mutex.withLock {
+                availableBuffers.remove(normalized)
+                    ?: availableBuffers.entries
+                        .firstOrNull {
+                            it.key.contains(normalized)
+                        }?.let {
+                            availableBuffers.remove(it.key)
+                        }
+            }
+        buffer?.let {
+            val currentJob = coroutineContext[Job]
+            if (it.timerJob != currentJob) {
+                it.timerJob.cancel()
+            }
+            onDebouncedAvailable?.invoke(it.payload)
+        }
+    }
+
     suspend fun flush(key: String) {
         val normalized = key.trim().lowercase()
         flushGrab(normalized)
         flushDownload(normalized)
+        flushAvailable(normalized)
     }
 
     suspend fun flushAll() {
-        val (allGrabs, allDownloads) =
+        val (allGrabs, allDownloads, allAvailable) =
             mutex.withLock {
                 val grabs = ArrayList(grabBuffers.values)
                 val downloads = ArrayList(downloadBuffers.values)
+                val available = ArrayList(availableBuffers.values)
                 grabBuffers.clear()
                 downloadBuffers.clear()
-                grabs to downloads
+                availableBuffers.clear()
+                Triple(grabs, downloads, available)
             }
         val currentJob = coroutineContext[Job]
         for (buffer in allGrabs) {
@@ -253,11 +400,19 @@ class SeasonDebouncer(
             }
             onDebouncedDownload?.invoke(buffer.payload)
         }
+        for (buffer in allAvailable) {
+            if (buffer.timerJob != currentJob) {
+                buffer.timerJob.cancel()
+            }
+            onDebouncedAvailable?.invoke(buffer.payload)
+        }
     }
 
-    fun activeBufferCount(): Int = grabBuffers.size + downloadBuffers.size
+    fun activeBufferCount(): Int = grabBuffers.size + downloadBuffers.size + availableBuffers.size
 
     fun activeGrabBufferCount(): Int = grabBuffers.size
 
     fun activeDownloadBufferCount(): Int = downloadBuffers.size
+
+    fun activeAvailableBufferCount(): Int = availableBuffers.size
 }

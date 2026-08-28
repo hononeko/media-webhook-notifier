@@ -473,4 +473,88 @@ class SeasonDebouncerTest {
             assertEquals(2, downloads.size)
             assertEquals(0, debouncer.activeBufferCount())
         }
+
+    @Test
+    fun `should batch rapid multi-episode Plex webhooks for same season`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val available = Collections.synchronizedList(mutableListOf<MediaPayload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 2000L,
+                    scope = testScope,
+                    onDebouncedAvailable = { available.add(it) }
+                )
+
+            // Simulate Ghost in the Shell S01E01 to S01E05 arriving rapidly from Plex
+            for (i in 1..5) {
+                val plexEp =
+                    MediaPayload.PlexLibraryNew(
+                        title = "Episode $i",
+                        grandParentTitle = "Ghost in the Shell",
+                        seasonNumber = 1,
+                        episodeNumber = i,
+                        ratingKey = "plex_ep_$i",
+                        instanceName = "Kerrlab Plex"
+                    )
+                debouncer.submit(plexEp)
+                testScope.advanceTimeBy(200L)
+            }
+
+            assertEquals(0, available.size)
+            assertEquals(1, debouncer.activeBufferCount())
+            assertEquals(1, debouncer.activeAvailableBufferCount())
+
+            testScope.advanceTimeBy(2100L)
+
+            assertEquals(1, available.size)
+            val consolidated = available.first() as MediaPayload.PlexLibraryNew
+            assertEquals("Ghost in the Shell", consolidated.grandParentTitle)
+            assertEquals(1, consolidated.seasonNumber)
+            assertEquals(listOf(1, 2, 3, 4, 5), consolidated.episodeNumbers)
+            assertEquals(0, debouncer.activeBufferCount())
+        }
+
+    @Test
+    fun `should batch rapid multi-episode Jellyfin webhooks for same season`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val available = Collections.synchronizedList(mutableListOf<MediaPayload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 2000L,
+                    scope = testScope,
+                    onDebouncedAvailable = { available.add(it) }
+                )
+
+            for (i in 1..4) {
+                val jellyfinEp =
+                    MediaPayload.JellyfinItemAdded(
+                        itemId = "jf_$i",
+                        title = "Episode $i",
+                        seriesName = "Severance",
+                        seasonNumber = 2,
+                        episodeNumber = i,
+                        instanceName = "Jellyfin"
+                    )
+                debouncer.submit(jellyfinEp)
+                testScope.advanceTimeBy(150L)
+            }
+
+            assertEquals(0, available.size)
+            assertEquals(1, debouncer.activeBufferCount())
+
+            testScope.advanceTimeBy(2100L)
+
+            assertEquals(1, available.size)
+            val consolidated = available.first() as MediaPayload.JellyfinItemAdded
+            assertEquals("Severance", consolidated.seriesName)
+            assertEquals(2, consolidated.seasonNumber)
+            assertEquals(listOf(1, 2, 3, 4), consolidated.episodeNumbers)
+            assertEquals(0, debouncer.activeBufferCount())
+        }
 }
