@@ -255,4 +255,50 @@ class IngestWebhookServiceTest {
             assertEquals(1, debouncedGrabs.size)
             assertEquals(1, debouncedDownloads.size)
         }
+
+    @Test
+    fun `should route Plex and Jellyfin to SeasonDebouncer when supportsAvailable is true`() =
+        runTest {
+            val debouncedAvailable = Collections.synchronizedList(mutableListOf<MediaPayload>())
+            val directAvailable = Collections.synchronizedList(mutableListOf<MediaPayload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 100L,
+                    scope = this,
+                    onDebouncedAvailable = { debouncedAvailable.add(it) }
+                )
+
+            val service =
+                IngestWebhookService(
+                    seasonDebouncer = debouncer,
+                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    announceMediaImportedUseCase = { Either.Right(Unit) },
+                    announceMediaAvailableUseCase = { payload ->
+                        directAvailable.add(payload)
+                        Either.Right(Unit)
+                    }
+                )
+
+            val plex = MediaPayload.PlexLibraryNew(title = "Ghost in the Shell", seasonNumber = 1, episodeNumber = 1)
+            val jellyfin =
+                MediaPayload.JellyfinItemAdded(
+                    itemId = "jf1",
+                    title = "Severance",
+                    seasonNumber = 1,
+                    episodeNumber = 1
+                )
+
+            service.execute(plex)
+            service.execute(jellyfin)
+
+            assertEquals(2, debouncer.activeBufferCount())
+            assertEquals(0, directAvailable.size)
+            assertEquals(0, debouncedAvailable.size)
+
+            debouncer.flushAll()
+
+            assertEquals(2, debouncedAvailable.size)
+            assertEquals(0, directAvailable.size)
+        }
 }

@@ -1,9 +1,11 @@
 package app.hononeko.notifier.domain.service
 
+import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.MediaPayload
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MediaAvailableDeduplicatorTest {
@@ -84,6 +86,55 @@ class MediaAvailableDeduplicatorTest {
     }
 
     @Test
+    fun `should deduplicate Jellyfin items by title and season when itemId is blank`() {
+        val deduplicator = MediaAvailableDeduplicator(ttlMillis = 10_000L)
+
+        val jellyfinItem1 =
+            MediaPayload.JellyfinItemAdded(
+                itemId = "",
+                title = "Episode 1",
+                seriesName = "Severance",
+                seasonNumber = 1,
+                episodeNumber = 1,
+                year = 2022,
+                instanceName = "Home"
+            )
+
+        val jellyfinItem2 =
+            MediaPayload.JellyfinItemAdded(
+                itemId = "",
+                title = "Episode 1",
+                seriesName = "Severance",
+                seasonNumber = 1,
+                episodeNumber = 1,
+                year = 2022,
+                instanceName = "Home"
+            )
+
+        assertTrue(deduplicator.tryAcquire(jellyfinItem1))
+        assertTrue(deduplicator.isDuplicate(jellyfinItem2))
+        assertFalse(deduplicator.tryAcquire(jellyfinItem2))
+    }
+
+    @Test
+    fun `should return null key and allow acquisition for non-media available payloads`() {
+        val deduplicator = MediaAvailableDeduplicator(ttlMillis = 10_000L)
+
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "hash123",
+                title = "Severance",
+                seriesOrMovieTitle = "Severance"
+            )
+
+        assertNull(deduplicator.computeKey(grab))
+        assertFalse(deduplicator.isDuplicate(grab))
+        assertTrue(deduplicator.tryAcquire(grab))
+        deduplicator.release(grab)
+    }
+
+    @Test
     fun `should allow re-acquisition after release on failure`() {
         val deduplicator = MediaAvailableDeduplicator(ttlMillis = 10_000L)
 
@@ -98,6 +149,25 @@ class MediaAvailableDeduplicatorTest {
         assertFalse(deduplicator.tryAcquire(item))
 
         deduplicator.release(item)
+        assertTrue(deduplicator.tryAcquire(item))
+    }
+
+    @Test
+    fun `should clear all cache entries`() {
+        val deduplicator = MediaAvailableDeduplicator(ttlMillis = 10_000L)
+
+        val item =
+            MediaPayload.PlexLibraryNew(
+                title = "Interstellar",
+                year = 2014,
+                ratingKey = "555"
+            )
+
+        assertTrue(deduplicator.tryAcquire(item))
+        assertEquals(1, deduplicator.size())
+
+        deduplicator.clear()
+        assertEquals(0, deduplicator.size())
         assertTrue(deduplicator.tryAcquire(item))
     }
 
@@ -125,19 +195,41 @@ class MediaAvailableDeduplicatorTest {
     }
 
     @Test
-    fun `should prune oldest items when capacity exceeded`() {
-        val deduplicator = MediaAvailableDeduplicator(ttlMillis = 100_000L, maxCapacity = 3)
+    fun `should prune expired and oldest items when capacity exceeded`() {
+        val deduplicator = MediaAvailableDeduplicator(ttlMillis = 5000L, maxCapacity = 3)
 
-        for (i in 1..4) {
+        // Add 3 items with old timestamps
+        for (i in 1..3) {
             val item =
                 MediaPayload.PlexLibraryNew(
                     title = "Movie $i",
                     year = 2000 + i,
                     ratingKey = "key-$i"
                 )
-            deduplicator.tryAcquire(item, now = 1000L * i)
+            deduplicator.tryAcquire(item, now = 1000L)
         }
+        assertEquals(3, deduplicator.size())
 
+        // Add 4th item at now = 7000L (expired items pruned first)
+        val item4 =
+            MediaPayload.PlexLibraryNew(
+                title = "Movie 4",
+                year = 2004,
+                ratingKey = "key-4"
+            )
+        assertTrue(deduplicator.tryAcquire(item4, now = 7000L))
+        assertTrue(deduplicator.size() <= 3)
+
+        // Add more items within TTL to test LRU pruning of unexpired items
+        for (i in 5..8) {
+            val item =
+                MediaPayload.PlexLibraryNew(
+                    title = "Movie $i",
+                    year = 2000 + i,
+                    ratingKey = "key-$i"
+                )
+            deduplicator.tryAcquire(item, now = 7000L + i * 100L)
+        }
         assertTrue(deduplicator.size() <= 3)
     }
 

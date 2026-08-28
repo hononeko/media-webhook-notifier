@@ -557,4 +557,178 @@ class SeasonDebouncerTest {
             assertEquals(listOf(1, 2, 3, 4), consolidated.episodeNumbers)
             assertEquals(0, debouncer.activeBufferCount())
         }
+
+    @Test
+    fun `should merge all metadata fields when debouncing PlexLibraryNew`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val available = Collections.synchronizedList(mutableListOf<MediaPayload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 2000L,
+                    scope = testScope,
+                    onDebouncedAvailable = { available.add(it) }
+                )
+
+            val plex1 =
+                MediaPayload.PlexLibraryNew(
+                    title = "Episode 1",
+                    grandParentTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumber = 1,
+                    ratingKey = "plex_1",
+                    summary = "First episode",
+                    rating = 8.0,
+                    instanceName = "Kerrlab Plex"
+                )
+
+            val plex2 =
+                MediaPayload.PlexLibraryNew(
+                    title = "Episode 2",
+                    grandParentTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumber = 2,
+                    ratingKey = "plex_2",
+                    artworkBytes = byteArrayOf(1, 2, 3),
+                    posterUrl = "https://example.com/poster.jpg",
+                    parentPosterUrl = "https://example.com/parent.jpg",
+                    grandparentPosterUrl = "https://example.com/grand.jpg",
+                    videoCodec = "HEVC",
+                    audioCodec = "AAC",
+                    resolution = "1080p",
+                    instanceName = "Kerrlab Plex"
+                )
+
+            debouncer.submit(plex1)
+            debouncer.submit(plex2)
+
+            testScope.advanceTimeBy(2100L)
+
+            assertEquals(1, available.size)
+            val merged = available.first() as MediaPayload.PlexLibraryNew
+            assertEquals("Futurama", merged.grandParentTitle)
+            assertEquals(listOf(1, 2), merged.episodeNumbers)
+            assertEquals("https://example.com/poster.jpg", merged.posterUrl)
+            assertEquals("https://example.com/parent.jpg", merged.parentPosterUrl)
+            assertEquals("https://example.com/grand.jpg", merged.grandparentPosterUrl)
+            assertEquals("HEVC", merged.videoCodec)
+            assertEquals("AAC", merged.audioCodec)
+            assertEquals("1080p", merged.resolution)
+            kotlin.test.assertNotNull(merged.artworkBytes)
+        }
+
+    @Test
+    fun `should merge all metadata fields when debouncing JellyfinItemAdded`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val available = Collections.synchronizedList(mutableListOf<MediaPayload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 2000L,
+                    scope = testScope,
+                    onDebouncedAvailable = { available.add(it) }
+                )
+
+            val jf1 =
+                MediaPayload.JellyfinItemAdded(
+                    itemId = "jf1",
+                    title = "Episode 1",
+                    seriesName = "Severance",
+                    seasonNumber = 1,
+                    episodeNumber = 1,
+                    instanceName = "Jellyfin Server"
+                )
+
+            val jf2 =
+                MediaPayload.JellyfinItemAdded(
+                    itemId = "jf2",
+                    title = "Episode 2",
+                    seriesName = "Severance",
+                    seasonNumber = 1,
+                    episodeNumber = 2,
+                    posterUrl = "https://example.com/jf_poster.jpg",
+                    overview = "Merged overview",
+                    videoCodec = "x265",
+                    audioCodec = "EAC3",
+                    resolution = "4k",
+                    instanceName = "Jellyfin Server"
+                )
+
+            debouncer.submit(jf1)
+            debouncer.submit(jf2)
+
+            testScope.advanceTimeBy(2100L)
+
+            assertEquals(1, available.size)
+            val merged = available.first() as MediaPayload.JellyfinItemAdded
+            assertEquals("Severance", merged.seriesName)
+            assertEquals(listOf(1, 2), merged.episodeNumbers)
+            assertEquals("https://example.com/jf_poster.jpg", merged.posterUrl)
+            assertEquals("Merged overview", merged.overview)
+            assertEquals("x265", merged.videoCodec)
+            assertEquals("EAC3", merged.audioCodec)
+            assertEquals("4k", merged.resolution)
+            assertEquals("Jellyfin Server", merged.instanceName)
+        }
+
+    @Test
+    fun `should flush available buffers by key and ignore submit when onDebouncedAvailable is null`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            // When onDebouncedAvailable is null
+            val noCallbackDebouncer =
+                SeasonDebouncer(
+                    debounceMillis = 2000L,
+                    scope = testScope,
+                    onDebouncedAvailable = null
+                )
+
+            val movie =
+                MediaPayload.PlexLibraryNew(
+                    title = "Inception",
+                    year = 2010
+                )
+            val jfMovie =
+                MediaPayload.JellyfinItemAdded(
+                    itemId = "m1",
+                    title = "Inception",
+                    year = 2010
+                )
+
+            noCallbackDebouncer.submit(movie)
+            noCallbackDebouncer.submit(jfMovie)
+            assertEquals(0, noCallbackDebouncer.activeBufferCount())
+            kotlin.test.assertFalse(noCallbackDebouncer.supportsAvailable)
+
+            // When onDebouncedAvailable is present
+            val available = Collections.synchronizedList(mutableListOf<MediaPayload>())
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 60000L,
+                    scope = testScope,
+                    onDebouncedAvailable = { available.add(it) }
+                )
+            kotlin.test.assertTrue(debouncer.supportsAvailable)
+
+            val plexMovie =
+                MediaPayload.PlexLibraryNew(
+                    title = "Interstellar",
+                    year = 2014,
+                    instanceName = "Plex"
+                )
+
+            debouncer.submit(plexMovie)
+            assertEquals(1, debouncer.activeBufferCount())
+            assertEquals(1, debouncer.activeAvailableBufferCount())
+
+            debouncer.flush("plex:plex:movie:interstellar:2014")
+            assertEquals(1, available.size)
+            assertEquals(0, debouncer.activeBufferCount())
+        }
 }

@@ -321,6 +321,7 @@ class DomainModelTest {
         assertFalse(p1 == p1.copy(parentTitle = "Other"))
         assertFalse(p1 == p1.copy(seasonNumber = 9))
         assertFalse(p1 == p1.copy(episodeNumber = 9))
+        assertFalse(p1 == p1.copy(episodeNumbers = listOf(99)))
         assertFalse(p1 == p1.copy(year = 2025))
         assertFalse(p1 == p1.copy(summary = "Other"))
         assertFalse(p1 == p1.copy(rating = 5.0))
