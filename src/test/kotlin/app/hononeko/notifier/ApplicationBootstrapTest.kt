@@ -141,8 +141,17 @@ class ApplicationBootstrapTest {
                     episodeNumbers = listOf(1)
                 )
 
+            val plex =
+                app.hononeko.notifier.domain.model.MediaPayload.PlexLibraryNew(
+                    title = "Futurama - S01E01",
+                    grandParentTitle = "Futurama",
+                    seasonNumber = 1,
+                    episodeNumber = 1
+                )
+
             dependencies.seasonDebouncer.submit(grab)
             dependencies.seasonDebouncer.submit(download)
+            dependencies.seasonDebouncer.submit(plex)
             dependencies.seasonDebouncer.flushAll()
 
             dependencies.close()

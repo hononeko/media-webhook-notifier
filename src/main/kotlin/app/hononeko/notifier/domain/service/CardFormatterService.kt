@@ -807,11 +807,20 @@ object CardFormatterService {
         seasonNumber: Int?,
         episodeNumber: Int?,
         seasonLabel: String?,
-        year: Int?
+        year: Int?,
+        episodeNumbers: List<Int> = if (episodeNumber != null) listOf(episodeNumber) else emptyList()
     ): String =
         when {
             isSeason && seriesTitle.isNotBlank() && seasonLabel != null -> "$seriesTitle - $seasonLabel"
             isSeason && seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
+            isEpisode && seriesTitle.isNotBlank() && seasonNumber != null && episodeNumbers.size > 1 -> {
+                val epRange = formatEpisodeRange(seasonNumber, episodeNumbers)
+                if (epRange != null) {
+                    "$seriesTitle - $epRange"
+                } else {
+                    "$seriesTitle - $itemTitle"
+                }
+            }
             isEpisode &&
                 seriesTitle.isNotBlank() &&
                 seasonNumber != null &&
@@ -886,7 +895,8 @@ object CardFormatterService {
                 seasonNumber = payload.seasonNumber,
                 episodeNumber = payload.episodeNumber,
                 seasonLabel = seasonLabel,
-                year = payload.year
+                year = payload.year,
+                episodeNumbers = payload.episodeNumbers
             )
 
         val effectivePosterUrl = payload.posterUrl ?: payload.parentPosterUrl ?: payload.grandparentPosterUrl
@@ -951,7 +961,8 @@ object CardFormatterService {
                 seasonNumber = payload.seasonNumber,
                 episodeNumber = payload.episodeNumber,
                 seasonLabel = seasonLabel,
-                year = payload.year
+                year = payload.year,
+                episodeNumbers = payload.episodeNumbers
             )
 
         val resolvedMediaType = resolveMediaType(isSeason, isEpisode, type, seriesTitle, payload.year)

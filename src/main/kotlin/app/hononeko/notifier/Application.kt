@@ -133,6 +133,12 @@ fun buildDependencies(
             notificationPublisher = notificationPublisher
         )
 
+    val mediaAvailableService =
+        MediaAvailableService(
+            notificationPublisher = notificationPublisher,
+            mediaServerPort = mediaServerPort
+        )
+
     val seasonDebouncer =
         SeasonDebouncer(
             debounceMillis = config.qbittorrent.debounceSeconds * 1000L,
@@ -142,13 +148,10 @@ fun buildDependencies(
             },
             onDebouncedDownload = { download ->
                 mediaImportedService.announce(download)
+            },
+            onDebouncedAvailable = { available ->
+                mediaAvailableService.announce(available)
             }
-        )
-
-    val mediaAvailableService =
-        MediaAvailableService(
-            notificationPublisher = notificationPublisher,
-            mediaServerPort = mediaServerPort
         )
 
     val systemHealthService =

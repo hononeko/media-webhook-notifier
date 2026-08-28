@@ -94,4 +94,86 @@ class MediaAvailableServiceTest {
             val result = service.announce(payload)
             assertTrue(result.isLeft())
         }
+
+    @Test
+    fun `should skip sending notification for duplicate media available events within TTL window`() =
+        runTest {
+            val publisher = FakeNotificationPublisher()
+            val deduplicator = MediaAvailableDeduplicator(ttlMillis = 10_000L)
+            val service = MediaAvailableService(publisher, deduplicator = deduplicator)
+
+            val payload =
+                MediaPayload.PlexLibraryNew(
+                    title = "American Psycho",
+                    year = 2000,
+                    ratingKey = "12345"
+                )
+
+            val result1 = service.announce(payload)
+            val result2 = service.announce(payload)
+
+            assertTrue(result1.isRight())
+            assertTrue(result2.isRight())
+            assertEquals(1, publisher.sentCards.size)
+        }
+
+    @Test
+    fun `should release deduplication lock when notification publisher fails`() =
+        runTest {
+            var failNext = true
+            val publisher =
+                object : NotificationPublisherPort {
+                    override val providerId: String = "fake"
+                    val sentCards = mutableListOf<NotificationCard>()
+
+                    override suspend fun sendCard(
+                        card: NotificationCard
+                    ): Either<DomainError.NotificationError, NotificationHandle> =
+                        if (failNext) {
+                            failNext = false
+                            Either.Left(DomainError.NotificationError.DeliveryFailed("fake", "Network timeout"))
+                        } else {
+                            sentCards.add(card)
+                            Either.Right(NotificationHandle("fake", "chat1", "msg1"))
+                        }
+
+                    override suspend fun startLiveProgress(
+                        initialCard: NotificationCard
+                    ): Either<DomainError.NotificationError, NotificationHandle> =
+                        Either.Right(NotificationHandle("fake", "chat1", "msg1"))
+
+                    override suspend fun updateProgress(
+                        handle: NotificationHandle,
+                        update: ProgressUpdate
+                    ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
+
+                    override suspend fun completeProgress(
+                        handle: NotificationHandle,
+                        finalCard: NotificationCard
+                    ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
+
+                    override suspend fun cancelProgress(
+                        handle: NotificationHandle,
+                        reasonCard: NotificationCard
+                    ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
+                }
+
+            val deduplicator = MediaAvailableDeduplicator(ttlMillis = 10_000L)
+            val service = MediaAvailableService(publisher, deduplicator = deduplicator)
+
+            val payload =
+                MediaPayload.PlexLibraryNew(
+                    title = "Dune: Part Two",
+                    year = 2024,
+                    ratingKey = "dune-2"
+                )
+
+            val firstAttempt = service.announce(payload)
+            assertTrue(firstAttempt.isLeft())
+            assertEquals(0, publisher.sentCards.size)
+
+            val retryAttempt = service.announce(payload)
+            assertTrue(retryAttempt.isRight())
+            assertEquals(1, publisher.sentCards.size)
+        }
 }

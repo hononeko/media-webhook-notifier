@@ -51,7 +51,12 @@ class IngestWebhookService(
                 }
                 is MediaPayload.PlexLibraryNew,
                 is MediaPayload.JellyfinItemAdded -> {
-                    announceMediaAvailableUseCase.announce(payload).bind()
+                    if (seasonDebouncer != null && seasonDebouncer.supportsAvailable) {
+                        logger.debug("Routing {} to SeasonDebouncer for: {}", payload.eventType, payload.source)
+                        seasonDebouncer.submit(payload)
+                    } else {
+                        announceMediaAvailableUseCase.announce(payload).bind()
+                    }
                 }
                 is MediaPayload.ServarrHealth -> {
                     announceSystemHealthUseCase?.announce(payload)?.bind()

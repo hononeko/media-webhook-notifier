@@ -354,6 +354,35 @@ class CardFormatterServiceTest {
     }
 
     @Test
+    fun `should format Plex and Jellyfin multi-episode range cards correctly`() {
+        val plexMulti =
+            MediaPayload.PlexLibraryNew(
+                title = "Ghost in the Shell",
+                grandParentTitle = "Ghost in the Shell",
+                parentTitle = "Season 1",
+                mediaType = "episode",
+                seasonNumber = 1,
+                episodeNumbers = listOf(1, 2, 3, 4, 5),
+                instanceName = "Kerrlab Plex"
+            )
+        val plexCard = CardFormatterService.buildAvailableCard(plexMulti)
+        assertEquals("🍿 Ghost in the Shell - S01E01-E05 now available on Kerrlab Plex", plexCard.title)
+
+        val jellyfinMulti =
+            MediaPayload.JellyfinItemAdded(
+                itemId = "jf-multi",
+                title = "Severance",
+                seriesName = "Severance",
+                mediaType = "Episode",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1, 2, 3),
+                instanceName = "Jellyfin"
+            )
+        val jfCard = CardFormatterService.buildAvailableCard(jellyfinMulti)
+        assertEquals("🍿 Severance - S02E01-E03 now available on Jellyfin", jfCard.title)
+    }
+
+    @Test
     fun `should format Plex and Jellyfin media server cards across all title and type branches`() {
         // Episode with S03E01 code as title (no duplicate code in output)
         val plexEpWithCodeTitle =

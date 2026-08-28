@@ -54,6 +54,7 @@ sealed interface MediaPayload {
         val parentTitle: String? = null,
         val seasonNumber: Int? = null,
         val episodeNumber: Int? = null,
+        val episodeNumbers: List<Int> = if (episodeNumber != null) listOf(episodeNumber) else emptyList(),
         val year: Int? = null,
         val summary: String? = null,
         val rating: Double? = null,
@@ -81,6 +82,7 @@ sealed interface MediaPayload {
             if (parentTitle != other.parentTitle) return false
             if (seasonNumber != other.seasonNumber) return false
             if (episodeNumber != other.episodeNumber) return false
+            if (episodeNumbers != other.episodeNumbers) return false
             if (year != other.year) return false
             if (summary != other.summary) return false
             if (rating != other.rating) return false
@@ -113,6 +115,7 @@ sealed interface MediaPayload {
             result = 31 * result + (parentTitle?.hashCode() ?: 0)
             result = 31 * result + (seasonNumber?.hashCode() ?: 0)
             result = 31 * result + (episodeNumber?.hashCode() ?: 0)
+            result = 31 * result + episodeNumbers.hashCode()
             result = 31 * result + (year?.hashCode() ?: 0)
             result = 31 * result + (summary?.hashCode() ?: 0)
             result = 31 * result + (rating?.hashCode() ?: 0)
@@ -142,6 +145,7 @@ sealed interface MediaPayload {
         val seriesName: String? = null,
         val seasonNumber: Int? = null,
         val episodeNumber: Int? = null,
+        val episodeNumbers: List<Int> = if (episodeNumber != null) listOf(episodeNumber) else emptyList(),
         val year: Int? = null,
         val overview: String? = null,
         val videoCodec: String? = null,

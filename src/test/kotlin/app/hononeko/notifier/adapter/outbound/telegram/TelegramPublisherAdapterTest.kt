@@ -16,6 +16,8 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -628,5 +630,41 @@ class TelegramPublisherAdapterTest {
                 )
             val updateResult = adapter.updateProgress(handle, progress)
             assertTrue(updateResult.isLeft())
+        }
+
+    @Test
+    fun `should serialize concurrent card deliveries through sendMutex`() =
+        runTest {
+            val messageCounter =
+                java.util.concurrent.atomic
+                    .AtomicInteger(0)
+            val mockEngine =
+                MockEngine { request ->
+                    val id = messageCounter.incrementAndGet()
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":$id}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123",
+                    sendPhotos = false
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val jobs =
+                (1..10).map { i ->
+                    async {
+                        adapter.sendCard(NotificationCard(title = "Card $i"))
+                    }
+                }
+            val results = jobs.awaitAll()
+
+            assertTrue(results.all { it.isRight() })
+            assertEquals(10, messageCounter.get())
         }
 }
