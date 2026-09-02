@@ -145,4 +145,30 @@ class ConfigLoaderTest {
         assertEquals("⏳ Downloading {title} from {indexer}", grabTemplate.title)
         assertNotNull(grabTemplate.body)
     }
+
+    @Test
+    fun `should preserve default theme settings when user override only specifies events`() {
+        val env =
+            mapOf(
+                "TEMPLATES_YAML" to "events:\n  grab:\n    title: 'Custom Grab'"
+            )
+        val config = ConfigLoader.load(env)
+        assertEquals(240, config.templates.theme.maxOverviewLength)
+        assertEquals(10, config.templates.theme.progressBarLength)
+        assertEquals("default", config.templates.theme.progressBarStyle)
+        assertEquals("yyyy-MM-dd HH:mm", config.templates.theme.dateFormat)
+    }
+
+    @Test
+    fun `should merge partial theme override with default theme settings`() {
+        val env =
+            mapOf(
+                "TEMPLATES_YAML" to "theme:\n  max_overview_length: 320\nevents:\n  grab:\n    title: 'Custom Grab'"
+            )
+        val config = ConfigLoader.load(env)
+        assertEquals(320, config.templates.theme.maxOverviewLength)
+        assertEquals(10, config.templates.theme.progressBarLength)
+        assertEquals("default", config.templates.theme.progressBarStyle)
+        assertEquals("yyyy-MM-dd HH:mm", config.templates.theme.dateFormat)
+    }
 }

@@ -223,10 +223,15 @@ class TemplatePreviewController {
                 return
             }
 
-        val templateConfig =
+        val engine =
             if (!request.templateYaml.isNullOrBlank()) {
                 try {
-                    YamlParser.parseTemplateConfig(request.templateYaml)
+                    TemplateEngine(
+                        YamlParser.parseTemplateConfig(
+                            request.templateYaml,
+                            defaultTheme = CardFormatterService.templateEngine.theme
+                        )
+                    )
                 } catch (e: Exception) {
                     call.respond(
                         HttpStatusCode.BadRequest,
@@ -235,11 +240,8 @@ class TemplatePreviewController {
                     return
                 }
             } else {
-                CardFormatterService.templateEngine.let { null } ?: app.hononeko.notifier.domain.model
-                    .TemplateConfig()
+                CardFormatterService.templateEngine
             }
-
-        val engine = TemplateEngine(templateConfig)
         val eventType = request.eventType.lowercase(Locale.US).trim()
 
         val (card, progressUpdate, availableTags) = renderMockEvent(eventType, request.multiTrack, engine)

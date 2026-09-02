@@ -31,21 +31,33 @@ object YamlParser {
         return parser.parseMap(parentIndent = -1)
     }
 
-    fun parseTemplateConfig(yaml: String): TemplateConfig {
+    fun parseTemplateConfig(
+        yaml: String,
+        defaultTheme: ThemeConfig = ThemeConfig()
+    ): TemplateConfig {
         val root = parse(yaml)
-        return mapToTemplateConfig(root)
+        return mapToTemplateConfig(root, defaultTheme)
     }
 
     @Suppress("UNCHECKED_CAST")
-    internal fun mapToTemplateConfig(root: Map<String, Any?>): TemplateConfig {
-        val themeMap = root["theme"] as? Map<String, Any?> ?: emptyMap()
+    internal fun mapToTemplateConfig(
+        root: Map<String, Any?>,
+        defaultTheme: ThemeConfig = ThemeConfig()
+    ): TemplateConfig {
+        val themeMap = root["theme"] as? Map<String, Any?>
         val theme =
-            ThemeConfig(
-                maxOverviewLength = (themeMap["max_overview_length"] as? Number)?.toInt() ?: 220,
-                progressBarLength = (themeMap["progress_bar_length"] as? Number)?.toInt() ?: 10,
-                progressBarStyle = themeMap["progress_bar_style"]?.toString() ?: "default",
-                dateFormat = themeMap["date_format"]?.toString() ?: "yyyy-MM-dd HH:mm"
-            )
+            if (themeMap != null) {
+                ThemeConfig(
+                    maxOverviewLength =
+                        (themeMap["max_overview_length"] as? Number)?.toInt() ?: defaultTheme.maxOverviewLength,
+                    progressBarLength =
+                        (themeMap["progress_bar_length"] as? Number)?.toInt() ?: defaultTheme.progressBarLength,
+                    progressBarStyle = themeMap["progress_bar_style"]?.toString() ?: defaultTheme.progressBarStyle,
+                    dateFormat = themeMap["date_format"]?.toString() ?: defaultTheme.dateFormat
+                )
+            } else {
+                defaultTheme
+            }
 
         val eventsMap = root["events"] as? Map<String, Any?> ?: emptyMap()
         val events = parseEventsMap(eventsMap)

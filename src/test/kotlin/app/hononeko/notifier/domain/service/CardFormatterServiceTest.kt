@@ -1,5 +1,6 @@
 package app.hononeko.notifier.domain.service
 
+import app.hononeko.notifier.config.YamlParser
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.EventTemplate
 import app.hononeko.notifier.domain.model.MediaPayload
@@ -1143,9 +1144,9 @@ class CardFormatterServiceTest {
         val update = CardFormatterService.buildProgressUpdate(grab, multiProgress, "https://qbit.example.com")
         assertEquals("⏳ Downloading: Love is Blind: UK (S03E01-E03)", update.title)
         assertNotNull(update.episodeTracks)
-        assertTrue(update.episodeTracks!!.contains("<b>100%</b> • <b>E01:</b> 2.64 GB"))
-        assertTrue(update.episodeTracks!!.contains("<b>82.5%</b> • <b>E02:</b> 12.0 MB/s (ETA: 4s)"))
-        assertTrue(update.episodeTracks!!.contains("<b>45.0%</b> • <b>E03:</b> 8.0 MB/s (ETA: 22s)"))
+        assertTrue(update.episodeTracks.contains("<b>100%</b> • <b>E01:</b> 2.64 GB"))
+        assertTrue(update.episodeTracks.contains("<b>82.5%</b> • <b>E02:</b> 12.0 MB/s (ETA: 4s)"))
+        assertTrue(update.episodeTracks.contains("<b>45.0%</b> • <b>E03:</b> 8.0 MB/s (ETA: 22s)"))
 
         // Verify completion card includes Episodes field
         val completionCard =
@@ -1271,5 +1272,53 @@ class CardFormatterServiceTest {
         assertTrue(tracks.contains("Allocating"))
         assertTrue(tracks.contains("488.3 KB / 976.6 KB"))
         assertTrue(tracks.contains("1.9 MB/s"))
+    }
+
+    @Test
+    fun `should resolve size_formatted and size in custom progress, completion, and stalled templates`() {
+        val customYaml =
+            """
+            events:
+              download_progress:
+                body: "Transferred: {size_formatted} | Size: {size}"
+              download_complete:
+                body: "Final: {size_formatted} | Total: {total_size}"
+              download_stalled:
+                body: "Stalled at: {size_formatted}"
+            """.trimIndent()
+        val customEngine = TemplateEngine(YamlParser.parseTemplateConfig(customYaml))
+
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "hash_sz",
+                title = "Severance - S02E01",
+                seriesOrMovieTitle = "Severance"
+            )
+        val progress =
+            TorrentProgress(
+                hash = "hash_sz",
+                name = "Severance.S02E01",
+                progressPercent = 50.0,
+                progressRatio = 0.5,
+                downloadSpeedBytesPerSec = 10485760,
+                uploadSpeedBytesPerSec = 0,
+                etaSeconds = 60,
+                totalSizeBytes = 1000000000L,
+                downloadedBytes = 500000000L,
+                state = TorrentState.DOWNLOADING
+            )
+
+        val update = CardFormatterService.buildProgressUpdate(grab, progress, null, engine = customEngine)
+        assertNotNull(update.customBody)
+        assertTrue(update.customBody.contains("Transferred: 476.8 MB / 953.7 MB | Size: 476.8 MB / 953.7 MB"))
+
+        val completeCard = CardFormatterService.buildCompletionCard(grab, progress, null, engine = customEngine)
+        assertNotNull(completeCard.customBody)
+        assertTrue(completeCard.customBody.contains("Final: 953.7 MB | Total: 953.7 MB"))
+
+        val stalledCard = CardFormatterService.buildStalledCard(grab, progress, null, engine = customEngine)
+        assertNotNull(stalledCard.customBody)
+        assertTrue(stalledCard.customBody.contains("Stalled at: 953.7 MB"))
     }
 }
