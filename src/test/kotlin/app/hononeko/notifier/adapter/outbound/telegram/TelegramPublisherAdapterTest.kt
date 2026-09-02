@@ -747,4 +747,52 @@ class TelegramPublisherAdapterTest {
             assertEquals("/bot12345:TOKEN/editMessageCaption", endpointCalled)
             assertTrue(bodyContentCaptured?.contains(""""chat_id":"-100123"""") == true)
         }
+
+    @Test
+    fun `photoMessageRegistry remains bounded under high notification volume`() =
+        runTest {
+            var messageIdCounter = 1L
+            val mockEngine =
+                MockEngine { _ ->
+                    val id = messageIdCounter++
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":$id}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123",
+                    sendPhotos = false
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            repeat(2500) {
+                val card = NotificationCard(title = "Alert $it")
+                val handleResult = adapter.sendCard(card)
+                assertTrue(handleResult.isRight())
+            }
+
+            val freshCard = NotificationCard(title = "Fresh download")
+            val freshHandle = (adapter.sendCard(freshCard) as Either.Right).value
+            val updateResult =
+                adapter.updateProgress(
+                    freshHandle,
+                    ProgressUpdate(
+                        trackingKey = "key",
+                        title = "Downloading",
+                        percent = 50.0,
+                        progressBar = "[█████░░░░░]",
+                        speedFormatted = "10 MB/s",
+                        etaFormatted = "2m",
+                        sizeFormatted = "2.0 GB",
+                        peersInfo = "10 seeds",
+                        stateText = "Downloading"
+                    )
+                )
+            assertTrue(updateResult.isRight())
+        }
 }

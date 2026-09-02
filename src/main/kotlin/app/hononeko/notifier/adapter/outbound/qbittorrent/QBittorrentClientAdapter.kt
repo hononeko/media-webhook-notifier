@@ -33,6 +33,12 @@ class QBittorrentClientAdapter(
     private val config: QBittorrentConfig,
     engine: HttpClientEngine? = null
 ) : TorrentClientPort {
+    companion object {
+        private val TORRENT_HASH_REGEX = Regex("^[a-zA-Z0-9_-]+(\\|[a-zA-Z0-9_-]+)*$")
+
+        fun isValidHash(hash: String): Boolean = hash.isNotBlank() && TORRENT_HASH_REGEX.matches(hash)
+    }
+
     private val logger = LoggerFactory.getLogger(QBittorrentClientAdapter::class.java)
     private val sidCookie = AtomicReference<String?>(null)
     private val authMutex = Mutex()
@@ -90,7 +96,8 @@ class QBittorrentClientAdapter(
 
     override suspend fun getTorrentProgress(hash: String): Either<DomainError.TorrentClientError, TorrentProgress?> {
         val normalizedHash = hash.trim().lowercase()
-        if (normalizedHash.isBlank()) {
+        if (!isValidHash(normalizedHash)) {
+            logger.debug("Skipping getTorrentProgress for invalid or blank torrent hash: '{}'", hash)
             return Either.Right(null)
         }
 
@@ -189,7 +196,7 @@ class QBittorrentClientAdapter(
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .joinToString(",")
-        if ((hash != null && normalizedHash.isBlank()) || tagString.isBlank()) {
+        if ((hash != null && !isValidHash(normalizedHash)) || tagString.isBlank()) {
             return Either.Right(Unit)
         }
 

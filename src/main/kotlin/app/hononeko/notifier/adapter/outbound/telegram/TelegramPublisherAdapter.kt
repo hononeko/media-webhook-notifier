@@ -32,7 +32,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
-import java.util.concurrent.ConcurrentHashMap
+import java.util.Collections
+import java.util.LinkedHashMap
 
 class TelegramPublisherAdapter(
     private val config: NotificationConfig,
@@ -40,14 +41,22 @@ class TelegramPublisherAdapter(
 ) : NotificationPublisherPort {
     companion object {
         private const val NETWORK_ERROR_MSG = "Network error"
+        private const val MAX_REGISTRY_SIZE = 2000
     }
 
     override val providerId: String = "telegram"
     override val defaultChannelOrChatId: String get() = config.chatId
     private val logger = LoggerFactory.getLogger(TelegramPublisherAdapter::class.java)
 
-    // Tracks if a message was posted as photo or text so edits use the matching endpoint
-    private val photoMessageRegistry = ConcurrentHashMap<String, Boolean>()
+    // Tracks if a message was posted as photo or text so edits use the matching endpoint.
+    // Bounded with LRU eviction to prevent memory leaks during continuous 24/7 uptime.
+    private val photoMessageRegistry =
+        Collections.synchronizedMap(
+            object : LinkedHashMap<String, Boolean>(128, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?): Boolean =
+                    size > MAX_REGISTRY_SIZE
+            }
+        )
 
     // Serializes outbound deliveries to avoid socket contention, rate-limiting drops, and out-of-order race conditions
     private val sendMutex = Mutex()
