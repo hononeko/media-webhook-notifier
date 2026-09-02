@@ -352,6 +352,8 @@ object CardFormatterService {
         context["eta"] = etaFormatted
         context["downloaded_size"] = formatBytes(progress.downloadedBytes)
         context["total_size"] = formatBytes(progress.totalSizeBytes)
+        context["size_formatted"] = sizeFormatted
+        context["size"] = sizeFormatted
         context["peers_info"] = peersFormatted
         context["state"] = stateLabel
         context["episode_tracks"] = episodeTracks
@@ -402,6 +404,7 @@ object CardFormatterService {
         val totalSizeFormatted = formatBytes(progress.totalSizeBytes)
         context["total_size"] = totalSizeFormatted
         context["size"] = totalSizeFormatted
+        context["size_formatted"] = totalSizeFormatted
         context["release_title"] = releaseName
         context["release_name"] = releaseName
         context["torrent_name"] = progress.name
@@ -475,6 +478,10 @@ object CardFormatterService {
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
         context["progress_percent"] = String.format(Locale.US, "%.2f", progressVal)
         context["progress_bar"] = progressBar
+        val totalSize = progress?.totalSizeBytes?.let { formatBytes(it) } ?: "Unknown"
+        context["total_size"] = totalSize
+        context["size"] = totalSize
+        context["size_formatted"] = totalSize
         context["release_title"] = releaseName
         context["release_name"] = releaseName
         context["torrent_name"] = progress?.name
@@ -865,15 +872,13 @@ object CardFormatterService {
         val isEpisode =
             mediaType == "episode" ||
                 payload.episodeNumber != null ||
-                payload.grandParentTitle != null ||
-                (payload.parentTitle != null && payload.episodeNumber != null)
+                payload.grandParentTitle != null
         val isSeason =
             !isEpisode &&
                 (
                     mediaType == "season" ||
                         (
                             payload.parentTitle != null &&
-                                payload.grandParentTitle == null &&
                                 (payload.title.startsWith("Season", ignoreCase = true) || payload.seasonNumber != null)
                         )
                 )
@@ -941,13 +946,12 @@ object CardFormatterService {
         val type = payload.mediaType?.lowercase()
         val isEpisode =
             type == "episode" ||
-                payload.episodeNumber != null ||
-                (payload.seriesName != null && payload.episodeNumber != null)
+                payload.episodeNumber != null
         val isSeason =
             !isEpisode &&
                 (
                     type == "season" ||
-                        (payload.seriesName != null && payload.seasonNumber != null && payload.episodeNumber == null)
+                        (payload.seriesName != null && payload.seasonNumber != null)
                 )
 
         val seriesTitle = payload.seriesName ?: ""

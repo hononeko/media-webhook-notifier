@@ -43,7 +43,7 @@ object ConfigLoader {
 
         val directYaml = reader.get("TEMPLATES_YAML", "templates.yaml")
         if (!directYaml.isNullOrBlank()) {
-            val userConfig = YamlParser.parseTemplateConfig(directYaml)
+            val userConfig = YamlParser.parseTemplateConfig(directYaml, defaultTheme = defaultConfig.theme)
             return mergeTemplates(defaultConfig, userConfig)
         }
 
@@ -60,13 +60,13 @@ object ConfigLoader {
             check(file.exists() && file.canRead()) {
                 "Configured templates file '$filePath' does not exist or is not readable"
             }
-            val userConfig = YamlParser.parseTemplateConfig(file.readText())
+            val userConfig = YamlParser.parseTemplateConfig(file.readText(), defaultTheme = defaultConfig.theme)
             return mergeTemplates(defaultConfig, userConfig)
         }
 
         val secretFile = reader.getSecret("TEMPLATES")
         if (!secretFile.isNullOrBlank()) {
-            val userConfig = YamlParser.parseTemplateConfig(secretFile)
+            val userConfig = YamlParser.parseTemplateConfig(secretFile, defaultTheme = defaultConfig.theme)
             return mergeTemplates(defaultConfig, userConfig)
         }
 
@@ -74,7 +74,7 @@ object ConfigLoader {
         for (defaultPath in defaultFiles) {
             val file = File(defaultPath)
             if (file.exists() && file.canRead()) {
-                val userConfig = YamlParser.parseTemplateConfig(file.readText())
+                val userConfig = YamlParser.parseTemplateConfig(file.readText(), defaultTheme = defaultConfig.theme)
                 return mergeTemplates(defaultConfig, userConfig)
             }
         }

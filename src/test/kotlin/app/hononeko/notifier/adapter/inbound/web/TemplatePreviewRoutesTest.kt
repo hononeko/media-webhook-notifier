@@ -6,6 +6,9 @@ import app.hononeko.notifier.adapter.inbound.web.controller.RenderedCardDto
 import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto
 import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto
 import app.hononeko.notifier.config.ServerConfig
+import app.hononeko.notifier.config.YamlParser
+import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.TemplateEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -289,4 +292,32 @@ class TemplatePreviewRoutesTest {
         assertEquals("success", resp.status)
         assertEquals(1, resp.tagsAvailable.size)
     }
+
+    @Test
+    fun `preview endpoint uses active CardFormatterService template engine when template_yaml is omitted`() =
+        withPreviewApp { client ->
+            val prevEngine = CardFormatterService.templateEngine
+            try {
+                val customEngine =
+                    TemplateEngine(
+                        YamlParser.parseTemplateConfig(
+                            "events:\n  grab:\n    title: 'Active Engine: {title}'"
+                        )
+                    )
+                CardFormatterService.templateEngine = customEngine
+
+                val response =
+                    client.post("/api/v1/templates/preview") {
+                        header(HttpHeaders.Authorization, "Bearer $testToken")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"event_type":"grab"}""")
+                    }
+
+                assertEquals(HttpStatusCode.OK, response.status)
+                val body = response.bodyAsText()
+                assertTrue(body.contains("Active Engine: Breaking Bad"))
+            } finally {
+                CardFormatterService.templateEngine = prevEngine
+            }
+        }
 }
