@@ -4,6 +4,7 @@ import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.InboundRateLimiter
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
+import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.MediaServerConfig
 import app.hononeko.notifier.config.ServerConfig
@@ -116,6 +117,7 @@ class EndToEndIntegrationTest {
                 DownloadTrackerEngine(
                     torrentClient = mockTorrentClient,
                     notificationPublisher = mockPublisher,
+                    activeTrackerStore = InMemoryActiveTrackerStore(),
                     pollIntervalSeconds = 1L,
                     maxPollingMinutes = 1L,
                     stalledTimeoutMinutes = 1L,

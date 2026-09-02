@@ -1,5 +1,6 @@
 package app.hononeko.notifier.domain.service
 
+import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.MediaPayload
@@ -8,9 +9,11 @@ import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.model.TorrentProgress
 import app.hononeko.notifier.domain.model.TorrentState
+import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -27,6 +30,28 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadTrackerEngineTest {
+    private fun createEngine(
+        torrentClient: TorrentClientPort,
+        notificationPublisher: NotificationPublisherPort,
+        activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
+        pollIntervalSeconds: Long = 5,
+        maxPollingMinutes: Long = 30,
+        stalledTimeoutMinutes: Long = 15,
+        missingGraceAttempts: Int = 6,
+        webuiPublicUrl: String? = null,
+        scope: CoroutineScope
+    ) = DownloadTrackerEngine(
+        torrentClient = torrentClient,
+        notificationPublisher = notificationPublisher,
+        activeTrackerStore = activeTrackerStore,
+        pollIntervalSeconds = pollIntervalSeconds,
+        maxPollingMinutes = maxPollingMinutes,
+        stalledTimeoutMinutes = stalledTimeoutMinutes,
+        missingGraceAttempts = missingGraceAttempts,
+        webuiPublicUrl = webuiPublicUrl,
+        scope = scope
+    )
+
     private class FakeNotificationPublisher(
         private val shouldFailStart: Boolean = false
     ) : NotificationPublisherPort {
@@ -124,7 +149,7 @@ class DownloadTrackerEngineTest {
             val torrentClient = TorrentClientPort { Either.Right(null) }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     scope = testScope
@@ -190,7 +215,7 @@ class DownloadTrackerEngineTest {
                 }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 2,
@@ -238,7 +263,7 @@ class DownloadTrackerEngineTest {
                 }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
@@ -274,7 +299,7 @@ class DownloadTrackerEngineTest {
             val torrentClient = TorrentClientPort { Either.Right(null) }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = failingPublisher,
                     scope = testScope
@@ -303,7 +328,7 @@ class DownloadTrackerEngineTest {
             val torrentClient = TorrentClientPort { Either.Right(null) }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 10,
@@ -353,7 +378,7 @@ class DownloadTrackerEngineTest {
             val torrentClient = TorrentClientPort { Either.Right(progress) }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
@@ -406,7 +431,7 @@ class DownloadTrackerEngineTest {
             val torrentClient = TorrentClientPort { Either.Right(stalledProgress) }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
@@ -444,7 +469,7 @@ class DownloadTrackerEngineTest {
                 }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
@@ -499,7 +524,7 @@ class DownloadTrackerEngineTest {
                 }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
@@ -552,7 +577,7 @@ class DownloadTrackerEngineTest {
             val client = FakeTorrentClient()
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = client,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
@@ -611,7 +636,7 @@ class DownloadTrackerEngineTest {
                 }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = client,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
@@ -677,7 +702,7 @@ class DownloadTrackerEngineTest {
                 }
 
             val engine =
-                DownloadTrackerEngine(
+                createEngine(
                     torrentClient = client,
                     notificationPublisher = publisher,
                     pollIntervalSeconds = 1,
