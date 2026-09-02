@@ -78,17 +78,19 @@ class EventRail(
                         launch {
                             logger.debug("EventRail worker #{} started", workerId)
                             while (isActive) {
-                                if (urgentChannel.isClosedForReceive && standardChannel.isClosedForReceive) {
+                                val hasUrgent = !urgentChannel.isClosedForReceive
+                                val hasStandard = !standardChannel.isClosedForReceive
+                                if (!hasUrgent && !hasStandard) {
                                     break
                                 }
 
                                 val payload =
                                     try {
                                         select<MediaPayload?> {
-                                            if (!urgentChannel.isClosedForReceive) {
+                                            if (hasUrgent) {
                                                 urgentChannel.onReceiveCatching { it.getOrNull() }
                                             }
-                                            if (!standardChannel.isClosedForReceive) {
+                                            if (hasStandard) {
                                                 standardChannel.onReceiveCatching { it.getOrNull() }
                                             }
                                         }
