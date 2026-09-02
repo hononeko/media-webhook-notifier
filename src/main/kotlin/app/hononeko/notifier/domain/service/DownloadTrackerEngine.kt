@@ -12,13 +12,19 @@ import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import java.util.concurrent.ConcurrentHashMap
 
 class DownloadTrackerEngine(
     private val torrentClient: TorrentClientPort,
@@ -32,6 +38,7 @@ class DownloadTrackerEngine(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : TrackDownloadUseCase {
     private val logger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
+    private val trackingLocks = ConcurrentHashMap<String, Mutex>()
 
     private data class TrackerStep(
         val isTerminal: Boolean,
@@ -48,53 +55,60 @@ class DownloadTrackerEngine(
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
         }
 
-        if (activeTrackerStore.isTracking(normalizedHash)) {
-            logger.info("Download tracker already running for hash: {}", normalizedHash)
-            return Either.Right(Unit)
+        val mutex = trackingLocks.computeIfAbsent(normalizedHash) { Mutex() }
+        return mutex.withLock {
+            if (activeTrackerStore.isTracking(normalizedHash)) {
+                logger.info("Download tracker already running for hash: {}", normalizedHash)
+                return@withLock Either.Right(Unit)
+            }
+
+            val initialCard = CardFormatterService.buildGrabInitialCard(initialPayload, webuiPublicUrl)
+            val handleResult = notificationPublisher.startLiveProgress(initialCard)
+
+            val handle: NotificationHandle =
+                when (handleResult) {
+                    is Either.Right -> handleResult.value
+                    is Either.Left -> {
+                        logger.warn("Failed to send initial card for {}: {}", normalizedHash, handleResult.value)
+                        return@withLock Either.Left(handleResult.value)
+                    }
+                }
+
+            val isPhoto = initialCard.artworkBytes != null || !initialCard.artworkUrl.isNullOrBlank()
+
+            // Tag torrent in qBittorrent so it can be resumed after container restart
+            val tags =
+                buildList {
+                    add("mwn_msg:${handle.messageReferenceId}")
+                    add("mwn_photo:${if (isPhoto) 1 else 0}")
+                    if (handle.channelOrChatId.isNotBlank()) {
+                        add("mwn_chat:${handle.channelOrChatId}")
+                    }
+                }
+            torrentClient.addTorrentTags(normalizedHash, tags)
+
+            lateinit var trackingJob: Job
+            trackingJob =
+                scope.launch {
+                    runTrackingLoop(normalizedHash, initialPayload, handle)
+                }
+
+            val session =
+                ActiveTrackerSession(
+                    hash = normalizedHash,
+                    payload = initialPayload,
+                    handle = handle,
+                    isPhoto = isPhoto,
+                    job = trackingJob
+                )
+            val registered = activeTrackerStore.register(session)
+            if (!registered) {
+                logger.warn("Session for hash {} was already registered, cancelling duplicate job", normalizedHash)
+                trackingJob.cancel()
+            }
+
+            Either.Right(Unit)
         }
-
-        val initialCard = CardFormatterService.buildGrabInitialCard(initialPayload, webuiPublicUrl)
-        val handleResult = notificationPublisher.startLiveProgress(initialCard)
-
-        val handle: NotificationHandle =
-            when (handleResult) {
-                is Either.Right -> handleResult.value
-                is Either.Left -> {
-                    logger.warn("Failed to send initial card for {}: {}", normalizedHash, handleResult.value)
-                    return Either.Left(handleResult.value)
-                }
-            }
-
-        val isPhoto = initialCard.artworkBytes != null || !initialCard.artworkUrl.isNullOrBlank()
-
-        // Tag torrent in qBittorrent so it can be resumed after container restart
-        val tags =
-            buildList {
-                add("mwn_msg:${handle.messageReferenceId}")
-                add("mwn_photo:${if (isPhoto) 1 else 0}")
-                if (handle.channelOrChatId.isNotBlank()) {
-                    add("mwn_chat:${handle.channelOrChatId}")
-                }
-            }
-        torrentClient.addTorrentTags(normalizedHash, tags)
-
-        lateinit var trackingJob: Job
-        trackingJob =
-            scope.launch {
-                runTrackingLoop(normalizedHash, initialPayload, handle)
-            }
-
-        val session =
-            ActiveTrackerSession(
-                hash = normalizedHash,
-                payload = initialPayload,
-                handle = handle,
-                isPhoto = isPhoto,
-                job = trackingJob
-            )
-        activeTrackerStore.register(session)
-
-        return Either.Right(Unit)
     }
 
     override suspend fun trackExisting(
@@ -108,30 +122,40 @@ class DownloadTrackerEngine(
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
         }
 
-        if (activeTrackerStore.isTracking(normalizedHash)) {
-            logger.info("Download tracker already running for restored hash: {}", normalizedHash)
-            return Either.Right(Unit)
-        }
-
-        logger.info("Resuming active tracking loop for existing card {} ({})", payload.title, normalizedHash)
-
-        lateinit var trackingJob: Job
-        trackingJob =
-            scope.launch {
-                runTrackingLoop(normalizedHash, payload, handle)
+        val mutex = trackingLocks.computeIfAbsent(normalizedHash) { Mutex() }
+        return mutex.withLock {
+            if (activeTrackerStore.isTracking(normalizedHash)) {
+                logger.info("Download tracker already running for restored hash: {}", normalizedHash)
+                return@withLock Either.Right(Unit)
             }
 
-        val session =
-            ActiveTrackerSession(
-                hash = normalizedHash,
-                payload = payload,
-                handle = handle,
-                isPhoto = isPhoto,
-                job = trackingJob
-            )
-        activeTrackerStore.register(session)
+            logger.info("Resuming active tracking loop for existing card {} ({})", payload.title, normalizedHash)
 
-        return Either.Right(Unit)
+            lateinit var trackingJob: Job
+            trackingJob =
+                scope.launch {
+                    runTrackingLoop(normalizedHash, payload, handle)
+                }
+
+            val session =
+                ActiveTrackerSession(
+                    hash = normalizedHash,
+                    payload = payload,
+                    handle = handle,
+                    isPhoto = isPhoto,
+                    job = trackingJob
+                )
+            val registered = activeTrackerStore.register(session)
+            if (!registered) {
+                logger.warn(
+                    "Session for restored hash {} was already registered, cancelling duplicate job",
+                    normalizedHash
+                )
+                trackingJob.cancel()
+            }
+
+            Either.Right(Unit)
+        }
     }
 
     private suspend fun runTrackingLoop(
@@ -190,10 +214,19 @@ class DownloadTrackerEngine(
                 cleanupTags(hash, handle)
                 activeTrackerStore.cancel(hash)
             }
+        } catch (e: CancellationException) {
+            logger.debug("Tracking loop cancelled for {}", hash)
+            throw e
         } catch (e: Exception) {
             logger.error("Unexpected error in tracking loop for {}", hash, e)
         } finally {
-            activeTrackerStore.cancel(hash)
+            withContext(NonCancellable) {
+                cleanupTags(hash, handle)
+                if (activeTrackerStore.isTracking(hash)) {
+                    activeTrackerStore.cancel(hash)
+                }
+                trackingLocks.remove(hash)
+            }
         }
     }
 
@@ -291,16 +324,40 @@ class DownloadTrackerEngine(
         hash: String,
         handle: NotificationHandle
     ) {
+        val currentProgress = torrentClient.getTorrentProgress(hash)
+        val currentTags =
+            when (currentProgress) {
+                is Either.Right -> currentProgress.value?.tags ?: emptyList()
+                is Either.Left -> emptyList()
+            }
+
+        val mwnTagsOnTorrent = currentTags.filter { it.startsWith("mwn_") }
         val tagsToRemove =
-            buildList {
-                add("mwn_msg:${handle.messageReferenceId}")
+            buildSet {
+                addAll(mwnTagsOnTorrent)
+                if (handle.messageReferenceId.isNotBlank()) {
+                    add("mwn_msg:${handle.messageReferenceId}")
+                }
                 add("mwn_photo:0")
                 add("mwn_photo:1")
                 if (handle.channelOrChatId.isNotBlank()) {
                     add("mwn_chat:${handle.channelOrChatId}")
                 }
-            }
+            }.toList()
+
         torrentClient.removeTorrentTags(hash, tagsToRemove)
+
+        val tagsToDelete =
+            buildSet {
+                if (handle.messageReferenceId.isNotBlank()) {
+                    add("mwn_msg:${handle.messageReferenceId}")
+                }
+                addAll(mwnTagsOnTorrent.filter { it.startsWith("mwn_msg:") })
+            }.toList()
+
+        if (tagsToDelete.isNotEmpty()) {
+            torrentClient.deleteTags(tagsToDelete)
+        }
     }
 
     fun stopAll() {
