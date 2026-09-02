@@ -78,11 +78,19 @@ class EventRail(
                         launch {
                             logger.debug("EventRail worker #{} started", workerId)
                             while (isActive) {
+                                if (urgentChannel.isClosedForReceive && standardChannel.isClosedForReceive) {
+                                    break
+                                }
+
                                 val payload =
                                     try {
                                         select<MediaPayload?> {
-                                            urgentChannel.onReceiveCatching { it.getOrNull() }
-                                            standardChannel.onReceiveCatching { it.getOrNull() }
+                                            if (!urgentChannel.isClosedForReceive) {
+                                                urgentChannel.onReceiveCatching { it.getOrNull() }
+                                            }
+                                            if (!standardChannel.isClosedForReceive) {
+                                                standardChannel.onReceiveCatching { it.getOrNull() }
+                                            }
                                         }
                                     } catch (e: CancellationException) {
                                         break
@@ -126,5 +134,9 @@ class EventRail(
     fun close() {
         urgentChannel.close()
         standardChannel.close()
+    }
+
+    suspend fun join() {
+        consumerJobs.forEach { it.join() }
     }
 }

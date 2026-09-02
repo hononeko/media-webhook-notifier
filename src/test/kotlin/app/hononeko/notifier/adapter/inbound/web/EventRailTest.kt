@@ -9,6 +9,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -189,6 +191,54 @@ class EventRailTest {
 
             eventRail.close()
             job.cancel()
+            scope.cancel()
+        }
+
+    @Test
+    fun `should drain standard channel when urgent channel is closed for receive without busy spin`() =
+        runTest {
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
+            val processed = Collections.synchronizedList(mutableListOf<MediaPayload>())
+            val fakeUseCase =
+                IngestWebhookUseCase { payload ->
+                    processed.add(payload)
+                    Either.Right(Unit)
+                }
+
+            val scope = CoroutineScope(Dispatchers.Default)
+            val job = eventRail.start(scope, fakeUseCase, workerCount = 2)
+
+            val standardPayload1 =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash1",
+                    title = "Show 1",
+                    seriesOrMovieTitle = "Show 1"
+                )
+            val standardPayload2 =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash2",
+                    title = "Show 2",
+                    seriesOrMovieTitle = "Show 2"
+                )
+
+            assertTrue(eventRail.publish(standardPayload1))
+            assertTrue(eventRail.publish(standardPayload2))
+
+            // Closing EventRail closes both urgentChannel and standardChannel for send.
+            // urgentChannel is empty, so it immediately becomes closedForReceive.
+            eventRail.close()
+
+            // Draining should complete quickly without hanging or 100% CPU spinning.
+            withContext(Dispatchers.Default) {
+                withTimeout(3000) {
+                    eventRail.join()
+                }
+            }
+
+            assertEquals(2, processed.size)
+            assertTrue(eventRail.isClosed)
             scope.cancel()
         }
 }
