@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -504,5 +505,51 @@ class QBittorrentClientAdapterTest {
             val exceptionAdapter = QBittorrentClientAdapter(QBittorrentConfig(), exceptionEngine)
             val tagResult = exceptionAdapter.addTorrentTags("hash1", listOf("tag1"))
             assertTrue(tagResult.isLeft())
+        }
+
+    @Test
+    fun `should validate torrent hashes and reject invalid formats`() {
+        assertTrue(QBittorrentClientAdapter.isValidHash("4a12b3c4d5e6f7a8b9c01234567890abcdef1234"))
+        assertTrue(QBittorrentClientAdapter.isValidHash("hash123"))
+        assertTrue(QBittorrentClientAdapter.isValidHash("test_hash-1"))
+        assertTrue(QBittorrentClientAdapter.isValidHash("hash1|hash2"))
+        assertTrue(QBittorrentClientAdapter.isValidHash("h1|h2|h3"))
+
+        assertFalse(QBittorrentClientAdapter.isValidHash(""))
+        assertFalse(QBittorrentClientAdapter.isValidHash("   "))
+        assertFalse(QBittorrentClientAdapter.isValidHash("hash with space"))
+        assertFalse(QBittorrentClientAdapter.isValidHash("&filter=all"))
+        assertFalse(QBittorrentClientAdapter.isValidHash("hash?query=1"))
+        assertFalse(QBittorrentClientAdapter.isValidHash("|hash"))
+        assertFalse(QBittorrentClientAdapter.isValidHash("hash|"))
+        assertFalse(QBittorrentClientAdapter.isValidHash("../etc/passwd"))
+    }
+
+    @Test
+    fun `should return null without network request when torrent hash format is invalid`() =
+        runTest {
+            val failingEngine =
+                MockEngine { _ ->
+                    respond("Should not be called", HttpStatusCode.InternalServerError)
+                }
+            val adapter = QBittorrentClientAdapter(QBittorrentConfig(), failingEngine)
+            val result = adapter.getTorrentProgress("&filter=all")
+            assertTrue(result.isRight())
+            assertNull((result as Either.Right).value)
+        }
+
+    @Test
+    fun `should skip tag mutation when torrent hash format is invalid`() =
+        runTest {
+            val failingEngine =
+                MockEngine { _ ->
+                    respond("Should not be called", HttpStatusCode.InternalServerError)
+                }
+            val adapter = QBittorrentClientAdapter(QBittorrentConfig(), failingEngine)
+            val addResult = adapter.addTorrentTags("invalid hash with space", listOf("mwn_test"))
+            assertTrue(addResult.isRight())
+
+            val removeResult = adapter.removeTorrentTags("&hashes=all", listOf("mwn_test"))
+            assertTrue(removeResult.isRight())
         }
 }
