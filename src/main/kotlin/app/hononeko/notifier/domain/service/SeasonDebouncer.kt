@@ -307,9 +307,8 @@ class SeasonDebouncer(
                 grabBuffers.remove(normalized)
                     ?: grabBuffers.entries
                         .firstOrNull {
-                            it.key.contains(normalized) ||
-                                it.value.payload.downloadId
-                                    .equals(normalized, ignoreCase = true) ||
+                            it.value.payload.downloadId
+                                .equals(normalized, ignoreCase = true) ||
                                 it.value.payload.downloadIds
                                     .any { id -> id.equals(normalized, ignoreCase = true) }
                         }?.let {
@@ -332,9 +331,8 @@ class SeasonDebouncer(
                 downloadBuffers.remove(normalized)
                     ?: downloadBuffers.entries
                         .firstOrNull {
-                            it.key.contains(normalized) ||
-                                it.value.payload.downloadId
-                                    ?.equals(normalized, ignoreCase = true) == true
+                            it.value.payload.downloadId
+                                ?.equals(normalized, ignoreCase = true) == true
                         }?.let {
                             downloadBuffers.remove(it.key)
                         }
@@ -353,12 +351,6 @@ class SeasonDebouncer(
         val buffer =
             mutex.withLock {
                 availableBuffers.remove(normalized)
-                    ?: availableBuffers.entries
-                        .firstOrNull {
-                            it.key.contains(normalized)
-                        }?.let {
-                            availableBuffers.remove(it.key)
-                        }
             }
         buffer?.let {
             val currentJob = coroutineContext[Job]

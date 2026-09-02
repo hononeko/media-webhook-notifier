@@ -731,4 +731,62 @@ class SeasonDebouncerTest {
             assertEquals(1, available.size)
             assertEquals(0, debouncer.activeBufferCount())
         }
+
+    @Test
+    fun `should not flush on substring match and only match exact key or downloadId`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val received = Collections.synchronizedList(mutableListOf<MediaPayload.ArrGrab>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 10000L,
+                    scope = testScope,
+                    onDebouncedGrab = { received.add(it) }
+                )
+
+            val grab1 =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash_exact_1",
+                    title = "Severance - S01E01",
+                    seriesOrMovieTitle = "Severance",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1)
+                )
+            val grab2 =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash_exact_2",
+                    title = "Severance Extras - S01E01",
+                    seriesOrMovieTitle = "Severance Extras",
+                    seasonNumber = 1,
+                    episodeNumbers = listOf(1)
+                )
+
+            debouncer.submit(grab1)
+            debouncer.submit(grab2)
+            assertEquals(2, debouncer.activeBufferCount())
+
+            // Substring of source or title must NOT flush anything
+            debouncer.flush("sonarr")
+            assertEquals(0, received.size)
+            assertEquals(2, debouncer.activeBufferCount())
+
+            debouncer.flush("severance")
+            assertEquals(0, received.size)
+            assertEquals(2, debouncer.activeBufferCount())
+
+            // Exact downloadId matches only grab1
+            debouncer.flush("hash_exact_1")
+            assertEquals(1, received.size)
+            assertEquals("Severance", received.first().seriesOrMovieTitle)
+            assertEquals(1, debouncer.activeBufferCount())
+
+            // Exact key matches grab2
+            debouncer.flush("sonarr::severance extras:s1")
+            assertEquals(2, received.size)
+            assertEquals(0, debouncer.activeBufferCount())
+        }
 }
