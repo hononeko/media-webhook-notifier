@@ -172,4 +172,74 @@ class TelegramHtmlFormatterTest {
         TelegramHtmlFormatter.appendItalicLine(sb, "   ")
         assertEquals("", sb.toString())
     }
+
+    @Test
+    fun `truncateHtml returns original string when within maxChars`() {
+        val html = "<b>Hello <i>world</i>!</b>"
+        assertEquals(html, TelegramHtmlFormatter.truncateHtml(html, 100))
+        assertEquals(html, TelegramHtmlFormatter.truncateHtml(html, html.length))
+    }
+
+    @Test
+    fun `truncateHtml safely closes single open tag when truncated`() {
+        val html = "<b>Hello magnificent world!</b>"
+        val truncated = TelegramHtmlFormatter.truncateHtml(html, 17)
+        assertEquals(17, truncated.length)
+        assertTrue(truncated.startsWith("<b>"))
+        assertTrue(truncated.endsWith("...</b>"))
+        assertEquals("<b>Hello m...</b>", truncated)
+    }
+
+    @Test
+    fun `truncateHtml safely closes multiple nested tags in reverse order`() {
+        val html = "<b>Bold <i>Italic <code>Code snippet</code></i></b>"
+        val truncated = TelegramHtmlFormatter.truncateHtml(html, 46)
+        assertTrue(truncated.length <= 46, "Expected length <= 46 but got ${truncated.length}: '$truncated'")
+        assertTrue(truncated.endsWith("...</code></i></b>"))
+        assertEquals("<b>Bold <i>Italic <code>Code...</code></i></b>", truncated)
+    }
+
+    @Test
+    fun `truncateHtml does not split HTML entities`() {
+        val html = "<b>Tom &amp; Jerry &gt; Sylvester</b>"
+        val truncated = TelegramHtmlFormatter.truncateHtml(html, 22)
+        assertEquals(22, truncated.length)
+        assertTrue(truncated.endsWith("...</b>"))
+        assertTrue(!truncated.contains("&a..."))
+        assertEquals("<b>Tom &amp; Je...</b>", truncated)
+    }
+
+    @Test
+    fun `truncateHtml handles tags with attributes and preserves valid closing`() {
+        val html = "<a href=\"https://example.com/watch/video\">Watch this awesome movie</a>"
+        val truncated = TelegramHtmlFormatter.truncateHtml(html, 58)
+        assertEquals(58, truncated.length)
+        assertTrue(truncated.endsWith("...</a>"))
+        assertEquals("<a href=\"https://example.com/watch/video\">Watch thi...</a>", truncated)
+    }
+
+    @Test
+    fun `truncateHtml preserves surrogate pair emojis without splitting`() {
+        val html = "<b>Movie 🍿 🎬 🎥 Film</b>"
+        val truncated = TelegramHtmlFormatter.truncateHtml(html, 18)
+        assertTrue(truncated.length <= 18, "Expected length <= 18 but got ${truncated.length}: '$truncated'")
+        assertTrue(truncated.endsWith("...</b>"))
+        assertTrue(truncated.contains("🍿"))
+    }
+
+    @Test
+    fun `truncateHtml handles tiny maxChars gracefully`() {
+        val html = "<b>Hello</b>"
+        assertEquals("...", TelegramHtmlFormatter.truncateHtml(html, 3))
+        assertEquals("..", TelegramHtmlFormatter.truncateHtml(html, 2))
+        assertEquals("", TelegramHtmlFormatter.truncateHtml(html, 0))
+    }
+
+    @Test
+    fun `truncateHtml handles raw angle brackets not matching tags`() {
+        val html = "Score is < 100 points & fun"
+        val truncated = TelegramHtmlFormatter.truncateHtml(html, 15)
+        assertEquals(15, truncated.length)
+        assertEquals("Score is < 1...", truncated)
+    }
 }

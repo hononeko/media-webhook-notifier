@@ -113,4 +113,104 @@ object TelegramHtmlFormatter {
 
         return sb.toString()
     }
+
+    private val TAG_REGEX = Regex("^<(/)?([a-zA-Z][a-zA-Z0-9_-]*)(?:\\s+[^>]*)?>")
+    private val ENTITY_REGEX = Regex("^&([a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);")
+
+    fun truncateHtml(
+        html: String,
+        maxChars: Int,
+        ellipsis: String = "..."
+    ): String {
+        if (html.length <= maxChars) return html
+        if (maxChars <= ellipsis.length) return ellipsis.take(maxChars)
+
+        val sb = StringBuilder()
+        val openTags = ArrayDeque<String>()
+        var i = 0
+
+        fun closingTagsLen(): Int = openTags.sumOf { it.length + 3 }
+
+        while (i < html.length) {
+            val remainingHtml = html.substring(i)
+
+            // Check if at HTML tag
+            val tagMatch = if (html[i] == '<') TAG_REGEX.find(remainingHtml) else null
+            if (tagMatch != null) {
+                val isClosing = tagMatch.groups[1] != null
+                val tagName = tagMatch.groups[2]!!.value.lowercase(Locale.ROOT)
+                val fullTag = tagMatch.value
+
+                if (isClosing) {
+                    val tagIndex = openTags.lastIndexOf(tagName)
+                    if (tagIndex != -1) {
+                        while (openTags.size > tagIndex) {
+                            val popped = openTags.removeLast()
+                            sb.append("</").append(popped).append(">")
+                        }
+                    }
+                    i += fullTag.length
+                } else if (fullTag.endsWith("/>")) {
+                    if (sb.length + fullTag.length + closingTagsLen() + ellipsis.length <= maxChars) {
+                        sb.append(fullTag)
+                        i += fullTag.length
+                    } else {
+                        break
+                    }
+                } else {
+                    val newClosingLen = closingTagsLen() + tagName.length + 3
+                    if (sb.length + fullTag.length + newClosingLen + ellipsis.length <= maxChars) {
+                        sb.append(fullTag)
+                        openTags.addLast(tagName)
+                        i += fullTag.length
+                    } else {
+                        break
+                    }
+                }
+                continue
+            }
+
+            // Check if at HTML entity
+            val entityMatch = if (html[i] == '&') ENTITY_REGEX.find(remainingHtml) else null
+            if (entityMatch != null) {
+                val entityStr = entityMatch.value
+                if (sb.length + entityStr.length + closingTagsLen() + ellipsis.length <= maxChars) {
+                    sb.append(entityStr)
+                    i += entityStr.length
+                } else {
+                    break
+                }
+                continue
+            }
+
+            // Handle surrogate pairs (e.g. emojis)
+            val charLen =
+                if (Character.isHighSurrogate(html[i]) &&
+                    i + 1 < html.length &&
+                    Character.isLowSurrogate(html[i + 1])
+                ) {
+                    2
+                } else {
+                    1
+                }
+            if (sb.length + charLen + closingTagsLen() + ellipsis.length <= maxChars) {
+                sb.append(html.substring(i, i + charLen))
+                i += charLen
+            } else {
+                break
+            }
+        }
+
+        if (i < html.length) {
+            while (sb.isNotEmpty() && sb.last().isWhitespace()) {
+                sb.deleteCharAt(sb.length - 1)
+            }
+            sb.append(ellipsis)
+            while (openTags.isNotEmpty()) {
+                sb.append("</").append(openTags.removeLast()).append(">")
+            }
+        }
+
+        return sb.toString()
+    }
 }
