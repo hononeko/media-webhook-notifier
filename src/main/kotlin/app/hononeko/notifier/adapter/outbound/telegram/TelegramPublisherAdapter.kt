@@ -43,6 +43,7 @@ class TelegramPublisherAdapter(
     }
 
     override val providerId: String = "telegram"
+    override val defaultChannelOrChatId: String get() = config.chatId
     private val logger = LoggerFactory.getLogger(TelegramPublisherAdapter::class.java)
 
     // Tracks if a message was posted as photo or text so edits use the matching endpoint
@@ -188,8 +189,9 @@ class TelegramPublisherAdapter(
                 if (card.artworkBytes != null && card.artworkBytes.isNotEmpty()) {
                     val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup)
                     if (photoResult is Either.Right) {
-                        photoMessageRegistry[photoResult.value.messageReferenceId] = true
-                        return@withLock photoResult
+                        val photoHandle = photoResult.value.copy(isPhoto = true)
+                        photoMessageRegistry[photoHandle.messageReferenceId] = true
+                        return@withLock Either.Right(photoHandle)
                     }
                     logger.warn("Telegram photo binary upload failed, falling back to HTML text message")
                 } else if (!card.artworkUrl.isNullOrBlank() &&
@@ -197,8 +199,9 @@ class TelegramPublisherAdapter(
                 ) {
                     val photoResult = sendPhoto(card.artworkUrl, caption, markup)
                     if (photoResult is Either.Right) {
-                        photoMessageRegistry[photoResult.value.messageReferenceId] = true
-                        return@withLock photoResult
+                        val photoHandle = photoResult.value.copy(isPhoto = true)
+                        photoMessageRegistry[photoHandle.messageReferenceId] = true
+                        return@withLock Either.Right(photoHandle)
                     }
                     logger.warn("Telegram photo send failed, falling back to HTML text message")
                 }
@@ -206,7 +209,9 @@ class TelegramPublisherAdapter(
 
             val textResult = sendMessage(textContent, markup)
             if (textResult is Either.Right) {
-                photoMessageRegistry[textResult.value.messageReferenceId] = false
+                val textHandle = textResult.value.copy(isPhoto = false)
+                photoMessageRegistry[textHandle.messageReferenceId] = false
+                return@withLock Either.Right(textHandle)
             }
             textResult
         }
@@ -219,11 +224,16 @@ class TelegramPublisherAdapter(
         val markup = buildKeyboard(update.actions)
         val html = buildProgressHtml(update)
 
-        val isPhoto = photoMessageRegistry[handle.messageReferenceId] ?: false
+        val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
+        if (handle.isPhoto) {
+            photoMessageRegistry[handle.messageReferenceId] = true
+        }
+        val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
+
         return if (isPhoto) {
-            editCaption(handle.channelOrChatId, msgId, truncateToLimit(html, 1024), markup)
+            editCaption(targetChatId, msgId, truncateToLimit(html, 1024), markup)
         } else {
-            editText(handle.channelOrChatId, msgId, html, markup)
+            editText(targetChatId, msgId, html, markup)
         }
     }
 
@@ -235,12 +245,14 @@ class TelegramPublisherAdapter(
         val markup = buildKeyboard(finalCard.actions)
         val html = buildCardHtml(finalCard)
 
-        val isPhoto = photoMessageRegistry[handle.messageReferenceId] ?: false
+        val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
+        val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
+
         val result =
             if (isPhoto) {
-                editCaption(handle.channelOrChatId, msgId, truncateToLimit(html, 1024), markup)
+                editCaption(targetChatId, msgId, truncateToLimit(html, 1024), markup)
             } else {
-                editText(handle.channelOrChatId, msgId, html, markup)
+                editText(targetChatId, msgId, html, markup)
             }
         photoMessageRegistry.remove(handle.messageReferenceId)
         return result
@@ -254,12 +266,14 @@ class TelegramPublisherAdapter(
         val markup = buildKeyboard(reasonCard.actions)
         val html = buildCardHtml(reasonCard)
 
-        val isPhoto = photoMessageRegistry[handle.messageReferenceId] ?: false
+        val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
+        val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
+
         val result =
             if (isPhoto) {
-                editCaption(handle.channelOrChatId, msgId, truncateToLimit(html, 1024), markup)
+                editCaption(targetChatId, msgId, truncateToLimit(html, 1024), markup)
             } else {
-                editText(handle.channelOrChatId, msgId, html, markup)
+                editText(targetChatId, msgId, html, markup)
             }
         photoMessageRegistry.remove(handle.messageReferenceId)
         return result

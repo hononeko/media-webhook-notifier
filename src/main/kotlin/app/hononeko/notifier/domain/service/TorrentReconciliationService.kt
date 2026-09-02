@@ -62,6 +62,7 @@ class TorrentReconciliationService(
 
             val msgTag = torrent.tags.firstOrNull { it.startsWith("mwn_msg:") }
             val photoTag = torrent.tags.firstOrNull { it.startsWith("mwn_photo:") }
+            val chatTag = torrent.tags.firstOrNull { it.startsWith("mwn_chat:") }
 
             val synthesizedGrab =
                 MediaPayload.ArrGrab(
@@ -76,18 +77,23 @@ class TorrentReconciliationService(
                 if (msgTag != null) {
                     val messageId = msgTag.removePrefix("mwn_msg:").trim()
                     val isPhoto = photoTag?.removePrefix("mwn_photo:")?.trim() == "1"
+                    val channelOrChatId =
+                        chatTag?.removePrefix("mwn_chat:")?.trim()?.ifBlank { null }
+                            ?: notificationPublisher.defaultChannelOrChatId
                     val handle =
                         NotificationHandle(
                             providerId = notificationPublisher.providerId,
-                            channelOrChatId = "",
-                            messageReferenceId = messageId
+                            channelOrChatId = channelOrChatId,
+                            messageReferenceId = messageId,
+                            isPhoto = isPhoto
                         )
 
                     logger.info(
-                        "Reconciliation found existing tracked torrent: {} (hash: {}, msgId: {}). Resuming progress loop.",
+                        "Reconciliation found existing tracked torrent: {} (hash: {}, msgId: {}, isPhoto: {}). Resuming progress loop.",
                         torrent.name,
                         normalizedHash,
-                        messageId
+                        messageId,
+                        isPhoto
                     )
 
                     trackDownloadUseCase.trackExisting(

@@ -9,6 +9,8 @@ import arrow.core.Either
 interface NotificationPublisherPort {
     val providerId: String
 
+    val defaultChannelOrChatId: String get() = ""
+
     fun supportsLiveProgress(): Boolean = true
 
     suspend fun sendCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle>
