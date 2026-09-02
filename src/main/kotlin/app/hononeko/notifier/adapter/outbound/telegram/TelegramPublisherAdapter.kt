@@ -339,7 +339,7 @@ class TelegramPublisherAdapter(
             SendMessageRequest(
                 chatId = config.chatId,
                 messageThreadId = config.topicId,
-                text = text,
+                text = truncateToLimit(text, 4096),
                 replyMarkup = markup
             )
 
@@ -368,7 +368,7 @@ class TelegramPublisherAdapter(
             EditMessageTextRequest(
                 chatId = chatId,
                 messageId = messageId,
-                text = text,
+                text = truncateToLimit(text, 4096),
                 replyMarkup = markup
             )
 
@@ -507,8 +507,5 @@ class TelegramPublisherAdapter(
     private fun truncateToLimit(
         text: String,
         maxChars: Int
-    ): String {
-        if (text.length <= maxChars) return text
-        return text.take(maxChars - 3) + "..."
-    }
+    ): String = TelegramHtmlFormatter.truncateHtml(text, maxChars)
 }
