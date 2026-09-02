@@ -1,6 +1,5 @@
 package app.hononeko.notifier.domain.service
 
-import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.ActiveTrackerSession
 import app.hononeko.notifier.domain.model.MediaPayload
@@ -29,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
 class DownloadTrackerEngine(
     private val torrentClient: TorrentClientPort,
     private val notificationPublisher: NotificationPublisherPort,
-    private val activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
+    private val activeTrackerStore: ActiveTrackerStore,
     private val pollIntervalSeconds: Long = 5,
     private val maxPollingMinutes: Long = 30,
     private val stalledTimeoutMinutes: Long = 15,
