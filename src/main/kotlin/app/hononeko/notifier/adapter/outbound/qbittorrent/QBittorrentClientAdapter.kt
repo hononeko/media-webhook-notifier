@@ -174,19 +174,22 @@ class QBittorrentClientAdapter(
     ): Either<DomainError.TorrentClientError, Unit> =
         mutateTorrentTags(endpointPath = "/api/v2/torrents/removeTags", hash = hash, tags = tags, action = "remove")
 
+    override suspend fun deleteTags(tags: List<String>): Either<DomainError.TorrentClientError, Unit> =
+        mutateTorrentTags(endpointPath = "/api/v2/torrents/deleteTags", hash = null, tags = tags, action = "delete")
+
     private suspend fun mutateTorrentTags(
         endpointPath: String,
-        hash: String,
+        hash: String?,
         tags: List<String>,
         action: String
     ): Either<DomainError.TorrentClientError, Unit> {
-        val normalizedHash = hash.trim().lowercase()
+        val normalizedHash = hash?.trim()?.lowercase() ?: ""
         val tagString =
             tags
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .joinToString(",")
-        if (normalizedHash.isBlank() || tagString.isBlank()) {
+        if ((hash != null && normalizedHash.isBlank()) || tagString.isBlank()) {
             return Either.Right(Unit)
         }
 
@@ -196,7 +199,9 @@ class QBittorrentClientAdapter(
             val endpoint = "$baseUrl$endpointPath"
             val params =
                 Parameters.build {
-                    append("hashes", normalizedHash)
+                    if (normalizedHash.isNotBlank()) {
+                        append("hashes", normalizedHash)
+                    }
                     append("tags", tagString)
                 }
             val response = executePostWithAuth(endpoint, params)
@@ -207,7 +212,7 @@ class QBittorrentClientAdapter(
             }
             Either.Right(Unit)
         } catch (e: Exception) {
-            logger.debug("Failed to {} tags for torrent {}: {}", action, normalizedHash, e.message)
+            logger.debug("Failed to {} tags {}: {}", action, tagString, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
     }

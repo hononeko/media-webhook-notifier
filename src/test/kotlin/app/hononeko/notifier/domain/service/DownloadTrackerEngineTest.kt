@@ -12,6 +12,8 @@ import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -73,6 +75,41 @@ class DownloadTrackerEngineTest {
             reasonCard: NotificationCard
         ): Either<DomainError.NotificationError, Unit> {
             cancelledCards.add(reasonCard)
+            return Either.Right(Unit)
+        }
+    }
+
+    private class FakeTorrentClient(
+        private val progressProvider: (String) -> Either<DomainError.TorrentClientError, TorrentProgress?> = {
+            Either.Right(null)
+        }
+    ) : TorrentClientPort {
+        val addedTags = Collections.synchronizedList(mutableListOf<Pair<String, List<String>>>())
+        val removedTags = Collections.synchronizedList(mutableListOf<Pair<String, List<String>>>())
+        val deletedTags = Collections.synchronizedList(mutableListOf<List<String>>())
+
+        override suspend fun getTorrentProgress(
+            hash: String
+        ): Either<DomainError.TorrentClientError, TorrentProgress?> = progressProvider(hash)
+
+        override suspend fun addTorrentTags(
+            hash: String,
+            tags: List<String>
+        ): Either<DomainError.TorrentClientError, Unit> {
+            addedTags.add(hash to tags)
+            return Either.Right(Unit)
+        }
+
+        override suspend fun removeTorrentTags(
+            hash: String,
+            tags: List<String>
+        ): Either<DomainError.TorrentClientError, Unit> {
+            removedTags.add(hash to tags)
+            return Either.Right(Unit)
+        }
+
+        override suspend fun deleteTags(tags: List<String>): Either<DomainError.TorrentClientError, Unit> {
+            deletedTags.add(tags)
             return Either.Right(Unit)
         }
     }
@@ -502,6 +539,172 @@ class DownloadTrackerEngineTest {
             // Advance time to completion
             testScope.advanceTimeBy(1100L)
             assertEquals(1, publisher.completedCards.size)
+            assertEquals(0, engine.activeTrackerCount())
+        }
+
+    @Test
+    fun `should prevent duplicate tracking sessions on concurrent track calls for same hash`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            val client = FakeTorrentClient()
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = client,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 1,
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash_concurrent",
+                    title = "Concurrent Show",
+                    seriesOrMovieTitle = "Concurrent Show"
+                )
+
+            // Launch 5 concurrent track calls for the same hash
+            val jobs =
+                (1..5).map {
+                    testScope.async {
+                        engine.track("hash_concurrent", grab)
+                    }
+                }
+
+            val results = jobs.awaitAll()
+            assertTrue(results.all { it.isRight() })
+
+            // Exactly 1 card sent and 1 session registered
+            assertEquals(1, publisher.sentCards.size)
+            assertTrue(engine.isTracking("hash_concurrent"))
+            assertEquals(1, engine.activeTrackerCount())
+        }
+
+    @Test
+    fun `should strip all mwn tags from torrent and delete ephemeral mwn_msg tags on completion`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            val client =
+                FakeTorrentClient { hash ->
+                    Either.Right(
+                        TorrentProgress(
+                            hash = hash,
+                            name = "Full Metal Jacket",
+                            progressPercent = 100.0,
+                            progressRatio = 1.0,
+                            downloadSpeedBytesPerSec = 0,
+                            uploadSpeedBytesPerSec = 0,
+                            etaSeconds = 0,
+                            totalSizeBytes = 1000000L,
+                            downloadedBytes = 1000000L,
+                            state = TorrentState.COMPLETED,
+                            tags = listOf("mwn_msg:9065", "mwn_photo:0", "mwn_chat:chat123", "non_mwn_tag")
+                        )
+                    )
+                }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = client,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 1,
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.RADARR,
+                    downloadId = "hash_tags_test",
+                    title = "Full Metal Jacket",
+                    seriesOrMovieTitle = "Full Metal Jacket"
+                )
+
+            engine.track("hash_tags_test", grab)
+
+            // Trigger completion tick
+            testScope.advanceTimeBy(1100L)
+
+            // 1. removeTorrentTags should have been called with all mwn_* tags found on torrent + session tags
+            val allRemoved = client.removedTags.flatMap { it.second }.toSet()
+            assertTrue(allRemoved.contains("mwn_msg:msg_live"))
+            assertTrue(allRemoved.contains("mwn_msg:9065"))
+            assertTrue(allRemoved.contains("mwn_photo:0"))
+            assertTrue(allRemoved.contains("mwn_photo:1"))
+            assertTrue(allRemoved.contains("mwn_chat:chat123"))
+            assertFalse(allRemoved.contains("non_mwn_tag"))
+
+            // 2. deleteTags should have been called for single-use mwn_msg tags permanently
+            val allDeleted = client.deletedTags.flatten().toSet()
+            assertTrue(allDeleted.contains("mwn_msg:msg_live"))
+            assertTrue(allDeleted.contains("mwn_msg:9065"))
+            assertFalse(allDeleted.contains("mwn_photo:1"))
+            assertFalse(allDeleted.contains("mwn_photo:0"))
+            assertFalse(allDeleted.contains("mwn_chat:chat123"))
+            assertFalse(allDeleted.contains("non_mwn_tag"))
+        }
+
+    @Test
+    fun `should clean up tags in finally when tracking is stopped`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+
+            val publisher = FakeNotificationPublisher()
+            val client =
+                FakeTorrentClient {
+                    Either.Right(
+                        TorrentProgress(
+                            hash = "hash_stop",
+                            name = "Stopping Show",
+                            progressPercent = 10.0,
+                            progressRatio = 0.1,
+                            downloadSpeedBytesPerSec = 1000L,
+                            uploadSpeedBytesPerSec = 0L,
+                            etaSeconds = 500L,
+                            totalSizeBytes = 1000000L,
+                            downloadedBytes = 100000L,
+                            state = TorrentState.DOWNLOADING,
+                            tags = listOf("mwn_msg:msg_live", "mwn_photo:1")
+                        )
+                    )
+                }
+
+            val engine =
+                DownloadTrackerEngine(
+                    torrentClient = client,
+                    notificationPublisher = publisher,
+                    pollIntervalSeconds = 1,
+                    scope = testScope
+                )
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "hash_stop",
+                    title = "Stopping Show",
+                    seriesOrMovieTitle = "Stopping Show"
+                )
+
+            engine.track("hash_stop", grab)
+            assertTrue(engine.isTracking("hash_stop"))
+
+            // Advance time slightly to let the loop enter its initial delay
+            testScope.advanceTimeBy(500L)
+
+            // Stop all trackers
+            engine.stopAll()
+            testScheduler.advanceUntilIdle()
+
+            // Tags should be cleaned up via finally
+            val allDeleted = client.deletedTags.flatten().toSet()
+            assertTrue(allDeleted.contains("mwn_msg:msg_live"))
             assertEquals(0, engine.activeTrackerCount())
         }
 }

@@ -426,10 +426,11 @@ class QBittorrentClientAdapterTest {
         }
 
     @Test
-    fun `should add and remove torrent tags successfully`() =
+    fun `should add and remove and delete torrent tags successfully`() =
         runTest {
             val addedParams = mutableListOf<String>()
             val removedParams = mutableListOf<String>()
+            val deletedParams = mutableListOf<String>()
 
             val mockEngine =
                 MockEngine { request ->
@@ -440,6 +441,10 @@ class QBittorrentClientAdapterTest {
                         }
                         "/api/v2/torrents/removeTags" -> {
                             removedParams.add(request.body.toString())
+                            respond("Ok.", HttpStatusCode.OK)
+                        }
+                        "/api/v2/torrents/deleteTags" -> {
+                            deletedParams.add(request.body.toString())
                             respond("Ok.", HttpStatusCode.OK)
                         }
                         else -> respond("Not Found", HttpStatusCode.NotFound)
@@ -454,11 +459,18 @@ class QBittorrentClientAdapterTest {
             val removeResult = adapter.removeTorrentTags("hash1", listOf("mwn_msg:100", "mwn_photo:1"))
             assertTrue(removeResult.isRight())
 
+            val deleteResult = adapter.deleteTags(listOf("mwn_msg:100"))
+            assertTrue(deleteResult.isRight())
+
             // Blank hash / empty tags fast return
             val blankAdd = adapter.addTorrentTags("   ", listOf("tag"))
             assertTrue(blankAdd.isRight())
             val emptyTagsAdd = adapter.addTorrentTags("hash1", emptyList())
             assertTrue(emptyTagsAdd.isRight())
+            val emptyTagsDelete = adapter.deleteTags(emptyList())
+            assertTrue(emptyTagsDelete.isRight())
+            val blankTagsDelete = adapter.deleteTags(listOf("   "))
+            assertTrue(blankTagsDelete.isRight())
         }
 
     @Test

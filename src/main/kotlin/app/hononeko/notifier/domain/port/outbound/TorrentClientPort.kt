@@ -20,4 +20,6 @@ fun interface TorrentClientPort {
         hash: String,
         tags: List<String>
     ): Either<DomainError.TorrentClientError, Unit> = Either.Right(Unit)
+
+    suspend fun deleteTags(tags: List<String>): Either<DomainError.TorrentClientError, Unit> = Either.Right(Unit)
 }
