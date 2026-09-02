@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
@@ -230,8 +231,10 @@ class EventRailTest {
             eventRail.close()
 
             // Draining should complete quickly without hanging or 100% CPU spinning.
-            withTimeout(3000) {
-                eventRail.join()
+            withContext(Dispatchers.Default) {
+                withTimeout(3000) {
+                    eventRail.join()
+                }
             }
 
             assertEquals(2, processed.size)
