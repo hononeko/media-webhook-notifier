@@ -114,9 +114,6 @@ object TelegramHtmlFormatter {
         return sb.toString()
     }
 
-    private val TAG_REGEX = Regex("^<(/)?([a-zA-Z][a-zA-Z0-9_-]*)(?:\\s+[^>]*)?>")
-    private val ENTITY_REGEX = Regex("^&([a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);")
-
     fun truncateHtml(
         html: String,
         maxChars: Int,
@@ -124,84 +121,103 @@ object TelegramHtmlFormatter {
     ): String {
         if (html.length <= maxChars) return html
         if (maxChars <= ellipsis.length) return ellipsis.take(maxChars)
+        return HtmlTruncator(html, maxChars, ellipsis).execute()
+    }
+}
 
-        val sb = StringBuilder()
-        val openTags = ArrayDeque<String>()
-        var i = 0
+private class HtmlTruncator(
+    private val html: String,
+    private val maxChars: Int,
+    private val ellipsis: String
+) {
+    private val sb = StringBuilder()
+    private val openTags = ArrayDeque<String>()
+    private var index = 0
 
-        fun closingTagsLen(): Int = openTags.sumOf { it.length + 3 }
+    private val closingTagsLen: Int
+        get() = openTags.sumOf { it.length + 3 }
 
-        while (i < html.length) {
-            val remainingHtml = html.substring(i)
+    fun execute(): String {
+        while (index < html.length) {
+            val token = nextToken()
+            if (!canFit(token)) break
+            applyToken(token)
+            index += token.length
+        }
+        return finalizeResult()
+    }
 
-            // Check if at HTML tag
-            val tagMatch = if (html[i] == '<') TAG_REGEX.find(remainingHtml) else null
-            if (tagMatch != null) {
-                val isClosing = tagMatch.groups[1] != null
-                val tagName = tagMatch.groups[2]!!.value.lowercase(Locale.ROOT)
-                val fullTag = tagMatch.value
-
-                if (isClosing) {
-                    val tagIndex = openTags.lastIndexOf(tagName)
-                    if (tagIndex != -1) {
-                        while (openTags.size > tagIndex) {
-                            val popped = openTags.removeLast()
-                            sb.append("</").append(popped).append(">")
-                        }
-                    }
-                    i += fullTag.length
-                } else if (fullTag.endsWith("/>")) {
-                    if (sb.length + fullTag.length + closingTagsLen() + ellipsis.length <= maxChars) {
-                        sb.append(fullTag)
-                        i += fullTag.length
-                    } else {
-                        break
-                    }
-                } else {
-                    val newClosingLen = closingTagsLen() + tagName.length + 3
-                    if (sb.length + fullTag.length + newClosingLen + ellipsis.length <= maxChars) {
-                        sb.append(fullTag)
-                        openTags.addLast(tagName)
-                        i += fullTag.length
-                    } else {
-                        break
-                    }
+    private fun nextToken(): Token {
+        if (html[index] == '<') {
+            val match = TAG_REGEX.matchAt(html, index)
+            if (match != null) {
+                val isClosing = match.groups[1] != null
+                val tagName = match.groups[2]!!.value.lowercase(Locale.ROOT)
+                val raw = match.value
+                return when {
+                    isClosing -> Token.ClosingTag(raw, tagName)
+                    raw.endsWith("/>") -> Token.SelfClosingTag(raw)
+                    else -> Token.OpeningTag(raw, tagName)
                 }
-                continue
-            }
-
-            // Check if at HTML entity
-            val entityMatch = if (html[i] == '&') ENTITY_REGEX.find(remainingHtml) else null
-            if (entityMatch != null) {
-                val entityStr = entityMatch.value
-                if (sb.length + entityStr.length + closingTagsLen() + ellipsis.length <= maxChars) {
-                    sb.append(entityStr)
-                    i += entityStr.length
-                } else {
-                    break
-                }
-                continue
-            }
-
-            // Handle surrogate pairs (e.g. emojis)
-            val charLen =
-                if (Character.isHighSurrogate(html[i]) &&
-                    i + 1 < html.length &&
-                    Character.isLowSurrogate(html[i + 1])
-                ) {
-                    2
-                } else {
-                    1
-                }
-            if (sb.length + charLen + closingTagsLen() + ellipsis.length <= maxChars) {
-                sb.append(html.substring(i, i + charLen))
-                i += charLen
-            } else {
-                break
             }
         }
 
-        if (i < html.length) {
+        if (html[index] == '&') {
+            val match = ENTITY_REGEX.matchAt(html, index)
+            if (match != null) {
+                return Token.Entity(match.value)
+            }
+        }
+
+        val charLen =
+            if (Character.isHighSurrogate(html[index]) &&
+                index + 1 < html.length &&
+                Character.isLowSurrogate(html[index + 1])
+            ) {
+                2
+            } else {
+                1
+            }
+        return Token.Text(html.substring(index, index + charLen))
+    }
+
+    private fun canFit(token: Token): Boolean =
+        when (token) {
+            is Token.OpeningTag -> {
+                val newClosingLen = closingTagsLen + token.name.length + 3
+                sb.length + token.length + newClosingLen + ellipsis.length <= maxChars
+            }
+            is Token.ClosingTag -> true
+            is Token.SelfClosingTag,
+            is Token.Entity,
+            is Token.Text -> {
+                sb.length + token.length + closingTagsLen + ellipsis.length <= maxChars
+            }
+        }
+
+    private fun applyToken(token: Token) {
+        when (token) {
+            is Token.OpeningTag -> {
+                sb.append(token.raw)
+                openTags.addLast(token.name)
+            }
+            is Token.ClosingTag -> {
+                val tagIndex = openTags.lastIndexOf(token.name)
+                if (tagIndex != -1) {
+                    while (openTags.size > tagIndex) {
+                        val popped = openTags.removeLast()
+                        sb.append("</").append(popped).append(">")
+                    }
+                }
+            }
+            is Token.SelfClosingTag -> sb.append(token.raw)
+            is Token.Entity -> sb.append(token.raw)
+            is Token.Text -> sb.append(token.raw)
+        }
+    }
+
+    private fun finalizeResult(): String {
+        if (index < html.length) {
             while (sb.isNotEmpty() && sb.last().isWhitespace()) {
                 sb.deleteCharAt(sb.length - 1)
             }
@@ -210,7 +226,47 @@ object TelegramHtmlFormatter {
                 sb.append("</").append(openTags.removeLast()).append(">")
             }
         }
-
         return sb.toString()
+    }
+
+    private sealed interface Token {
+        val length: Int
+
+        data class OpeningTag(
+            val raw: String,
+            val name: String
+        ) : Token {
+            override val length: Int get() = raw.length
+        }
+
+        data class ClosingTag(
+            val raw: String,
+            val name: String
+        ) : Token {
+            override val length: Int get() = raw.length
+        }
+
+        data class SelfClosingTag(
+            val raw: String
+        ) : Token {
+            override val length: Int get() = raw.length
+        }
+
+        data class Entity(
+            val raw: String
+        ) : Token {
+            override val length: Int get() = raw.length
+        }
+
+        data class Text(
+            val raw: String
+        ) : Token {
+            override val length: Int get() = raw.length
+        }
+    }
+
+    companion object {
+        private val TAG_REGEX = Regex("""<(/)?([a-zA-Z][a-zA-Z0-9_-]*)(?:\s+[^>]*)?>""")
+        private val ENTITY_REGEX = Regex("""&([a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);""")
     }
 }
