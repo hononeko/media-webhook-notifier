@@ -68,10 +68,15 @@ class DownloadTrackerEngine(
         val isPhoto = initialCard.artworkBytes != null || !initialCard.artworkUrl.isNullOrBlank()
 
         // Tag torrent in qBittorrent so it can be resumed after container restart
-        torrentClient.addTorrentTags(
-            normalizedHash,
-            listOf("mwn_msg:${handle.messageReferenceId}", "mwn_photo:${if (isPhoto) 1 else 0}")
-        )
+        val tags =
+            buildList {
+                add("mwn_msg:${handle.messageReferenceId}")
+                add("mwn_photo:${if (isPhoto) 1 else 0}")
+                if (handle.channelOrChatId.isNotBlank()) {
+                    add("mwn_chat:${handle.channelOrChatId}")
+                }
+            }
+        torrentClient.addTorrentTags(normalizedHash, tags)
 
         lateinit var trackingJob: Job
         trackingJob =
@@ -286,10 +291,16 @@ class DownloadTrackerEngine(
         hash: String,
         handle: NotificationHandle
     ) {
-        torrentClient.removeTorrentTags(
-            hash,
-            listOf("mwn_msg:${handle.messageReferenceId}", "mwn_photo:0", "mwn_photo:1")
-        )
+        val tagsToRemove =
+            buildList {
+                add("mwn_msg:${handle.messageReferenceId}")
+                add("mwn_photo:0")
+                add("mwn_photo:1")
+                if (handle.channelOrChatId.isNotBlank()) {
+                    add("mwn_chat:${handle.channelOrChatId}")
+                }
+            }
+        torrentClient.removeTorrentTags(hash, tagsToRemove)
     }
 
     fun stopAll() {

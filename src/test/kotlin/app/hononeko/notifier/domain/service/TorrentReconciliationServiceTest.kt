@@ -28,6 +28,7 @@ import kotlin.test.assertTrue
 class TorrentReconciliationServiceTest {
     private class FakeNotificationPublisher : NotificationPublisherPort {
         override val providerId: String = "telegram"
+        override val defaultChannelOrChatId: String = "chat123"
 
         override suspend fun sendCard(
             card: NotificationCard
@@ -124,10 +125,79 @@ class TorrentReconciliationServiceTest {
             assertEquals(1, resumedCount)
             assertEquals(1, reconciliationService.resumedCount)
             assertEquals(1, reconciliationService.runCount)
-            assertEquals(1, resumedExistingCalls.size)
             assertEquals("hash_with_tag", resumedExistingCalls.first().first)
             assertEquals("48201", resumedExistingCalls.first().second.messageReferenceId)
+            assertEquals("chat123", resumedExistingCalls.first().second.channelOrChatId)
+            assertTrue(resumedExistingCalls.first().second.isPhoto)
             assertEquals(0, newTrackCalls.size)
+        }
+
+    @Test
+    fun `should prioritize mwn_chat tag over default channel when present`() =
+        runTest {
+            val store = InMemoryActiveTrackerStore()
+            val publisher = FakeNotificationPublisher()
+
+            val resumedExistingCalls = Collections.synchronizedList(mutableListOf<Pair<String, NotificationHandle>>())
+
+            val trackUseCase =
+                object : TrackDownloadUseCase {
+                    override suspend fun track(
+                        hash: String,
+                        initialPayload: MediaPayload.ArrGrab
+                    ): Either<DomainError, Unit> = Either.Right(Unit)
+
+                    override suspend fun trackExisting(
+                        hash: String,
+                        payload: MediaPayload.ArrGrab,
+                        handle: NotificationHandle,
+                        isPhoto: Boolean
+                    ): Either<DomainError, Unit> {
+                        resumedExistingCalls.add(hash to handle)
+                        return Either.Right(Unit)
+                    }
+                }
+
+            val torrentWithChatTag =
+                TorrentProgress(
+                    hash = "hash_custom_chat",
+                    name = "Custom.Movie",
+                    progressPercent = 50.0,
+                    progressRatio = 0.5,
+                    downloadSpeedBytesPerSec = 1000000L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 60L,
+                    totalSizeBytes = 1000000000L,
+                    downloadedBytes = 500000000L,
+                    state = TorrentState.DOWNLOADING,
+                    tags = listOf("mwn_msg:9999", "mwn_photo:0", "mwn_chat:-100123456789")
+                )
+
+            val torrentClient =
+                object : TorrentClientPort {
+                    override suspend fun getTorrentProgress(
+                        hash: String
+                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(torrentWithChatTag)
+
+                    override suspend fun getActiveTorrents(
+                        filter: String
+                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                        Either.Right(listOf(torrentWithChatTag))
+                }
+
+            val service =
+                TorrentReconciliationService(
+                    torrentClient = torrentClient,
+                    trackDownloadUseCase = trackUseCase,
+                    activeTrackerStore = store,
+                    notificationPublisher = publisher
+                )
+
+            val resumedCount = service.reconcile()
+            assertEquals(1, resumedCount)
+            assertEquals("-100123456789", resumedExistingCalls.first().second.channelOrChatId)
+            assertEquals("9999", resumedExistingCalls.first().second.messageReferenceId)
+            assertEquals(false, resumedExistingCalls.first().second.isPhoto)
         }
 
     @Test

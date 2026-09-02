@@ -667,4 +667,84 @@ class TelegramPublisherAdapterTest {
             assertTrue(results.all { it.isRight() })
             assertEquals(10, messageCounter.get())
         }
+
+    @Test
+    fun `should use editMessageCaption when handle has isPhoto true even after restart`() =
+        runTest {
+            var endpointCalled: String? = null
+            var bodyContentCaptured: String? = null
+            val mockEngine =
+                MockEngine { request ->
+                    endpointCalled = request.url.encodedPath
+                    val bodyContent = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+                    bodyContentCaptured = bodyContent?.bytes()?.decodeToString() ?: ""
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":1001}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123",
+                    sendPhotos = true
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val handle = NotificationHandle("telegram", "", "1001", isPhoto = true)
+            val update =
+                ProgressUpdate(
+                    trackingKey = "key",
+                    title = "Downloading",
+                    subtitle = null,
+                    percent = 50.0,
+                    progressBar = "[===]",
+                    speedFormatted = "10 MB/s",
+                    etaFormatted = "",
+                    sizeFormatted = "1 GB",
+                    peersInfo = "10 peers",
+                    stateText = "DL"
+                )
+
+            val result = adapter.updateProgress(handle, update)
+            assertTrue(result.isRight())
+            assertEquals("/bot12345:TOKEN/editMessageCaption", endpointCalled)
+            assertTrue(bodyContentCaptured?.contains(""""chat_id":"-100123"""") == true)
+        }
+
+    @Test
+    fun `should use editMessageCaption on completeProgress when handle has isPhoto true`() =
+        runTest {
+            var endpointCalled: String? = null
+            var bodyContentCaptured: String? = null
+            val mockEngine =
+                MockEngine { request ->
+                    endpointCalled = request.url.encodedPath
+                    val bodyContent = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+                    bodyContentCaptured = bodyContent?.bytes()?.decodeToString() ?: ""
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":1001}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config =
+                NotificationConfig(
+                    botToken = "12345:TOKEN",
+                    chatId = "-100123",
+                    sendPhotos = true
+                )
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            val handle = NotificationHandle("telegram", "", "1001", isPhoto = true)
+            val finalCard = NotificationCard(title = "Download Complete")
+
+            val result = adapter.completeProgress(handle, finalCard)
+            assertTrue(result.isRight())
+            assertEquals("/bot12345:TOKEN/editMessageCaption", endpointCalled)
+            assertTrue(bodyContentCaptured?.contains(""""chat_id":"-100123"""") == true)
+        }
 }

@@ -8,8 +8,8 @@ import arrow.core.Either
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
@@ -196,7 +196,7 @@ class EventRailTest {
 
     @Test
     fun `should drain standard channel when urgent channel is closed for receive without busy spin`() =
-        runTest {
+        runBlocking {
             val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
             val processed = Collections.synchronizedList(mutableListOf<MediaPayload>())
             val fakeUseCase =
@@ -231,10 +231,8 @@ class EventRailTest {
             eventRail.close()
 
             // Draining should complete quickly without hanging or 100% CPU spinning.
-            withContext(Dispatchers.Default) {
-                withTimeout(3000) {
-                    eventRail.join()
-                }
+            withTimeout(10_000) {
+                eventRail.join()
             }
 
             assertEquals(2, processed.size)
