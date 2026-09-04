@@ -9,6 +9,7 @@ import redis.clients.jedis.ConnectionPoolConfig
 import redis.clients.jedis.DefaultJedisClientConfig
 import redis.clients.jedis.RedisClient
 import redis.clients.jedis.UnifiedJedis
+import redis.clients.jedis.params.ScanParams
 import redis.clients.jedis.params.SetParams
 import redis.clients.jedis.util.JedisURIHelper
 import java.net.URI
@@ -219,10 +220,16 @@ class ValkeyStateStore(
             val client = jedis ?: return@withContext
             try {
                 val pattern = "$keyPrefix*"
-                val keys = client.keys(pattern)
-                if (!keys.isNullOrEmpty()) {
-                    client.del(*keys.toTypedArray())
-                }
+                val scanParams = ScanParams().match(pattern).count(100)
+                var cursor = ScanParams.SCAN_POINTER_START
+                do {
+                    val scanResult = client.scan(cursor, scanParams)
+                    val keys = scanResult.result
+                    if (!keys.isNullOrEmpty()) {
+                        client.del(*keys.toTypedArray())
+                    }
+                    cursor = scanResult.cursor
+                } while (!scanResult.isCompleteIteration && cursor != ScanParams.SCAN_POINTER_START)
                 isHealthy = true
             } catch (e: Exception) {
                 isHealthy = false

@@ -7,7 +7,9 @@ import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import redis.clients.jedis.UnifiedJedis
 import redis.clients.jedis.exceptions.JedisConnectionException
+import redis.clients.jedis.params.ScanParams
 import redis.clients.jedis.params.SetParams
+import redis.clients.jedis.resps.ScanResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -92,9 +94,11 @@ class ValkeyStateStoreTest {
             assertTrue(store.delete("k1"))
 
             // clear
-            every { mockJedis.keys("mwn:discord:*") } returns setOf("mwn:discord:k2", "mwn:discord:k3")
+            val scanResult = ScanResult(ScanParams.SCAN_POINTER_START, listOf("mwn:discord:k2", "mwn:discord:k3"))
+            every { mockJedis.scan(eq(ScanParams.SCAN_POINTER_START), any<ScanParams>()) } returns scanResult
             every { mockJedis.del("mwn:discord:k2", "mwn:discord:k3") } returns 2L
             store.clear()
+            verify { mockJedis.scan(eq(ScanParams.SCAN_POINTER_START), any<ScanParams>()) }
             verify { mockJedis.del("mwn:discord:k2", "mwn:discord:k3") }
         }
 
