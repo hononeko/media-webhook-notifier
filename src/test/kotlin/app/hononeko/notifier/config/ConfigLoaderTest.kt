@@ -33,6 +33,14 @@ class ConfigLoaderTest {
         assertEquals(6, config.qbittorrent.missingGraceAttempts)
         assertEquals(5, config.qbittorrent.debounceSeconds)
         assertEquals("", config.qbittorrent.webuiPublicUrl)
+        assertEquals("mwn_", config.qbittorrent.tagPrefix)
+
+        // State
+        assertEquals("memory", config.state.type)
+        assertEquals("", config.state.url)
+        assertEquals("mwn:", config.state.keyPrefix)
+        assertEquals(2000L, config.state.timeoutMillis)
+        assertEquals(16, config.state.maxPoolSize)
 
         // Notifications
         assertEquals("telegram", config.notifications.provider)
@@ -75,6 +83,38 @@ class ConfigLoaderTest {
         assertEquals("http://jellyfin:8096", config.mediaServer.url)
         assertEquals("https://jellyfin.example.com", config.mediaServer.publicUrl)
         assertEquals(43200L, config.mediaServer.maxAvailableAgeSeconds)
+    }
+
+    @Test
+    fun `should load custom state and qbittorrent tagPrefix configuration`() {
+        val env =
+            mapOf(
+                "STATE_STORE_TYPE" to "valkey",
+                "VALKEY_URL" to "valkey://:secret@valkey-host:6379/1",
+                "STATE_KEY_PREFIX" to "mwn:tg:",
+                "STATE_TIMEOUT_MILLIS" to "3500",
+                "STATE_MAX_POOL_SIZE" to "32",
+                "QBITTORRENT_TAG_PREFIX" to "mwn_tg_"
+            )
+
+        val config = ConfigLoader.load(env)
+
+        assertEquals("valkey", config.state.type)
+        assertEquals("valkey://:secret@valkey-host:6379/1", config.state.url)
+        assertEquals("mwn:tg:", config.state.keyPrefix)
+        assertEquals(3500L, config.state.timeoutMillis)
+        assertEquals(32, config.state.maxPoolSize)
+        assertEquals("mwn_tg_", config.qbittorrent.tagPrefix)
+    }
+
+    @Test
+    fun `should auto-detect valkey state store type when REDIS_URL or VALKEY_URL is set`() {
+        val env = mapOf("REDIS_URL" to "redis://redis-server:6379")
+        val config = ConfigLoader.load(env)
+
+        assertEquals("valkey", config.state.type)
+        assertEquals("redis://redis-server:6379", config.state.url)
+        assertEquals("mwn:", config.state.keyPrefix)
     }
 
     @Test

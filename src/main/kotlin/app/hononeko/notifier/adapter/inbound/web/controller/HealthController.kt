@@ -1,6 +1,7 @@
 package app.hononeko.notifier.adapter.inbound.web.controller
 
 import app.hononeko.notifier.adapter.inbound.web.EventRail
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.TorrentReconciliationService
 import io.ktor.http.ContentType
@@ -62,6 +63,7 @@ data class MetricsDto(
     val eventRail: EventRailMetricsDto,
     val reconciliation: ReconciliationMetricsDto = ReconciliationMetricsDto(),
     val memory: MemoryMetricsDto,
+    val stateStoreHealthy: Boolean? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -69,6 +71,7 @@ class HealthController(
     private val eventRail: EventRail? = null,
     private val downloadTracker: DownloadTrackerEngine? = null,
     private val reconciliationService: TorrentReconciliationService? = null,
+    private val stateStore: StateStorePort? = null,
     private val startTimeMillis: Long = System.currentTimeMillis()
 ) {
     companion object {
@@ -105,15 +108,19 @@ class HealthController(
     suspend fun handleReadiness(call: ApplicationCall) {
         val isRailClosed = eventRail?.isClosed == true
         val isReady = !isRailClosed
+        val stateHealthy = stateStore?.healthCheck() ?: true
 
         val status = if (isReady) "UP" else "OUT_OF_SERVICE"
         val httpStatus = if (isReady) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable
 
         val checks =
-            mapOf(
-                "eventRail" to if (isRailClosed) "DOWN" else "UP",
-                "server" to if (isReady) "READY" else "DRAINING"
-            )
+            buildMap {
+                put("eventRail", if (isRailClosed) "DOWN" else "UP")
+                put("server", if (isReady) "READY" else "DRAINING")
+                if (stateStore != null) {
+                    put("stateStore", if (stateHealthy) "UP" else "DEGRADED")
+                }
+            }
 
         logger.debug("Handling readiness probe: status={}, checks={}", status, checks)
         call.respond<ProbeStatusDto>(
@@ -192,6 +199,7 @@ class HealthController(
                         totalBytes = totalMemory,
                         maxBytes = maxMemory
                     ),
+                stateStoreHealthy = stateStore?.healthCheck(),
                 timestamp = System.currentTimeMillis()
             )
 
@@ -206,7 +214,7 @@ class HealthController(
         )
     }
 
-    fun buildPrometheusMetrics(): String {
+    suspend fun buildPrometheusMetrics(): String {
         val runtime = Runtime.getRuntime()
         val totalMemory = runtime.totalMemory()
         val freeMemory = runtime.freeMemory()
@@ -220,6 +228,7 @@ class HealthController(
         val deadLetterCount = eventRail?.deadLetterBuffer?.size() ?: 0
         val reconRuns = reconciliationService?.runCount ?: 0L
         val reconResumed = reconciliationService?.resumedCount ?: 0L
+        val stateHealthy = stateStore?.healthCheck()
 
         return buildString {
             appendLine("# HELP process_uptime_seconds Process uptime in seconds")
@@ -258,6 +267,11 @@ class HealthController(
             appendLine("# HELP media_webhook_reconciliation_resumed_total Total downloads resumed by reconciliation")
             appendLine("# TYPE media_webhook_reconciliation_resumed_total counter")
             appendLine("media_webhook_reconciliation_resumed_total $reconResumed")
+            if (stateHealthy != null) {
+                appendLine("# HELP media_webhook_state_store_healthy State store health (1 = healthy, 0 = unhealthy)")
+                appendLine("# TYPE media_webhook_state_store_healthy gauge")
+                appendLine("media_webhook_state_store_healthy ${if (stateHealthy) 1 else 0}")
+            }
         }
     }
 }

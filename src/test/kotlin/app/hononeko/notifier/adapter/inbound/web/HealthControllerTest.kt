@@ -2,6 +2,7 @@ package app.hononeko.notifier.adapter.inbound.web
 
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.config.ServerConfig
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
@@ -10,6 +11,8 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.testing.testApplication
+import io.mockk.coEvery
+import io.mockk.mockk
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -240,4 +243,66 @@ class HealthControllerTest {
         assertEquals(5000L, metricsDto.uptimeMillis)
         assertEquals(2, metricsDto.activeTrackersCount)
     }
+
+    @Test
+    fun `should report healthy stateStore in readiness and metrics endpoints when healthy`() =
+        testApplication {
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
+            val mockStore = mockk<StateStorePort>()
+            coEvery { mockStore.healthCheck() } returns true
+
+            val healthController = HealthController(eventRail = eventRail, stateStore = mockStore)
+            application {
+                install(ContentNegotiation) { json(testJson) }
+                configureWebhookRouting(
+                    eventRail = eventRail,
+                    serverConfig = ServerConfig(),
+                    healthController = healthController
+                )
+            }
+
+            val readyzRes = client.get("/readyz")
+            assertEquals(HttpStatusCode.OK, readyzRes.status)
+            val readyzBody = readyzRes.bodyAsText()
+            assertTrue(readyzBody.contains("\"stateStore\":\"UP\""))
+
+            val metricsRes = client.get("/metrics")
+            assertEquals(HttpStatusCode.OK, metricsRes.status)
+            assertTrue(metricsRes.bodyAsText().contains("\"stateStoreHealthy\":true"))
+
+            val promRes = client.get("/metrics/prometheus")
+            assertEquals(HttpStatusCode.OK, promRes.status)
+            assertTrue(promRes.bodyAsText().contains("media_webhook_state_store_healthy 1"))
+        }
+
+    @Test
+    fun `should report degraded stateStore in readiness and metrics endpoints when unhealthy`() =
+        testApplication {
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
+            val mockStore = mockk<StateStorePort>()
+            coEvery { mockStore.healthCheck() } returns false
+
+            val healthController = HealthController(eventRail = eventRail, stateStore = mockStore)
+            application {
+                install(ContentNegotiation) { json(testJson) }
+                configureWebhookRouting(
+                    eventRail = eventRail,
+                    serverConfig = ServerConfig(),
+                    healthController = healthController
+                )
+            }
+
+            val readyzRes = client.get("/readyz")
+            assertEquals(HttpStatusCode.OK, readyzRes.status)
+            val readyzBody = readyzRes.bodyAsText()
+            assertTrue(readyzBody.contains("\"stateStore\":\"DEGRADED\""))
+
+            val metricsRes = client.get("/metrics")
+            assertEquals(HttpStatusCode.OK, metricsRes.status)
+            assertTrue(metricsRes.bodyAsText().contains("\"stateStoreHealthy\":false"))
+
+            val promRes = client.get("/metrics/prometheus")
+            assertEquals(HttpStatusCode.OK, promRes.status)
+            assertTrue(promRes.bodyAsText().contains("media_webhook_state_store_healthy 0"))
+        }
 }

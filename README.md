@@ -100,6 +100,18 @@ All settings can be configured via environment variables:
 | `QBITTORRENT_STALLED_TIMEOUT_MINUTES` | `15` | Timeout before alerting a download is stalled |
 | `QBITTORRENT_DEBOUNCE_SECONDS` | `5` | Sliding window to batch rapid multi-episode grabs, imports, and upgrades |
 | `QBITTORRENT_WEBUI_PUBLIC_URL` | `""` | Public URL to qBittorrent WebUI |
+| `QBITTORRENT_TAG_PREFIX` | `mwn_` | Prefix for torrent tags in qBittorrent (e.g. `mwn_tg_`, `mwn_discord_` for multi-channel isolation) |
+
+### State Store (Optional Valkey / Redis)
+Persistent state storage across restarts and rollouts, enabling multi-instance topologies (e.g., Telegram and Discord notifier instances sharing the same qBittorrent, Starr apps, and Plex/Jellyfin server). Single-instance in-memory remains the zero-dependency default.
+
+| Variable | Default | Description |
+|---|---|---|
+| `STATE_STORE_TYPE` | `memory` | State store backend: `memory` or `valkey` (also accepts `redis`). Auto-detected if URL is set. |
+| `VALKEY_URL` | `""` | Connection URL: `valkey://[user:pass@]host:port[/db]` (or `redis://`). Supports `VALKEY_URL_FILE`, `REDIS_URL` |
+| `STATE_KEY_PREFIX` | `mwn:` | Namespace prefix for keys (e.g. `mwn:tg:`, `mwn:discord:` to isolate multiple notification channels) |
+| `STATE_TIMEOUT_MILLIS` | `2000` | Connection and socket timeout in milliseconds |
+| `STATE_MAX_POOL_SIZE` | `16` | Maximum connection pool size |
 
 ### Media Server (Plex & Jellyfin)
 | Variable | Default | Description |

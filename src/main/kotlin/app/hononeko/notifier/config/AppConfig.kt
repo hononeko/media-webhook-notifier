@@ -7,6 +7,7 @@ data class AppConfig(
     val mediaServer: MediaServerConfig = MediaServerConfig(),
     val qbittorrent: QBittorrentConfig = QBittorrentConfig(),
     val notifications: NotificationConfig = NotificationConfig(),
+    val state: StateConfig = StateConfig(),
     val templates: TemplateConfig = TemplateConfig()
 )
 
@@ -36,7 +37,16 @@ data class QBittorrentConfig(
     val debounceSeconds: Long = 5,
     val webuiPublicUrl: String = "",
     val reconciliationEnabled: Boolean = true,
-    val reconciliationIntervalMinutes: Long = 5
+    val reconciliationIntervalMinutes: Long = 5,
+    val tagPrefix: String = "mwn_"
+)
+
+data class StateConfig(
+    val type: String = "memory",
+    val url: String = "",
+    val keyPrefix: String = "mwn:",
+    val timeoutMillis: Long = 2000L,
+    val maxPoolSize: Int = 16
 )
 
 data class NotificationConfig(
