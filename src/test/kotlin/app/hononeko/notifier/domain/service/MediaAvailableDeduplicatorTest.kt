@@ -407,4 +407,39 @@ class MediaAvailableDeduplicatorTest {
             deduplicator.clear()
             coVerify(exactly = 1) { mockStore.clear() }
         }
+
+    @Test
+    fun `should atomically acquire primary key and set remaining keys for multi-key payload on StateStorePort`() =
+        runTest {
+            val mockStore = mockk<StateStorePort>(relaxed = true)
+            val deduplicator = MediaAvailableDeduplicator(stateStore = mockStore, ttlMillis = 15_000L)
+
+            val batchItem =
+                MediaPayload.PlexLibraryNew(
+                    title = "Breaking Bad",
+                    year = 2008,
+                    ratingKeys = listOf("rk-101", "rk-102", "rk-103"),
+                    serverMachineIdentifier = "srv-1",
+                    instanceName = "Plex"
+                )
+
+            val key1 = "plex:plex:srv-1:rk-101"
+            val key2 = "plex:plex:srv-1:rk-102"
+            val key3 = "plex:plex:srv-1:rk-103"
+
+            coEvery { mockStore.exists(any(), any()) } returns false
+            coEvery { mockStore.tryAcquire(key1, ttlSeconds = 15L, value = any(), nowMillis = any()) } returns true
+
+            val acquired = deduplicator.tryAcquire(batchItem)
+            assertTrue(acquired)
+
+            coVerify(exactly = 1) { mockStore.tryAcquire(key1, ttlSeconds = 15L, value = any(), nowMillis = any()) }
+            coVerify(exactly = 1) { mockStore.set(key2, value = any(), ttlSeconds = 15L, nowMillis = any()) }
+            coVerify(exactly = 1) { mockStore.set(key3, value = any(), ttlSeconds = 15L, nowMillis = any()) }
+
+            // If primary key cannot be acquired, returns false
+            coEvery { mockStore.tryAcquire(key1, ttlSeconds = 15L, value = any(), nowMillis = any()) } returns false
+            val raceLost = deduplicator.tryAcquire(batchItem)
+            assertFalse(raceLost)
+        }
 }

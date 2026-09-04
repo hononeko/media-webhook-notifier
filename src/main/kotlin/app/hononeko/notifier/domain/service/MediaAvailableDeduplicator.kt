@@ -144,11 +144,13 @@ class MediaAvailableDeduplicator(
                 }
             }
             val ttlSeconds = (ttlMillis / 1000L).coerceAtLeast(1L)
-            if (keys.size == 1) {
-                return store.tryAcquire(keys.first(), ttlSeconds = ttlSeconds, value = now.toString(), nowMillis = now)
+            val primaryAcquired =
+                store.tryAcquire(keys.first(), ttlSeconds = ttlSeconds, value = now.toString(), nowMillis = now)
+            if (!primaryAcquired) {
+                return false
             }
-            for (key in keys) {
-                store.set(key, value = now.toString(), ttlSeconds = ttlSeconds, nowMillis = now)
+            for (i in 1 until keys.size) {
+                store.set(keys[i], value = now.toString(), ttlSeconds = ttlSeconds, nowMillis = now)
             }
             return true
         }
