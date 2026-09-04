@@ -10,7 +10,7 @@ logback = "1.6.3"
 hoplite = "2.9.0"
 mockk = "1.14.11"
 ktlint-plugin = "14.2.0"
-jedis = "5.2.0"
+jedis = "8.0.1"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
