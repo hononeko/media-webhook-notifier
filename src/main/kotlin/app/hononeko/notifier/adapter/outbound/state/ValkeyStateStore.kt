@@ -4,26 +4,28 @@ import app.hononeko.notifier.config.StateConfig
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig
 import org.slf4j.LoggerFactory
-import redis.clients.jedis.Connection
-import redis.clients.jedis.JedisPooled
+import redis.clients.jedis.ConnectionPoolConfig
+import redis.clients.jedis.DefaultJedisClientConfig
+import redis.clients.jedis.RedisClient
+import redis.clients.jedis.UnifiedJedis
 import redis.clients.jedis.params.SetParams
+import redis.clients.jedis.util.JedisURIHelper
 import java.net.URI
 
 class ValkeyStateStore(
     private val config: StateConfig,
     private val fallbackStore: StateStorePort = InMemoryStateStore(),
-    injectedJedis: JedisPooled? = null
+    injectedJedis: UnifiedJedis? = null
 ) : StateStorePort {
     private val logger = LoggerFactory.getLogger(ValkeyStateStore::class.java)
     private val keyPrefix: String = config.keyPrefix.ifBlank { "mwn:" }
-    private val jedis: JedisPooled? = injectedJedis ?: initJedis(config)
+    private val jedis: UnifiedJedis? = injectedJedis ?: initJedis(config)
 
     @Volatile
     private var isHealthy: Boolean = (jedis != null)
 
-    private fun initJedis(cfg: StateConfig): JedisPooled? {
+    private fun initJedis(cfg: StateConfig): UnifiedJedis? {
         if (cfg.url.isBlank()) {
             logger.info("Valkey URL is empty; ValkeyStateStore will operate exclusively in-memory fallback mode")
             return null
@@ -32,7 +34,7 @@ class ValkeyStateStore(
             val normalizedUrl = normalizeUrl(cfg.url)
             val uri = URI(normalizedUrl)
             val poolConfig =
-                GenericObjectPoolConfig<Connection>().apply {
+                ConnectionPoolConfig().apply {
                     maxTotal = cfg.maxPoolSize
                 }
             val timeout = cfg.timeoutMillis.toInt()
@@ -42,7 +44,18 @@ class ValkeyStateStore(
                 timeout,
                 cfg.maxPoolSize
             )
-            JedisPooled(poolConfig, uri, timeout, timeout)
+            val clientConfig =
+                DefaultJedisClientConfig
+                    .builder(uri)
+                    .timeoutMillis(timeout)
+                    .build()
+            val hostAndPort = JedisURIHelper.getHostAndPort(uri)
+            RedisClient
+                .builder()
+                .hostAndPort(hostAndPort)
+                .clientConfig(clientConfig)
+                .poolConfig(poolConfig)
+                .build()
         } catch (e: Exception) {
             logger.error("Failed to initialize Valkey/Redis connection pool for '{}': {}", cfg.url, e.message, e)
             null
@@ -51,11 +64,27 @@ class ValkeyStateStore(
 
     private fun normalizeUrl(rawUrl: String): String {
         val trimmed = rawUrl.trim()
-        return when {
-            trimmed.startsWith("valkeys://", ignoreCase = true) -> "rediss://" + trimmed.substring(10)
-            trimmed.startsWith("valkey://", ignoreCase = true) -> "redis://" + trimmed.substring(9)
-            !trimmed.contains("://") -> "redis://$trimmed"
-            else -> trimmed
+        val withScheme =
+            when {
+                trimmed.startsWith("valkeys://", ignoreCase = true) -> "rediss://" + trimmed.substring(10)
+                trimmed.startsWith("valkey://", ignoreCase = true) -> "redis://" + trimmed.substring(9)
+                !trimmed.contains("://") -> "redis://$trimmed"
+                else -> trimmed
+            }
+        return try {
+            val parsed = URI(withScheme)
+            if (parsed.port == -1 && parsed.host != null) {
+                val defaultPort = if (parsed.scheme?.equals("rediss", ignoreCase = true) == true) 6380 else 6379
+                val userInfoPart = if (parsed.rawUserInfo != null) "${parsed.rawUserInfo}@" else ""
+                val hostPart = parsed.host
+                val pathPart = parsed.rawPath ?: ""
+                val queryPart = if (parsed.rawQuery != null) "?${parsed.rawQuery}" else ""
+                "${parsed.scheme}://$userInfoPart$hostPart:$defaultPort$pathPart$queryPart"
+            } else {
+                withScheme
+            }
+        } catch (_: Exception) {
+            withScheme
         }
     }
 

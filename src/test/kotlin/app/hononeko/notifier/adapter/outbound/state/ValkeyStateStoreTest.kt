@@ -5,7 +5,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
-import redis.clients.jedis.JedisPooled
+import redis.clients.jedis.UnifiedJedis
 import redis.clients.jedis.exceptions.JedisConnectionException
 import redis.clients.jedis.params.SetParams
 import kotlin.test.Test
@@ -30,9 +30,22 @@ class ValkeyStateStoreTest {
         }
 
     @Test
+    fun `should successfully initialize with valid redis or valkey url and close cleanly`() =
+        runTest {
+            val store = ValkeyStateStore(config = StateConfig(url = "valkey://127.0.0.1:6379", timeoutMillis = 1000))
+            store.close()
+
+            val storeNoPort = ValkeyStateStore(config = StateConfig(url = "127.0.0.1", timeoutMillis = 1000))
+            storeNoPort.close()
+
+            val storeValkeys = ValkeyStateStore(config = StateConfig(url = "valkeys://127.0.0.1", timeoutMillis = 1000))
+            storeValkeys.close()
+        }
+
+    @Test
     fun `should delegate tryAcquire to Jedis and apply keyPrefix`() =
         runTest {
-            val mockJedis = mockk<JedisPooled>(relaxed = true)
+            val mockJedis = mockk<UnifiedJedis>(relaxed = true)
             val config = StateConfig(url = "redis://localhost:6379", keyPrefix = "mwn:tg:")
             val store = ValkeyStateStore(config = config, injectedJedis = mockJedis)
 
@@ -52,7 +65,7 @@ class ValkeyStateStoreTest {
     @Test
     fun `should delegate exists, get, set, delete, and clear to Jedis with key prefix isolation`() =
         runTest {
-            val mockJedis = mockk<JedisPooled>(relaxed = true)
+            val mockJedis = mockk<UnifiedJedis>(relaxed = true)
             val config = StateConfig(url = "redis://localhost:6379", keyPrefix = "mwn:discord:")
             val store = ValkeyStateStore(config = config, injectedJedis = mockJedis)
 
@@ -88,7 +101,7 @@ class ValkeyStateStoreTest {
     @Test
     fun `should report health status based on PING response`() =
         runTest {
-            val mockJedis = mockk<JedisPooled>()
+            val mockJedis = mockk<UnifiedJedis>()
             val config = StateConfig(url = "redis://localhost:6379")
             val store = ValkeyStateStore(config = config, injectedJedis = mockJedis)
 
@@ -102,7 +115,7 @@ class ValkeyStateStoreTest {
     @Test
     fun `should fall back to in-memory store when Jedis throws connection exception`() =
         runTest {
-            val mockJedis = mockk<JedisPooled>()
+            val mockJedis = mockk<UnifiedJedis>()
             val fallback = InMemoryStateStore()
             val config = StateConfig(url = "redis://localhost:6379", keyPrefix = "mwn:")
             val store = ValkeyStateStore(config = config, fallbackStore = fallback, injectedJedis = mockJedis)
@@ -124,7 +137,7 @@ class ValkeyStateStoreTest {
 
     @Test
     fun `should close underlying Jedis client safely on close`() {
-        val mockJedis = mockk<JedisPooled>(relaxed = true)
+        val mockJedis = mockk<UnifiedJedis>(relaxed = true)
         val config = StateConfig(url = "redis://localhost:6379")
         val store = ValkeyStateStore(config = config, injectedJedis = mockJedis)
 
