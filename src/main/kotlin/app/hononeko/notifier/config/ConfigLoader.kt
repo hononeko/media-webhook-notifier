@@ -111,7 +111,15 @@ object ConfigLoader {
         MediaServerConfig(
             type = reader.get("MEDIA_SERVER_TYPE", "mediaServer.type") ?: "plex",
             url = reader.get("MEDIA_SERVER_URL", "mediaServer.url") ?: "",
-            publicUrl = reader.get("MEDIA_SERVER_PUBLIC_URL", "mediaServer.publicUrl") ?: ""
+            publicUrl = reader.get("MEDIA_SERVER_PUBLIC_URL", "mediaServer.publicUrl") ?: "",
+            maxAvailableAgeSeconds =
+                reader.getLong(
+                    86_400L,
+                    "MEDIA_SERVER_MAX_AVAILABLE_AGE_SECONDS",
+                    "MEDIA_SERVER_MAX_AGE_SECONDS",
+                    "mediaServer.maxAvailableAgeSeconds",
+                    "mediaServer.maxAgeSeconds"
+                )
         )
 
     private fun loadQBittorrentConfig(reader: EnvReader): QBittorrentConfig =

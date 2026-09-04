@@ -21,6 +21,7 @@ class ConfigLoaderTest {
         assertEquals("plex", config.mediaServer.type)
         assertEquals("", config.mediaServer.url)
         assertEquals("", config.mediaServer.publicUrl)
+        assertEquals(86400L, config.mediaServer.maxAvailableAgeSeconds)
 
         // qBittorrent & Tracking
         assertEquals("http://localhost:8080", config.qbittorrent.url)
@@ -54,7 +55,8 @@ class ConfigLoaderTest {
                 "QBITTORRENT_URL" to "http://qbittorrent:8080",
                 "MEDIA_SERVER_TYPE" to "jellyfin",
                 "MEDIA_SERVER_URL" to "http://jellyfin:8096",
-                "MEDIA_SERVER_PUBLIC_URL" to "https://jellyfin.example.com"
+                "MEDIA_SERVER_PUBLIC_URL" to "https://jellyfin.example.com",
+                "MEDIA_SERVER_MAX_AVAILABLE_AGE_SECONDS" to "43200"
             )
 
         val config = ConfigLoader.load(env)
@@ -72,6 +74,7 @@ class ConfigLoaderTest {
         assertEquals("jellyfin", config.mediaServer.type)
         assertEquals("http://jellyfin:8096", config.mediaServer.url)
         assertEquals("https://jellyfin.example.com", config.mediaServer.publicUrl)
+        assertEquals(43200L, config.mediaServer.maxAvailableAgeSeconds)
     }
 
     @Test

@@ -45,10 +45,14 @@ class PlexWebhookProvider(
         val effectiveInstance = callerName?.ifBlank { null } ?: dto.server?.title?.ifBlank { null } ?: "Plex"
 
         return if (event.equals("library.new", ignoreCase = true)) {
+            val title = dto.metadata?.title ?: "Unknown Media"
             logger.info(
-                "Ingesting Plex webhook event: {} (instance: {})",
+                "Ingesting Plex webhook event: {} for '{}' (instance: {}, ratingKey: {}, addedAt: {})",
                 event,
-                effectiveInstance
+                title,
+                effectiveInstance,
+                dto.metadata?.ratingKey,
+                dto.metadata?.addedAt
             )
             val payload = mapToPlexLibraryNew(dto, effectiveInstance, thumbBytes)
             WebhookProcessResult.Queued(payload, event)
@@ -130,6 +134,14 @@ class PlexWebhookProvider(
         val parentPosterUrl = sanitizeHttpUrl(meta?.parentThumb)
         val grandparentPosterUrl = sanitizeHttpUrl(meta?.grandparentThumb)
 
+        val rawAddedAt = meta?.addedAt
+        val effectiveAddedAt =
+            when {
+                rawAddedAt == null -> null
+                rawAddedAt > 100_000_000_000L -> rawAddedAt / 1000L
+                else -> rawAddedAt
+            }
+
         return MediaPayload.PlexLibraryNew(
             source = AppSource.PLEX,
             eventType = EventType.MEDIA_AVAILABLE,
@@ -151,6 +163,7 @@ class PlexWebhookProvider(
             grandparentPosterUrl = grandparentPosterUrl,
             artworkBytes = thumbBytes,
             ratingKey = meta?.ratingKey,
+            addedAt = effectiveAddedAt,
             serverMachineIdentifier = dto.server?.uuid,
             instanceName = instanceName
         )

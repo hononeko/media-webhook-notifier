@@ -67,6 +67,8 @@ sealed interface MediaPayload {
         val grandparentPosterUrl: String? = null,
         val artworkBytes: ByteArray? = null,
         val ratingKey: String? = null,
+        val ratingKeys: List<String> = if (!ratingKey.isNullOrBlank()) listOf(ratingKey) else emptyList(),
+        val addedAt: Long? = null,
         val serverMachineIdentifier: String? = null,
         val deepLinkUrl: String? = null,
         override val instanceName: String? = null
@@ -100,6 +102,8 @@ sealed interface MediaPayload {
                 return false
             }
             if (ratingKey != other.ratingKey) return false
+            if (ratingKeys != other.ratingKeys) return false
+            if (addedAt != other.addedAt) return false
             if (serverMachineIdentifier != other.serverMachineIdentifier) return false
             if (deepLinkUrl != other.deepLinkUrl) return false
             if (instanceName != other.instanceName) return false
@@ -128,6 +132,8 @@ sealed interface MediaPayload {
             result = 31 * result + (grandparentPosterUrl?.hashCode() ?: 0)
             result = 31 * result + (artworkBytes?.contentHashCode() ?: 0)
             result = 31 * result + (ratingKey?.hashCode() ?: 0)
+            result = 31 * result + ratingKeys.hashCode()
+            result = 31 * result + (addedAt?.hashCode() ?: 0)
             result = 31 * result + (serverMachineIdentifier?.hashCode() ?: 0)
             result = 31 * result + (deepLinkUrl?.hashCode() ?: 0)
             result = 31 * result + (instanceName?.hashCode() ?: 0)
