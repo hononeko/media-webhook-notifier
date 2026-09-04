@@ -34,6 +34,7 @@ class DownloadTrackerEngine(
     private val stalledTimeoutMinutes: Long = 15,
     private val missingGraceAttempts: Int = 6,
     private val webuiPublicUrl: String? = null,
+    private val tagPrefix: String = "mwn_",
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : TrackDownloadUseCase {
     private val logger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
@@ -78,10 +79,10 @@ class DownloadTrackerEngine(
             // Tag torrent in qBittorrent so it can be resumed after container restart
             val tags =
                 buildList {
-                    add("mwn_msg:${handle.messageReferenceId}")
-                    add("mwn_photo:${if (isPhoto) 1 else 0}")
+                    add("${tagPrefix}msg:${handle.messageReferenceId}")
+                    add("${tagPrefix}photo:${if (isPhoto) 1 else 0}")
                     if (handle.channelOrChatId.isNotBlank()) {
-                        add("mwn_chat:${handle.channelOrChatId}")
+                        add("${tagPrefix}chat:${handle.channelOrChatId}")
                     }
                 }
             torrentClient.addTorrentTags(normalizedHash, tags)
@@ -330,17 +331,17 @@ class DownloadTrackerEngine(
                 is Either.Left -> emptyList()
             }
 
-        val mwnTagsOnTorrent = currentTags.filter { it.startsWith("mwn_") }
+        val mwnTagsOnTorrent = currentTags.filter { it.startsWith(tagPrefix) }
         val tagsToRemove =
             buildSet {
                 addAll(mwnTagsOnTorrent)
                 if (handle.messageReferenceId.isNotBlank()) {
-                    add("mwn_msg:${handle.messageReferenceId}")
+                    add("${tagPrefix}msg:${handle.messageReferenceId}")
                 }
-                add("mwn_photo:0")
-                add("mwn_photo:1")
+                add("${tagPrefix}photo:0")
+                add("${tagPrefix}photo:1")
                 if (handle.channelOrChatId.isNotBlank()) {
-                    add("mwn_chat:${handle.channelOrChatId}")
+                    add("${tagPrefix}chat:${handle.channelOrChatId}")
                 }
             }.toList()
 
@@ -349,9 +350,9 @@ class DownloadTrackerEngine(
         val tagsToDelete =
             buildSet {
                 if (handle.messageReferenceId.isNotBlank()) {
-                    add("mwn_msg:${handle.messageReferenceId}")
+                    add("${tagPrefix}msg:${handle.messageReferenceId}")
                 }
-                addAll(mwnTagsOnTorrent.filter { it.startsWith("mwn_msg:") })
+                addAll(mwnTagsOnTorrent.filter { it.startsWith("${tagPrefix}msg:") })
             }.toList()
 
         if (tagsToDelete.isNotEmpty()) {

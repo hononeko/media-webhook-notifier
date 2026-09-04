@@ -18,6 +18,14 @@ qbittorrent:
   missingGraceAttempts: 6
   debounceSeconds: 5
   webuiPublicUrl: ""
+  tagPrefix: "mwn_"
+
+state:
+  type: "memory"
+  url: ""
+  keyPrefix: "mwn:"
+  timeoutMillis: 2000
+  maxPoolSize: 16
 
 notifications:
   url: ""

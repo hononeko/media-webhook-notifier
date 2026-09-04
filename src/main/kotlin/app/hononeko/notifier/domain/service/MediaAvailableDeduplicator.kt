@@ -1,16 +1,18 @@
 package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.model.MediaPayload
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
 class MediaAvailableDeduplicator(
+    private val stateStore: StateStorePort? = null,
     private val ttlMillis: Long = 30L * 86_400_000L,
     private val maxCapacity: Int = 10_000,
     private val maxAgeSeconds: Long = 86_400L
 ) {
     private val logger = LoggerFactory.getLogger(MediaAvailableDeduplicator::class.java)
-    private val cache = ConcurrentHashMap<String, Long>()
+    private val fallbackCache = ConcurrentHashMap<String, Long>()
 
     fun computeKeys(payload: MediaPayload): List<String> =
         when (payload) {
@@ -95,17 +97,28 @@ class MediaAvailableDeduplicator(
         return false
     }
 
-    fun isDuplicate(
+    suspend fun isDuplicate(
         payload: MediaPayload,
         now: Long = System.currentTimeMillis()
     ): Boolean {
         if (isStale(payload, now)) return true
         val keys = computeKeys(payload)
         if (keys.isEmpty()) return false
+
+        val store = stateStore
+        if (store != null) {
+            for (key in keys) {
+                if (store.exists(key, nowMillis = now)) {
+                    return true
+                }
+            }
+            return false
+        }
+
         for (key in keys) {
-            val timestamp = cache[key] ?: continue
+            val timestamp = fallbackCache[key] ?: continue
             if (now - timestamp > ttlMillis) {
-                cache.remove(key)
+                fallbackCache.remove(key)
             } else {
                 return true
             }
@@ -113,7 +126,7 @@ class MediaAvailableDeduplicator(
         return false
     }
 
-    fun tryAcquire(
+    suspend fun tryAcquire(
         payload: MediaPayload,
         now: Long = System.currentTimeMillis()
     ): Boolean {
@@ -122,51 +135,72 @@ class MediaAvailableDeduplicator(
         }
         val keys = computeKeys(payload)
         if (keys.isEmpty()) return true
+
+        val store = stateStore
+        if (store != null) {
+            for (key in keys) {
+                if (store.exists(key, nowMillis = now)) {
+                    return false
+                }
+            }
+            val ttlSeconds = (ttlMillis / 1000L).coerceAtLeast(1L)
+            if (keys.size == 1) {
+                return store.tryAcquire(keys.first(), ttlSeconds = ttlSeconds, value = now.toString(), nowMillis = now)
+            }
+            for (key in keys) {
+                store.set(key, value = now.toString(), ttlSeconds = ttlSeconds, nowMillis = now)
+            }
+            return true
+        }
+
         pruneIfNecessary(now)
         for (key in keys) {
-            val existing = cache[key]
+            val existing = fallbackCache[key]
             if (existing != null && (now - existing) <= ttlMillis) {
                 return false
             }
         }
         for (key in keys) {
-            cache[key] = now
+            fallbackCache[key] = now
         }
         return true
     }
 
-    fun release(payload: MediaPayload) {
+    suspend fun release(payload: MediaPayload) {
         val keys = computeKeys(payload)
+        val store = stateStore
         for (key in keys) {
-            cache.remove(key)
+            store?.delete(key)
+            fallbackCache.remove(key)
         }
     }
 
-    fun clear() {
-        cache.clear()
+    suspend fun clear() {
+        stateStore?.clear()
+        fallbackCache.clear()
     }
 
-    fun size(): Int = cache.size
+    fun size(): Int = fallbackCache.size
 
     private fun pruneIfNecessary(now: Long) {
-        if (cache.size >= maxCapacity) {
-            val iterator = cache.entries.iterator()
+        if (fallbackCache.size >= maxCapacity) {
+            val iterator = fallbackCache.entries.iterator()
             while (iterator.hasNext()) {
                 val entry = iterator.next()
                 if (now - entry.value > ttlMillis) {
                     iterator.remove()
                 }
             }
-            if (cache.size >= maxCapacity) {
+            if (fallbackCache.size >= maxCapacity) {
                 val targetSize = (maxCapacity * 3 / 4).coerceAtLeast(1).coerceAtMost(maxCapacity - 1)
-                val toRemoveCount = (cache.size - targetSize).coerceAtLeast(1)
+                val toRemoveCount = (fallbackCache.size - targetSize).coerceAtLeast(1)
                 val keysToRemove =
-                    cache.entries
+                    fallbackCache.entries
                         .sortedBy { it.value }
                         .take(toRemoveCount)
                         .map { it.key }
                 for (k in keysToRemove) {
-                    cache.remove(k)
+                    fallbackCache.remove(k)
                 }
             }
         }

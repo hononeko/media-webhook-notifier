@@ -1,0 +1,211 @@
+package app.hononeko.notifier.adapter.outbound.state
+
+import app.hononeko.notifier.config.StateConfig
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig
+import org.slf4j.LoggerFactory
+import redis.clients.jedis.Connection
+import redis.clients.jedis.JedisPooled
+import redis.clients.jedis.params.SetParams
+import java.net.URI
+
+class ValkeyStateStore(
+    private val config: StateConfig,
+    private val fallbackStore: StateStorePort = InMemoryStateStore(),
+    injectedJedis: JedisPooled? = null
+) : StateStorePort {
+    private val logger = LoggerFactory.getLogger(ValkeyStateStore::class.java)
+    private val keyPrefix: String = config.keyPrefix.ifBlank { "mwn:" }
+    private val jedis: JedisPooled? = injectedJedis ?: initJedis(config)
+
+    @Volatile
+    private var isHealthy: Boolean = (jedis != null)
+
+    private fun initJedis(cfg: StateConfig): JedisPooled? {
+        if (cfg.url.isBlank()) {
+            logger.info("Valkey URL is empty; ValkeyStateStore will operate exclusively in-memory fallback mode")
+            return null
+        }
+        return try {
+            val normalizedUrl = normalizeUrl(cfg.url)
+            val uri = URI(normalizedUrl)
+            val poolConfig =
+                GenericObjectPoolConfig<Connection>().apply {
+                    maxTotal = cfg.maxPoolSize
+                }
+            val timeout = cfg.timeoutMillis.toInt()
+            logger.info(
+                "Initializing Valkey/Redis pool at {} with timeout {}ms, maxPool={}",
+                uri.host,
+                timeout,
+                cfg.maxPoolSize
+            )
+            JedisPooled(poolConfig, uri, timeout, timeout)
+        } catch (e: Exception) {
+            logger.error("Failed to initialize Valkey/Redis connection pool for '{}': {}", cfg.url, e.message, e)
+            null
+        }
+    }
+
+    private fun normalizeUrl(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        return when {
+            trimmed.startsWith("valkeys://", ignoreCase = true) -> "rediss://" + trimmed.substring(10)
+            trimmed.startsWith("valkey://", ignoreCase = true) -> "redis://" + trimmed.substring(9)
+            !trimmed.contains("://") -> "redis://$trimmed"
+            else -> trimmed
+        }
+    }
+
+    override suspend fun tryAcquire(
+        key: String,
+        ttlSeconds: Long,
+        value: String,
+        nowMillis: Long
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val client = jedis
+            if (client == null) {
+                return@withContext fallbackStore.tryAcquire(key, ttlSeconds, value, nowMillis)
+            }
+            try {
+                val namespacedKey = keyPrefix + key
+                val params = SetParams.setParams().nx().ex(ttlSeconds)
+                val result = client.set(namespacedKey, value, params)
+                isHealthy = true
+                result == "OK"
+            } catch (e: Exception) {
+                isHealthy = false
+                logger.warn("Valkey tryAcquire failed for key '{}', falling back to in-memory: {}", key, e.message)
+                fallbackStore.tryAcquire(key, ttlSeconds, value, nowMillis)
+            }
+        }
+
+    override suspend fun exists(
+        key: String,
+        nowMillis: Long
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val client = jedis
+            if (client == null) {
+                return@withContext fallbackStore.exists(key, nowMillis)
+            }
+            try {
+                val namespacedKey = keyPrefix + key
+                val existsInValkey = client.exists(namespacedKey)
+                isHealthy = true
+                existsInValkey || fallbackStore.exists(key, nowMillis)
+            } catch (e: Exception) {
+                isHealthy = false
+                logger.warn("Valkey exists failed for key '{}', falling back to in-memory: {}", key, e.message)
+                fallbackStore.exists(key, nowMillis)
+            }
+        }
+
+    override suspend fun get(
+        key: String,
+        nowMillis: Long
+    ): String? =
+        withContext(Dispatchers.IO) {
+            val client = jedis
+            if (client == null) {
+                return@withContext fallbackStore.get(key, nowMillis)
+            }
+            try {
+                val namespacedKey = keyPrefix + key
+                val value = client.get(namespacedKey)
+                isHealthy = true
+                value ?: fallbackStore.get(key, nowMillis)
+            } catch (e: Exception) {
+                isHealthy = false
+                logger.warn("Valkey get failed for key '{}', falling back to in-memory: {}", key, e.message)
+                fallbackStore.get(key, nowMillis)
+            }
+        }
+
+    override suspend fun set(
+        key: String,
+        value: String,
+        ttlSeconds: Long?,
+        nowMillis: Long
+    ) = withContext(Dispatchers.IO) {
+        val client = jedis
+        if (client == null) {
+            fallbackStore.set(key, value, ttlSeconds, nowMillis)
+            return@withContext
+        }
+        try {
+            val namespacedKey = keyPrefix + key
+            if (ttlSeconds != null && ttlSeconds > 0) {
+                client.set(namespacedKey, value, SetParams.setParams().ex(ttlSeconds))
+            } else {
+                client.set(namespacedKey, value)
+            }
+            isHealthy = true
+        } catch (e: Exception) {
+            isHealthy = false
+            logger.warn("Valkey set failed for key '{}', falling back to in-memory: {}", key, e.message)
+            fallbackStore.set(key, value, ttlSeconds, nowMillis)
+        }
+    }
+
+    override suspend fun delete(key: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val fbDeleted = fallbackStore.delete(key)
+            val client = jedis ?: return@withContext fbDeleted
+            try {
+                val namespacedKey = keyPrefix + key
+                val deleted = client.del(namespacedKey) > 0
+                isHealthy = true
+                deleted || fbDeleted
+            } catch (e: Exception) {
+                isHealthy = false
+                logger.warn("Valkey delete failed for key '{}': {}", key, e.message)
+                fbDeleted
+            }
+        }
+
+    override suspend fun healthCheck(): Boolean =
+        withContext(Dispatchers.IO) {
+            val client = jedis
+            if (client == null) {
+                return@withContext false
+            }
+            try {
+                val pong = client.ping()
+                isHealthy = pong.equals("PONG", ignoreCase = true)
+                isHealthy
+            } catch (e: Exception) {
+                isHealthy = false
+                logger.debug("Valkey healthCheck ping failed: {}", e.message)
+                false
+            }
+        }
+
+    override suspend fun clear() =
+        withContext(Dispatchers.IO) {
+            fallbackStore.clear()
+            val client = jedis ?: return@withContext
+            try {
+                val pattern = "$keyPrefix*"
+                val keys = client.keys(pattern)
+                if (!keys.isNullOrEmpty()) {
+                    client.del(*keys.toTypedArray())
+                }
+                isHealthy = true
+            } catch (e: Exception) {
+                isHealthy = false
+                logger.warn("Valkey clear failed for pattern '$keyPrefix*': {}", e.message)
+            }
+        }
+
+    override fun close() {
+        try {
+            jedis?.close()
+        } catch (e: Exception) {
+            logger.warn("Error closing Valkey Jedis client: {}", e.message)
+        }
+    }
+}

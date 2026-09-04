@@ -13,6 +13,7 @@ object ConfigLoader {
             mediaServer = loadMediaServerConfig(reader),
             qbittorrent = loadQBittorrentConfig(reader),
             notifications = loadNotificationsConfig(reader),
+            state = loadStateConfig(reader),
             templates = loadTemplatesConfig(reader)
         )
     }
@@ -173,8 +174,69 @@ object ConfigLoader {
                     5L,
                     "QBITTORRENT_RECONCILIATION_INTERVAL_MINUTES",
                     "qbittorrent.reconciliationIntervalMinutes"
-                )
+                ),
+            tagPrefix =
+                reader.get(
+                    "QBITTORRENT_TAG_PREFIX",
+                    "qbittorrent.tagPrefix"
+                ) ?: "mwn_"
         )
+
+    private fun loadStateConfig(reader: EnvReader): StateConfig {
+        val url =
+            reader.getSecret(
+                "VALKEY_URL",
+                "REDIS_URL",
+                "STATE_STORE_URL",
+                "STATE_URL",
+                "state.url"
+            ) ?: ""
+
+        val rawType =
+            reader.get(
+                "STATE_STORE_TYPE",
+                "STATE_TYPE",
+                "state.type"
+            )
+
+        val type =
+            when {
+                !rawType.isNullOrBlank() -> rawType.trim().lowercase()
+                url.isNotBlank() -> "valkey"
+                else -> "memory"
+            }
+
+        val keyPrefix =
+            reader.get(
+                "STATE_KEY_PREFIX",
+                "STATE_PREFIX",
+                "state.keyPrefix"
+            ) ?: "mwn:"
+
+        val timeoutMillis =
+            reader.getLong(
+                2000L,
+                "STATE_TIMEOUT_MILLIS",
+                "STATE_STORE_TIMEOUT_MILLIS",
+                "state.timeoutMillis"
+            )
+
+        val maxPoolSize =
+            reader.getInt(
+                16,
+                "STATE_MAX_POOL_SIZE",
+                "STATE_POOL_SIZE",
+                "state.maxPoolSize"
+            )
+
+        return StateConfig(
+            type = type,
+            url = url,
+            keyPrefix = keyPrefix,
+            timeoutMillis = timeoutMillis,
+            maxPoolSize = maxPoolSize
+        )
+    }
 
     private fun loadNotificationsConfig(reader: EnvReader): NotificationConfig {
         val rawUrl = reader.getSecret("NOTIFICATION_URL", "notifications.url") ?: ""

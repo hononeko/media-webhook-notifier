@@ -42,6 +42,9 @@ dependencies {
     // Logging & Configuration
     implementation(libs.logback.classic)
 
+    // State Store (Valkey / Redis)
+    implementation(libs.jedis)
+
     // Testing
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)

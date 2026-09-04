@@ -23,7 +23,8 @@ class TorrentReconciliationService(
     private val activeTrackerStore: ActiveTrackerStore,
     private val notificationPublisher: NotificationPublisherPort,
     private val intervalMinutes: Long = 5L,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val tagPrefix: String = "mwn_"
 ) {
     private val logger = LoggerFactory.getLogger(TorrentReconciliationService::class.java)
     private val totalRuns = AtomicLong(0)
@@ -60,9 +61,9 @@ class TorrentReconciliationService(
                 continue
             }
 
-            val msgTag = torrent.tags.firstOrNull { it.startsWith("mwn_msg:") }
-            val photoTag = torrent.tags.firstOrNull { it.startsWith("mwn_photo:") }
-            val chatTag = torrent.tags.firstOrNull { it.startsWith("mwn_chat:") }
+            val msgTag = torrent.tags.firstOrNull { it.startsWith("${tagPrefix}msg:") }
+            val photoTag = torrent.tags.firstOrNull { it.startsWith("${tagPrefix}photo:") }
+            val chatTag = torrent.tags.firstOrNull { it.startsWith("${tagPrefix}chat:") }
 
             val synthesizedGrab =
                 MediaPayload.ArrGrab(
@@ -75,10 +76,10 @@ class TorrentReconciliationService(
 
             val trackResult =
                 if (msgTag != null) {
-                    val messageId = msgTag.removePrefix("mwn_msg:").trim()
-                    val isPhoto = photoTag?.removePrefix("mwn_photo:")?.trim() == "1"
+                    val messageId = msgTag.removePrefix("${tagPrefix}msg:").trim()
+                    val isPhoto = photoTag?.removePrefix("${tagPrefix}photo:")?.trim() == "1"
                     val channelOrChatId =
-                        chatTag?.removePrefix("mwn_chat:")?.trim()?.ifBlank { null }
+                        chatTag?.removePrefix("${tagPrefix}chat:")?.trim()?.ifBlank { null }
                             ?: notificationPublisher.defaultChannelOrChatId
                     val handle =
                         NotificationHandle(

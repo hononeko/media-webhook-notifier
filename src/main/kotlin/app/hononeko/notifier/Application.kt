@@ -14,6 +14,8 @@ import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerAdapter
 import app.hononeko.notifier.adapter.outbound.qbittorrent.QBittorrentClientAdapter
+import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
+import app.hononeko.notifier.adapter.outbound.state.ValkeyStateStore
 import app.hononeko.notifier.adapter.outbound.telegram.TelegramPublisherAdapter
 import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.config.AppConfig
@@ -22,6 +24,7 @@ import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import app.hononeko.notifier.domain.service.CardFormatterService
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
@@ -81,7 +84,8 @@ data class AppDependencies(
     val eventRail: EventRail,
     val rateLimiter: InboundRateLimiter,
     val providerRegistry: WebhookProviderRegistry,
-    val healthController: HealthController
+    val healthController: HealthController,
+    val stateStore: StateStorePort = InMemoryStateStore()
 ) {
     fun close() {
         logger.info("Closing application dependencies and draining queues...")
@@ -90,6 +94,7 @@ data class AppDependencies(
             seasonDebouncer.flushAll()
         }
         downloadTracker.stopAll()
+        stateStore.close()
         scope.cancel()
         logger.info("Application dependencies closed")
     }
@@ -106,6 +111,12 @@ fun buildDependencies(
     val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
     val activeTrackerStore = InMemoryActiveTrackerStore()
 
+    val stateStore: StateStorePort =
+        when (config.state.type.lowercase()) {
+            "valkey", "redis" -> ValkeyStateStore(config = config.state)
+            else -> InMemoryStateStore()
+        }
+
     val downloadTracker =
         DownloadTrackerEngine(
             torrentClient = torrentClient,
@@ -115,6 +126,7 @@ fun buildDependencies(
             maxPollingMinutes = config.qbittorrent.maxPollingMinutes,
             stalledTimeoutMinutes = config.qbittorrent.stalledTimeoutMinutes,
             webuiPublicUrl = config.qbittorrent.webuiPublicUrl,
+            tagPrefix = config.qbittorrent.tagPrefix,
             scope = scope
         )
 
@@ -125,7 +137,8 @@ fun buildDependencies(
             activeTrackerStore = activeTrackerStore,
             notificationPublisher = notificationPublisher,
             intervalMinutes = config.qbittorrent.reconciliationIntervalMinutes,
-            enabled = config.qbittorrent.reconciliationEnabled
+            enabled = config.qbittorrent.reconciliationEnabled,
+            tagPrefix = config.qbittorrent.tagPrefix
         )
     reconciliationService.start(scope)
 
@@ -136,6 +149,7 @@ fun buildDependencies(
 
     val mediaAvailableDeduplicator =
         MediaAvailableDeduplicator(
+            stateStore = stateStore,
             ttlMillis = 30L * 86_400_000L,
             maxAgeSeconds = config.mediaServer.maxAvailableAgeSeconds
         )
@@ -198,7 +212,8 @@ fun buildDependencies(
         HealthController(
             eventRail = eventRail,
             downloadTracker = downloadTracker,
-            reconciliationService = reconciliationService
+            reconciliationService = reconciliationService,
+            stateStore = stateStore
         )
 
     return AppDependencies(
@@ -220,7 +235,8 @@ fun buildDependencies(
         eventRail = eventRail,
         rateLimiter = rateLimiter,
         providerRegistry = providerRegistry,
-        healthController = healthController
+        healthController = healthController,
+        stateStore = stateStore
     )
 }
 
