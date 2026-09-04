@@ -27,6 +27,7 @@ import app.hononeko.notifier.domain.service.CardFormatterService
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
+import app.hononeko.notifier.domain.service.MediaAvailableDeduplicator
 import app.hononeko.notifier.domain.service.MediaAvailableService
 import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.MediaRequestService
@@ -133,16 +134,24 @@ fun buildDependencies(
             notificationPublisher = notificationPublisher
         )
 
+    val mediaAvailableDeduplicator =
+        MediaAvailableDeduplicator(
+            ttlMillis = 30L * 86_400_000L,
+            maxAgeSeconds = config.mediaServer.maxAvailableAgeSeconds
+        )
+
     val mediaAvailableService =
         MediaAvailableService(
             notificationPublisher = notificationPublisher,
-            mediaServerPort = mediaServerPort
+            mediaServerPort = mediaServerPort,
+            deduplicator = mediaAvailableDeduplicator
         )
 
     val seasonDebouncer =
         SeasonDebouncer(
             debounceMillis = config.qbittorrent.debounceSeconds * 1000L,
             scope = scope,
+            deduplicator = mediaAvailableDeduplicator,
             onDebouncedGrab = { grab ->
                 downloadTracker.track(grab.downloadId, grab)
             },

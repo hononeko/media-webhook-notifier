@@ -427,4 +427,73 @@ class PlexWebhookProviderTest {
             assertNull(plex.seasonNumber)
             assertNull(plex.episodeNumber)
         }
+
+    @Test
+    fun `should parse addedAt and updatedAt timestamps in seconds`() =
+        testApplication {
+            var processResult: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook") {
+                    processResult = provider.process(call, "Plex")
+                    call.respondText("OK")
+                }
+            }
+
+            val payload =
+                """
+                {
+                    "event": "library.new",
+                    "Metadata": {
+                        "title": "Interstellar",
+                        "addedAt": 1725450000,
+                        "updatedAt": 1725450500
+                    }
+                }
+                """.trimIndent()
+
+            client.post("/webhook") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val plex = (processResult as WebhookProcessResult.Queued).payload as MediaPayload.PlexLibraryNew
+            assertEquals("Interstellar", plex.title)
+            assertEquals(1725450000L, plex.addedAt)
+        }
+
+    @Test
+    fun `should normalize millisecond addedAt timestamps to seconds`() =
+        testApplication {
+            var processResult: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook") {
+                    processResult = provider.process(call, "Plex")
+                    call.respondText("OK")
+                }
+            }
+
+            val payload =
+                """
+                {
+                    "event": "library.new",
+                    "Metadata": {
+                        "title": "Inception",
+                        "addedAt": 1725450000000
+                    }
+                }
+                """.trimIndent()
+
+            client.post("/webhook") {
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            assertIs<WebhookProcessResult.Queued>(processResult)
+            val plex = (processResult as WebhookProcessResult.Queued).payload as MediaPayload.PlexLibraryNew
+            assertEquals("Inception", plex.title)
+            assertEquals(1725450000L, plex.addedAt)
+        }
 }

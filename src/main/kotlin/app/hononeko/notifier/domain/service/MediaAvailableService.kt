@@ -18,13 +18,25 @@ class MediaAvailableService(
 
     override suspend fun announce(payload: MediaPayload): Either<DomainError, Unit> =
         either {
+            val title =
+                when (payload) {
+                    is MediaPayload.PlexLibraryNew -> payload.title
+                    is MediaPayload.JellyfinItemAdded -> payload.title
+                    else -> "Media"
+                }
+
             if (deduplicator != null && !deduplicator.tryAcquire(payload)) {
                 val key = deduplicator.computeKey(payload)
-                logger.info("Skipping already announced media available event: {} from {}", key, payload.source)
+                logger.info(
+                    "Skipping already announced or stale media available event for '{}': {} from {}",
+                    title,
+                    key,
+                    payload.source
+                )
                 return@either
             }
 
-            logger.info("Announcing media available for event: {} from {}", payload.eventType, payload.source)
+            logger.info("Announcing media available for '{}' ({}) from {}", title, payload.eventType, payload.source)
             val card = CardFormatterService.buildAvailableCard(payload, mediaServerPort)
             val sendResult = notificationPublisher.sendCard(card)
 

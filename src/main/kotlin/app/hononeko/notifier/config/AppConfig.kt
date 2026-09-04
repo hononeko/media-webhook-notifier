@@ -21,7 +21,8 @@ data class ServerConfig(
 data class MediaServerConfig(
     val type: String = "plex",
     val url: String = "",
-    val publicUrl: String = ""
+    val publicUrl: String = "",
+    val maxAvailableAgeSeconds: Long = 86_400L
 )
 
 data class QBittorrentConfig(

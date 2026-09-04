@@ -259,4 +259,96 @@ class MediaAvailableDeduplicatorTest {
         assertTrue(deduplicator.tryAcquire(ep2))
         assertEquals(2, deduplicator.size())
     }
+
+    @Test
+    fun `should drop stale Plex events when addedAt is older than maxAgeSeconds`() {
+        val deduplicator = MediaAvailableDeduplicator(maxAgeSeconds = 86_400L) // 24 hours
+        val nowMs = 1_725_450_000_000L // current epoch ms
+        val nowSec = nowMs / 1000L
+
+        // Item added 3 weeks ago (approx 1,814,400 seconds ago)
+        val staleItem =
+            MediaPayload.PlexLibraryNew(
+                title = "Old Movie",
+                year = 2020,
+                ratingKey = "old-100",
+                addedAt = nowSec - (21 * 86_400L)
+            )
+
+        assertTrue(deduplicator.isStale(staleItem, now = nowMs))
+        assertTrue(deduplicator.isDuplicate(staleItem, now = nowMs))
+        assertFalse(deduplicator.tryAcquire(staleItem, now = nowMs))
+        assertEquals(0, deduplicator.size())
+    }
+
+    @Test
+    fun `should allow recent Plex events when addedAt is within maxAgeSeconds`() {
+        val deduplicator = MediaAvailableDeduplicator(maxAgeSeconds = 86_400L)
+        val nowMs = 1_725_450_000_000L
+        val nowSec = nowMs / 1000L
+
+        // Item added 10 minutes ago
+        val recentItem =
+            MediaPayload.PlexLibraryNew(
+                title = "New Movie",
+                year = 2026,
+                ratingKey = "new-200",
+                addedAt = nowSec - 600L
+            )
+
+        assertFalse(deduplicator.isStale(recentItem, now = nowMs))
+        assertFalse(deduplicator.isDuplicate(recentItem, now = nowMs))
+        assertTrue(deduplicator.tryAcquire(recentItem, now = nowMs))
+        assertEquals(1, deduplicator.size())
+    }
+
+    @Test
+    fun `should handle millisecond timestamps for addedAt`() {
+        val deduplicator = MediaAvailableDeduplicator(maxAgeSeconds = 86_400L)
+        val nowMs = 1_725_450_000_000L
+
+        // Added 5 days ago in milliseconds
+        val staleMsItem =
+            MediaPayload.PlexLibraryNew(
+                title = "Old Show",
+                ratingKey = "ms-100",
+                addedAt = nowMs - (5 * 86_400_000L)
+            )
+
+        assertTrue(deduplicator.isStale(staleMsItem, now = nowMs))
+        assertFalse(deduplicator.tryAcquire(staleMsItem, now = nowMs))
+    }
+
+    @Test
+    fun `should deduplicate all ratingKeys in a coalesced batch`() {
+        val deduplicator = MediaAvailableDeduplicator()
+
+        val coalescedSeason =
+            MediaPayload.PlexLibraryNew(
+                title = "Severance",
+                grandParentTitle = "Severance",
+                seasonNumber = 1,
+                episodeNumbers = listOf(1, 2, 3),
+                ratingKey = "ep-1",
+                ratingKeys = listOf("ep-1", "ep-2", "ep-3"),
+                instanceName = "Plex"
+            )
+
+        assertTrue(deduplicator.tryAcquire(coalescedSeason))
+        assertEquals(3, deduplicator.size())
+
+        // An individual episode webhook coming later should be recognized as duplicate
+        val singleEp2 =
+            MediaPayload.PlexLibraryNew(
+                title = "Episode 2",
+                grandParentTitle = "Severance",
+                seasonNumber = 1,
+                episodeNumber = 2,
+                ratingKey = "ep-2",
+                instanceName = "Plex"
+            )
+
+        assertTrue(deduplicator.isDuplicate(singleEp2))
+        assertFalse(deduplicator.tryAcquire(singleEp2))
+    }
 }

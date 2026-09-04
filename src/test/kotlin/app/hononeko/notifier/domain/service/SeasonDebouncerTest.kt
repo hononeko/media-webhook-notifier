@@ -789,4 +789,114 @@ class SeasonDebouncerTest {
             assertEquals(2, received.size)
             assertEquals(0, debouncer.activeBufferCount())
         }
+
+    @Test
+    fun `should immediately drop stale Plex webhooks when deduplicator is present`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val received = Collections.synchronizedList(mutableListOf<MediaPayload>())
+            val deduplicator = MediaAvailableDeduplicator(maxAgeSeconds = 86_400L)
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 5000L,
+                    scope = testScope,
+                    deduplicator = deduplicator,
+                    onDebouncedAvailable = { received.add(it) }
+                )
+
+            val nowSec = System.currentTimeMillis() / 1000L
+            val stalePlex =
+                MediaPayload.PlexLibraryNew(
+                    title = "The Matrix",
+                    year = 1999,
+                    ratingKey = "matrix-1999",
+                    addedAt = nowSec - (10 * 86_400L) // 10 days ago
+                )
+
+            debouncer.submit(stalePlex)
+            assertEquals(0, debouncer.activeBufferCount())
+            testScheduler.advanceTimeBy(6000L)
+            assertEquals(0, received.size)
+        }
+
+    @Test
+    fun `should merge ratingKeys when debouncing multiple Plex episodes`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val received = Collections.synchronizedList(mutableListOf<MediaPayload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 5000L,
+                    scope = testScope,
+                    onDebouncedAvailable = { received.add(it) }
+                )
+
+            val ep1 =
+                MediaPayload.PlexLibraryNew(
+                    title = "Good News About Hell",
+                    grandParentTitle = "Severance",
+                    seasonNumber = 1,
+                    episodeNumber = 1,
+                    ratingKey = "rk-101"
+                )
+            val ep2 =
+                MediaPayload.PlexLibraryNew(
+                    title = "Half Loop",
+                    grandParentTitle = "Severance",
+                    seasonNumber = 1,
+                    episodeNumber = 2,
+                    ratingKey = "rk-102"
+                )
+
+            debouncer.submit(ep1)
+            debouncer.submit(ep2)
+            assertEquals(1, debouncer.activeBufferCount())
+
+            testScheduler.advanceTimeBy(6000L)
+            assertEquals(1, received.size)
+            val consolidated = received.first() as MediaPayload.PlexLibraryNew
+            assertEquals(listOf(1, 2), consolidated.episodeNumbers)
+            assertEquals(listOf("rk-101", "rk-102"), consolidated.ratingKeys)
+        }
+
+    @Test
+    fun `should key show and series mediaType as show in computePlexKey and computeJellyfinKey`() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            val testScope = TestScope(testDispatcher)
+            val received = Collections.synchronizedList(mutableListOf<MediaPayload>())
+
+            val debouncer =
+                SeasonDebouncer(
+                    debounceMillis = 5000L,
+                    scope = testScope,
+                    onDebouncedAvailable = { received.add(it) }
+                )
+
+            val plexShow =
+                MediaPayload.PlexLibraryNew(
+                    title = "Dark",
+                    mediaType = "show"
+                )
+            val jellyfinSeries =
+                MediaPayload.JellyfinItemAdded(
+                    itemId = "jf-dark-1",
+                    title = "Dark",
+                    mediaType = "series"
+                )
+
+            debouncer.submit(plexShow)
+            debouncer.submit(jellyfinSeries)
+
+            // Both should be keyed as show, not movie
+            debouncer.flush("plex::show:dark:s0")
+            assertEquals(1, received.size)
+
+            debouncer.flush("jellyfin::show:dark:s0")
+            assertEquals(2, received.size)
+        }
 }

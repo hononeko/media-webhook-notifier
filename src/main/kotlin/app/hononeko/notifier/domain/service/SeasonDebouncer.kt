@@ -15,6 +15,7 @@ import kotlin.coroutines.coroutineContext
 class SeasonDebouncer(
     private val debounceMillis: Long = 5000L,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val deduplicator: MediaAvailableDeduplicator? = null,
     private val onDebouncedGrab: (suspend (MediaPayload.ArrGrab) -> Unit)? = null,
     private val onDebouncedDownload: (suspend (MediaPayload.ArrDownload) -> Unit)? = null,
     private val onDebouncedAvailable: (suspend (MediaPayload) -> Unit)? = null
@@ -141,6 +142,7 @@ class SeasonDebouncer(
 
     suspend fun submit(plex: MediaPayload.PlexLibraryNew) {
         if (onDebouncedAvailable == null) return
+        if (deduplicator?.isStale(plex) == true) return
         val key = computePlexKey(plex)
         mutex.withLock {
             val existing = availableBuffers[key]
@@ -149,9 +151,11 @@ class SeasonDebouncer(
                 existing.timerJob.cancel()
 
                 val combinedEpisodes = (prev.episodeNumbers + plex.episodeNumbers).distinct().sorted()
+                val combinedRatingKeys = (prev.ratingKeys + plex.ratingKeys).distinct()
                 val merged =
                     prev.copy(
                         episodeNumbers = combinedEpisodes,
+                        ratingKeys = combinedRatingKeys,
                         artworkBytes = prev.artworkBytes ?: plex.artworkBytes,
                         posterUrl = prev.posterUrl ?: plex.posterUrl,
                         parentPosterUrl = prev.parentPosterUrl ?: plex.parentPosterUrl,
@@ -178,6 +182,7 @@ class SeasonDebouncer(
 
     suspend fun submit(jellyfin: MediaPayload.JellyfinItemAdded) {
         if (onDebouncedAvailable == null) return
+        if (deduplicator?.isStale(jellyfin) == true) return
         val key = computeJellyfinKey(jellyfin)
         mutex.withLock {
             val existing = availableBuffers[key]
@@ -254,7 +259,9 @@ class SeasonDebouncer(
                 !plex.parentTitle.isNullOrBlank() ||
                 !plex.grandParentTitle.isNullOrBlank() ||
                 plex.mediaType?.lowercase() == "episode" ||
-                plex.mediaType?.lowercase() == "season"
+                plex.mediaType?.lowercase() == "season" ||
+                plex.mediaType?.lowercase() == "show" ||
+                plex.mediaType?.lowercase() == "series"
         return if (isSeries) {
             val series = (plex.grandParentTitle ?: plex.parentTitle ?: plex.title).trim().lowercase()
             "plex:$instance:show:$series:s${plex.seasonNumber ?: 0}"
@@ -271,7 +278,9 @@ class SeasonDebouncer(
             jellyfin.seasonNumber != null ||
                 !jellyfin.seriesName.isNullOrBlank() ||
                 jellyfin.mediaType?.lowercase() == "episode" ||
-                jellyfin.mediaType?.lowercase() == "season"
+                jellyfin.mediaType?.lowercase() == "season" ||
+                jellyfin.mediaType?.lowercase() == "show" ||
+                jellyfin.mediaType?.lowercase() == "series"
         return if (isSeries) {
             val series = (jellyfin.seriesName ?: jellyfin.title).trim().lowercase()
             "jellyfin:$instance:show:$series:s${jellyfin.seasonNumber ?: 0}"

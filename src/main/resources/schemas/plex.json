@@ -41,6 +41,8 @@
         "art": { "type": "string" },
         "parentArt": { "type": "string" },
         "grandparentArt": { "type": "string" },
+        "addedAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" },
         "Media": {
           "type": "array",
           "items": {
