@@ -123,11 +123,13 @@ graalvmNative {
                 "--no-fallback",
                 "-H:+ReportExceptionStackTraces",
                 "--initialize-at-build-time=ch.qos.logback",
+                "--initialize-at-build-time=redis.clients.jedis.JedisMetaInfo",
                 "--enable-http",
                 "--enable-https",
                 "-H:IncludeResources=schemas/.*\\.json",
                 "-H:IncludeResources=templates\\.default\\.yaml",
-                "-H:IncludeResources=logback.xml"
+                "-H:IncludeResources=logback.xml",
+                "-H:IncludeResources=redis/clients/jedis/pom\\.properties"
             )
             if (System.getenv("CI") == "true") {
                 buildArgs.addAll("-J-Xmx10g", "-J-XX:+UseParallelGC")
