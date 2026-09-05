@@ -129,6 +129,11 @@ graalvmNative {
                 "-H:IncludeResources=templates\\.default\\.yaml",
                 "-H:IncludeResources=logback.xml"
             )
+            if (System.getenv("CI") == "true") {
+                buildArgs.addAll("-J-Xmx10g", "-J-XX:+UseParallelGC")
+            } else {
+                buildArgs.add("-J-XX:+UseParallelGC")
+            }
             if (project.hasProperty("static") || System.getenv("GRAALVM_STATIC") == "true") {
                 buildArgs.addAll("--static", "--libc=musl")
             }
