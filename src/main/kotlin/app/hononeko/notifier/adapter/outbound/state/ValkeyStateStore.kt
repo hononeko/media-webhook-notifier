@@ -5,9 +5,11 @@ import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import redis.clients.jedis.ClientSetInfoConfig
 import redis.clients.jedis.ConnectionPoolConfig
 import redis.clients.jedis.DefaultJedisClientConfig
 import redis.clients.jedis.RedisClient
+import redis.clients.jedis.RedisProtocol
 import redis.clients.jedis.UnifiedJedis
 import redis.clients.jedis.params.ScanParams
 import redis.clients.jedis.params.SetParams
@@ -45,11 +47,7 @@ class ValkeyStateStore(
                 timeout,
                 cfg.maxPoolSize
             )
-            val clientConfig =
-                DefaultJedisClientConfig
-                    .builder(uri)
-                    .timeoutMillis(timeout)
-                    .build()
+            val clientConfig = buildClientConfig(uri, timeout)
             val hostAndPort = JedisURIHelper.getHostAndPort(uri)
             RedisClient
                 .builder()
@@ -62,6 +60,17 @@ class ValkeyStateStore(
             null
         }
     }
+
+    internal fun buildClientConfig(
+        uri: URI,
+        timeout: Int
+    ): DefaultJedisClientConfig =
+        DefaultJedisClientConfig
+            .builder(uri)
+            .timeoutMillis(timeout)
+            .protocol(RedisProtocol.RESP2)
+            .clientSetInfoConfig(ClientSetInfoConfig.DISABLED)
+            .build()
 
     private fun normalizeUrl(rawUrl: String): String {
         val trimmed = rawUrl.trim()

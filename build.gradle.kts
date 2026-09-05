@@ -51,6 +51,8 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.mockk)
+    testImplementation(libs.testcontainers)
+    testImplementation(libs.testcontainers.junit.jupiter)
 }
 
 application {
@@ -68,12 +70,30 @@ kotlin {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("integration")
+    }
     testLogging {
         events("passed", "skipped", "failed")
     }
     finalizedBy(tasks.jacocoTestReport)
 }
+
+val integrationTest =
+    tasks.register<Test>("integrationTest") {
+        description = "Runs integration tests using Testcontainers."
+        group = "verification"
+        val testSourceSet = sourceSets["test"]
+        testClassesDirs = testSourceSet.output.classesDirs
+        classpath = testSourceSet.runtimeClasspath
+        useJUnitPlatform {
+            includeTags("integration")
+        }
+        testLogging {
+            events("passed", "skipped", "failed")
+        }
+        shouldRunAfter(tasks.test)
+    }
 
 tasks.jacocoTestReport {
     dependsOn(tasks.test)

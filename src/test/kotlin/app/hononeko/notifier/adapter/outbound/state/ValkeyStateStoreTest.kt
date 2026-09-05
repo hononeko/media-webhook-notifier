@@ -5,11 +5,13 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
+import redis.clients.jedis.RedisProtocol
 import redis.clients.jedis.UnifiedJedis
 import redis.clients.jedis.exceptions.JedisConnectionException
 import redis.clients.jedis.params.ScanParams
 import redis.clients.jedis.params.SetParams
 import redis.clients.jedis.resps.ScanResult
+import java.net.URI
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -43,6 +45,17 @@ class ValkeyStateStoreTest {
             val storeValkeys = ValkeyStateStore(config = StateConfig(url = "valkeys://127.0.0.1", timeoutMillis = 1000))
             storeValkeys.close()
         }
+
+    @Test
+    fun `should configure Jedis client with RESP2 and disabled clientSetInfo`() {
+        val store = ValkeyStateStore(config = StateConfig(url = "redis://localhost:6379", timeoutMillis = 1500))
+        val uri = URI("redis://localhost:6379")
+        val clientConfig = store.buildClientConfig(uri, timeout = 1500)
+        assertEquals(RedisProtocol.RESP2, clientConfig.redisProtocol)
+        assertTrue(clientConfig.clientSetInfoConfig.isDisabled)
+        assertEquals(1500, clientConfig.socketTimeoutMillis)
+        store.close()
+    }
 
     @Test
     fun `should delegate tryAcquire to Jedis and apply keyPrefix`() =
