@@ -16,7 +16,7 @@ jobs:
       packages: read
 
   integration-test:
-    name: Valkey Integration Tests
+    name: Integration Tests
     runs-on: ubuntu-latest
     if: github.base_ref == 'main'
     permissions:
@@ -35,12 +35,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
 
-      - name: Run Valkey Integration Tests
+      - name: Run Integration Tests
         run: ./gradlew integrationTest --no-daemon
 
       - name: Generate Job Summary
         if: always()
         run: |
           echo "### Integration Test Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Testcontainers Valkey integration tests completed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "Testcontainers integration tests completed successfully." >> $GITHUB_STEP_SUMMARY
 
