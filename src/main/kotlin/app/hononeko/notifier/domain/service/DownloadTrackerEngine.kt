@@ -170,6 +170,7 @@ class DownloadTrackerEngine(
         var lastKnownProgress: TorrentProgress? = null
     )
 
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun runTrackingLoop(
         hash: String,
         payload: MediaPayload.ArrGrab,

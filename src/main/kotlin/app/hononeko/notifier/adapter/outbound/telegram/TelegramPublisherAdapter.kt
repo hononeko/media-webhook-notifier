@@ -30,8 +30,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.io.IOException
 import java.util.Collections
 import java.util.LinkedHashMap
 
@@ -321,9 +323,14 @@ class TelegramPublisherAdapter(
             handleSendResponse(response)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            logger.warn("Network error sending Telegram photo binary: {}", e.message)
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
+        } catch (e: IOException) {
+            handleDeliveryException("photo binary", e)
+        } catch (e: SerializationException) {
+            handleDeliveryException("photo binary", e)
+        } catch (e: IllegalArgumentException) {
+            handleDeliveryException("photo binary", e)
+        } catch (e: IllegalStateException) {
+            handleDeliveryException("photo binary", e)
         }
 
     private suspend fun sendPhoto(
@@ -350,9 +357,14 @@ class TelegramPublisherAdapter(
             handleSendResponse(response)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            logger.warn("Network error sending Telegram photo: {}", e.message)
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
+        } catch (e: IOException) {
+            handleDeliveryException("photo", e)
+        } catch (e: SerializationException) {
+            handleDeliveryException("photo", e)
+        } catch (e: IllegalArgumentException) {
+            handleDeliveryException("photo", e)
+        } catch (e: IllegalStateException) {
+            handleDeliveryException("photo", e)
         }
     }
 
@@ -378,9 +390,14 @@ class TelegramPublisherAdapter(
             handleSendResponse(response)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            logger.warn("Network error sending Telegram text: {}", e.message)
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
+        } catch (e: IOException) {
+            handleDeliveryException("text", e)
+        } catch (e: SerializationException) {
+            handleDeliveryException("text", e)
+        } catch (e: IllegalArgumentException) {
+            handleDeliveryException("text", e)
+        } catch (e: IllegalStateException) {
+            handleDeliveryException("text", e)
         }
     }
 
@@ -408,8 +425,14 @@ class TelegramPublisherAdapter(
             handleEditResponse(response)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
+        } catch (e: IOException) {
+            handleDeliveryException("edit text", e)
+        } catch (e: SerializationException) {
+            handleDeliveryException("edit text", e)
+        } catch (e: IllegalArgumentException) {
+            handleDeliveryException("edit text", e)
+        } catch (e: IllegalStateException) {
+            handleDeliveryException("edit text", e)
         }
     }
 
@@ -437,9 +460,23 @@ class TelegramPublisherAdapter(
             handleEditResponse(response)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
+        } catch (e: IOException) {
+            handleDeliveryException("edit caption", e)
+        } catch (e: SerializationException) {
+            handleDeliveryException("edit caption", e)
+        } catch (e: IllegalArgumentException) {
+            handleDeliveryException("edit caption", e)
+        } catch (e: IllegalStateException) {
+            handleDeliveryException("edit caption", e)
         }
+    }
+
+    private fun <T> handleDeliveryException(
+        operation: String,
+        e: Throwable
+    ): Either<DomainError.NotificationError, T> {
+        logger.warn("Error sending Telegram {}: {}", operation, e.message)
+        return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
     }
 
     private suspend fun handleSendResponse(

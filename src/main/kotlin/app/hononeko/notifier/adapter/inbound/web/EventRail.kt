@@ -123,6 +123,7 @@ class EventRail(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun processPayload(
         payload: MediaPayload,
         ingestService: IngestWebhookUseCase

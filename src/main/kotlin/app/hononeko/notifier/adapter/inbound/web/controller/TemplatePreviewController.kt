@@ -232,7 +232,19 @@ class TemplatePreviewController {
                             defaultTheme = CardFormatterService.templateEngine.theme
                         )
                     )
-                } catch (e: Exception) {
+                } catch (e: IllegalArgumentException) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("status" to "error", "message" to "YAML parsing error: ${e.message}")
+                    )
+                    return
+                } catch (e: IllegalStateException) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("status" to "error", "message" to "YAML parsing error: ${e.message}")
+                    )
+                    return
+                } catch (e: ClassCastException) {
                     call.respond(
                         HttpStatusCode.BadRequest,
                         mapOf("status" to "error", "message" to "YAML parsing error: ${e.message}")
