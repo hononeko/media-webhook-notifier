@@ -150,24 +150,7 @@ class SeasonDebouncer(
                 val prev = existing.payload as MediaPayload.PlexLibraryNew
                 existing.timerJob.cancel()
 
-                val combinedEpisodes = (prev.episodeNumbers + plex.episodeNumbers).distinct().sorted()
-                val combinedRatingKeys = (prev.ratingKeys + plex.ratingKeys).distinct()
-                val merged =
-                    prev.copy(
-                        episodeNumbers = combinedEpisodes,
-                        ratingKeys = combinedRatingKeys,
-                        artworkBytes = prev.artworkBytes ?: plex.artworkBytes,
-                        posterUrl = prev.posterUrl ?: plex.posterUrl,
-                        parentPosterUrl = prev.parentPosterUrl ?: plex.parentPosterUrl,
-                        grandparentPosterUrl = prev.grandparentPosterUrl ?: plex.grandparentPosterUrl,
-                        summary = prev.summary ?: plex.summary,
-                        rating = prev.rating ?: plex.rating,
-                        videoCodec = prev.videoCodec ?: plex.videoCodec,
-                        audioCodec = prev.audioCodec ?: plex.audioCodec,
-                        resolution = prev.resolution ?: plex.resolution,
-                        instanceName = prev.instanceName ?: plex.instanceName
-                    )
-                existing.payload = merged
+                existing.payload = mergePlexPayload(prev, plex)
                 existing.timerJob = launchAvailableTimer(key)
             } else {
                 val newBuffer =
@@ -416,4 +399,26 @@ class SeasonDebouncer(
     fun activeDownloadBufferCount(): Int = downloadBuffers.size
 
     fun activeAvailableBufferCount(): Int = availableBuffers.size
+}
+
+private fun mergePlexPayload(
+    prev: MediaPayload.PlexLibraryNew,
+    incoming: MediaPayload.PlexLibraryNew
+): MediaPayload.PlexLibraryNew {
+    val combinedEpisodes = (prev.episodeNumbers + incoming.episodeNumbers).distinct().sorted()
+    val combinedRatingKeys = (prev.ratingKeys + incoming.ratingKeys).distinct()
+    return prev.copy(
+        episodeNumbers = combinedEpisodes,
+        ratingKeys = combinedRatingKeys,
+        artworkBytes = prev.artworkBytes ?: incoming.artworkBytes,
+        posterUrl = prev.posterUrl ?: incoming.posterUrl,
+        parentPosterUrl = prev.parentPosterUrl ?: incoming.parentPosterUrl,
+        grandparentPosterUrl = prev.grandparentPosterUrl ?: incoming.grandparentPosterUrl,
+        summary = prev.summary ?: incoming.summary,
+        rating = prev.rating ?: incoming.rating,
+        videoCodec = prev.videoCodec ?: incoming.videoCodec,
+        audioCodec = prev.audioCodec ?: incoming.audioCodec,
+        resolution = prev.resolution ?: incoming.resolution,
+        instanceName = prev.instanceName ?: incoming.instanceName
+    )
 }

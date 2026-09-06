@@ -255,31 +255,8 @@ object CardFormatterService {
         for ((idx, item) in displayItems.withIndex()) {
             val epLabel = extractEpisodeLabel(item.name, idx + 1)
             val miniBar = drawProgressBar(item.progressPercent, 8, engine.theme.progressBarStyle)
-            val percentStr =
-                if (item.progressPercent >= 100.0 || item.state.isComplete) {
-                    "100%"
-                } else {
-                    String.format(Locale.US, "%.1f%%", item.progressPercent)
-                }
-
-            val statusInfo =
-                when {
-                    item.state.isComplete || item.progressPercent >= 100.0 ->
-                        formatBytes(item.totalSizeBytes)
-                    item.state == TorrentState.DOWNLOADING -> {
-                        val speed = formatSpeed(item.downloadSpeedBytesPerSec)
-                        if (item.etaSeconds > 0) {
-                            "$speed (ETA: ${formatDuration(item.etaSeconds)})"
-                        } else {
-                            speed
-                        }
-                    }
-                    item.state == TorrentState.STALLED -> "Stalled"
-                    item.state == TorrentState.QUEUED -> "Queued"
-                    item.state == TorrentState.PAUSED -> "Paused"
-                    item.state == TorrentState.ALLOCATING_METADATA -> "Allocating"
-                    else -> "${formatBytes(item.downloadedBytes)} / ${formatBytes(item.totalSizeBytes)}"
-                }
+            val percentStr = formatTrackPercent(item)
+            val statusInfo = formatTrackStatusInfo(item)
 
             sb
                 .append("<code>")
@@ -544,22 +521,15 @@ object CardFormatterService {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
+        val singleEpisodeTitle = payload.episodeTitle?.takeIf { payload.episodeNumbers.size == 1 }
         val fullTitle =
-            when {
-                epRange != null && !payload.episodeTitle.isNullOrBlank() && payload.episodeNumbers.size == 1 -> {
-                    val epTitle = payload.episodeTitle.trim()
-                    if (!epTitle.equals(epRange, ignoreCase = true) &&
-                        !epTitle.startsWith("Episode ", ignoreCase = true)
-                    ) {
-                        "${payload.seriesOrMovieTitle} - $epRange - $epTitle"
-                    } else {
-                        "${payload.seriesOrMovieTitle} - $epRange"
-                    }
-                }
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                payload.year != null -> "${payload.title} (${payload.year})"
-                else -> payload.title
-            }
+            formatServarrFullTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                title = payload.title,
+                epRange = epRange,
+                singleEpisodeTitle = singleEpisodeTitle,
+                year = payload.year
+            )
 
         val defaultTitle =
             if (payload.isUpgrade) {
@@ -589,38 +559,13 @@ object CardFormatterService {
                 resolution = payload.quality ?: payload.resolution
             )
 
-        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
-        val firstEpisode = payload.episodeNumbers.firstOrNull()
-        val formattedEpisode = firstEpisode?.let { String.format(Locale.US, "%02d", it) }
-
         val context =
-            mutableMapOf<String, Any?>(
-                "title" to fullTitle,
-                "series_title" to payload.seriesOrMovieTitle.ifBlank { payload.title },
-                "year" to payload.year?.toString(),
-                "season" to formattedSeason,
-                "season_number" to payload.seasonNumber?.toString(),
-                "episode" to formattedEpisode,
-                "episode_number" to firstEpisode?.toString(),
-                "episode_title" to payload.episodeTitle,
-                "episode_name" to payload.episodeTitle,
-                "episode_range" to epRange,
-                "quality" to payload.quality,
-                "specs" to specsSummary,
-                "video_codec" to payload.videoCodec,
-                "audio_codec" to payload.audioCodec,
-                "resolution" to payload.resolution,
-                "size" to payload.sizeBytes?.let { formatBytes(it) },
-                "total_size" to payload.sizeBytes?.let { formatBytes(it) },
-                "is_upgrade" to payload.isUpgrade.toString(),
-                "import_action" to if (payload.isUpgrade) "File Upgraded" else "File Imported",
-                "import_icon" to if (payload.isUpgrade) "⬆️" else "📁",
-                "import_type" to if (payload.isUpgrade) "Quality Upgrade" else "Library Import",
-                "overview" to truncateOverview(payload.overview, engine.theme.maxOverviewLength),
-                "poster_url" to payload.posterUrl,
-                "web_url" to payload.webUrl,
-                "instance_name" to (payload.instanceName ?: payload.source.displayName),
-                "source_name" to payload.source.displayName
+            buildImportContext(
+                payload,
+                fullTitle,
+                epRange,
+                specsSummary,
+                engine.theme.maxOverviewLength
             )
 
         val resolved =
@@ -675,6 +620,7 @@ object CardFormatterService {
             is MediaPayload.SeerrEvent -> buildSeerrCard(payload, engine)
         }
 
+    @Suppress("LongParameterList")
     private class MediaServerItemDetails(
         val sourceName: String,
         val actionEmoji: String,
@@ -875,27 +821,11 @@ object CardFormatterService {
         mediaServerPort: MediaServerPort?,
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
-        val mediaType = payload.mediaType?.lowercase()
-        val isEpisode =
-            mediaType == "episode" ||
-                payload.episodeNumber != null ||
-                payload.grandParentTitle != null
-        val isSeason =
-            !isEpisode &&
-                (
-                    mediaType == "season" ||
-                        (
-                            payload.parentTitle != null &&
-                                (payload.title.startsWith("Season", ignoreCase = true) || payload.seasonNumber != null)
-                        )
-                )
-
-        val seriesTitle =
-            when {
-                isSeason -> payload.parentTitle ?: ""
-                isEpisode -> payload.grandParentTitle ?: payload.parentTitle ?: ""
-                else -> ""
-            }
+        val kind = determinePlexKind(payload)
+        val isEpisode = kind.isEpisode
+        val isSeason = kind.isSeason
+        val seriesTitle = kind.seriesTitle
+        val mediaType = kind.mediaType
 
         val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)
         val fullTitle =
@@ -1103,56 +1033,20 @@ object CardFormatterService {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
+        val singleEpisodeTitle = payload.episodeTitle?.takeIf { payload.episodeNumbers.size == 1 }
         val fullTitle =
-            when {
-                epRange != null && !payload.episodeTitle.isNullOrBlank() && payload.episodeNumbers.size == 1 -> {
-                    val epTitle = payload.episodeTitle.trim()
-                    if (!epTitle.equals(epRange, ignoreCase = true) &&
-                        !epTitle.startsWith("Episode ", ignoreCase = true)
-                    ) {
-                        "${payload.seriesOrMovieTitle} - $epRange - $epTitle"
-                    } else {
-                        "${payload.seriesOrMovieTitle} - $epRange"
-                    }
-                }
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+            formatServarrFullTitle(
+                seriesOrMovieTitle = payload.seriesOrMovieTitle,
+                title = payload.title,
+                epRange = epRange,
+                singleEpisodeTitle = singleEpisodeTitle
+            )
 
         val instanceLabel = payload.instanceName ?: payload.source.displayName
         val defaultTitle = "✋ Manual Import Required: $fullTitle"
         val defaultSubtitle = "$instanceLabel • Manual Intervention"
 
-        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
-        val firstEpisode = payload.episodeNumbers.firstOrNull()
-        val formattedEpisode = firstEpisode?.let { String.format(Locale.US, "%02d", it) }
-
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to fullTitle,
-                "series_title" to payload.seriesOrMovieTitle,
-                "season" to formattedSeason,
-                "season_number" to payload.seasonNumber?.toString(),
-                "episode" to formattedEpisode,
-                "episode_number" to firstEpisode?.toString(),
-                "episode_title" to payload.episodeTitle,
-                "episode_name" to payload.episodeTitle,
-                "episode_range" to epRange,
-                "reason" to payload.reason,
-                "release_title" to payload.releaseTitle,
-                "release_name" to payload.releaseTitle,
-                "quality" to payload.quality,
-                "size" to payload.sizeBytes?.let { formatBytes(it) },
-                "total_size" to payload.sizeBytes?.let { formatBytes(it) },
-                "indexer" to payload.indexer,
-                "download_client" to payload.downloadClient,
-                "client" to payload.downloadClient,
-                "download_id" to payload.downloadId,
-                "web_url" to payload.webUrl,
-                "poster_url" to payload.posterUrl,
-                "instance_name" to instanceLabel,
-                "source_name" to payload.source.displayName
-            )
+        val context = buildManualInteractionContext(payload, fullTitle, epRange, instanceLabel)
 
         val defaultActions =
             if (!payload.webUrl.isNullOrBlank()) {
@@ -1228,154 +1122,13 @@ object CardFormatterService {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val appName = payload.instanceName ?: payload.source.displayName
-        val meta =
-            when (payload.eventType) {
-                EventType.REQUEST_PENDING -> {
-                    SeerrMetadata(
-                        "🛎️ New Request: ${payload.subject}",
-                        "$appName • Request Pending",
-                        NotificationLevel.WARNING,
-                        "🛎️",
-                        "New Request"
-                    )
-                }
-                EventType.REQUEST_APPROVED, EventType.REQUEST_AUTO_APPROVED -> {
-                    val approvedType =
-                        if (payload.eventType ==
-                            EventType.REQUEST_AUTO_APPROVED
-                        ) {
-                            "Auto-Approved"
-                        } else {
-                            "Approved"
-                        }
-                    SeerrMetadata(
-                        "✅ Request $approvedType: ${payload.subject}",
-                        "$appName • Request $approvedType",
-                        NotificationLevel.SUCCESS,
-                        "✅",
-                        "Request $approvedType"
-                    )
-                }
-                EventType.REQUEST_AVAILABLE -> {
-                    SeerrMetadata(
-                        "🍿 Request Available: ${payload.subject}",
-                        "$appName • Media Available",
-                        NotificationLevel.SUCCESS,
-                        "🍿",
-                        "Request Available"
-                    )
-                }
-                EventType.REQUEST_DECLINED -> {
-                    SeerrMetadata(
-                        "❌ Request Declined: ${payload.subject}",
-                        "$appName • Request Declined",
-                        NotificationLevel.ERROR,
-                        "❌",
-                        "Request Declined"
-                    )
-                }
-                EventType.REQUEST_FAILED -> {
-                    SeerrMetadata(
-                        "🚨 Request Failed: ${payload.subject}",
-                        "$appName • Request Processing Failed",
-                        NotificationLevel.ERROR,
-                        "🚨",
-                        "Request Failed"
-                    )
-                }
-                EventType.ISSUE_CREATED -> {
-                    SeerrMetadata(
-                        "⚠️ Issue Reported: ${payload.subject}",
-                        "$appName • Issue Report",
-                        NotificationLevel.WARNING,
-                        "⚠️",
-                        "Issue Reported"
-                    )
-                }
-                EventType.ISSUE_COMMENT -> {
-                    SeerrMetadata(
-                        "💬 Issue Comment: ${payload.subject}",
-                        "$appName • Issue Update",
-                        NotificationLevel.INFO,
-                        "💬",
-                        "Issue Comment"
-                    )
-                }
-                EventType.ISSUE_RESOLVED -> {
-                    SeerrMetadata(
-                        "✅ Issue Resolved: ${payload.subject}",
-                        "$appName • Issue Resolved",
-                        NotificationLevel.SUCCESS,
-                        "✅",
-                        "Issue Resolved"
-                    )
-                }
-                EventType.ISSUE_REOPENED -> {
-                    SeerrMetadata(
-                        "⚠️ Issue Reopened: ${payload.subject}",
-                        "$appName • Issue Reopened",
-                        NotificationLevel.WARNING,
-                        "⚠️",
-                        "Issue Reopened"
-                    )
-                }
-                else -> {
-                    SeerrMetadata(
-                        "🔔 ${payload.subject}",
-                        "$appName • Notification",
-                        NotificationLevel.INFO,
-                        "🔔",
-                        "Notification"
-                    )
-                }
-            }
+        val meta = resolveSeerrMetadata(payload, appName)
+        val mediaLabel = resolveSeerrMediaLabel(payload.mediaType)
+        val context = buildSeerrContext(payload, meta, appName, mediaLabel)
 
-        val mediaLabel =
-            payload.mediaType?.takeIf { it.isNotBlank() }?.let {
-                when (it.lowercase()) {
-                    "movie" -> "🎬 Movie"
-                    "tv" -> "📺 TV Series"
-                    else -> it.replaceFirstChar { c -> c.uppercase() }
-                }
-            }
-
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to meta.defaultTitle,
-                "subject" to payload.subject,
-                "request_icon" to meta.requestIcon,
-                "request_action" to meta.requestAction,
-                "request_status" to meta.defaultSubtitle.substringAfter(" • "),
-                "requested_by" to payload.requestedByUsername,
-                "media_type" to mediaLabel,
-                "quality" to if (payload.is4k) "4K UHD" else null,
-                "issue_type" to payload.issueType,
-                "issue_status" to payload.issueStatus,
-                "comment" to payload.commentMessage,
-                "message" to payload.message?.takeIf { it != payload.subject },
-                "web_url" to payload.webUrl,
-                "poster_url" to payload.image,
-                "instance_name" to appName,
-                "source_name" to payload.source.displayName
-            )
-
-        val isIssue =
-            payload.eventType in
-                setOf(
-                    EventType.ISSUE_CREATED,
-                    EventType.ISSUE_COMMENT,
-                    EventType.ISSUE_RESOLVED,
-                    EventType.ISSUE_REOPENED
-                )
+        val isIssue = payload.eventType in SEERR_ISSUE_EVENTS
         val eventName = if (isIssue) "issue" else "request"
-
-        val defaultActions =
-            if (!payload.webUrl.isNullOrBlank()) {
-                val actionLabel = if (isIssue) "⚠️ View Issue in $appName" else "🌐 Open in $appName"
-                listOf(ActionLink(label = actionLabel, url = payload.webUrl, style = ActionStyle.PRIMARY))
-            } else {
-                emptyList()
-            }
+        val defaultActions = buildSeerrActions(payload.webUrl, appName, isIssue)
 
         val resolved =
             engine.resolveCard(
@@ -1402,52 +1155,364 @@ object CardFormatterService {
             )
         }
 
-        val fields = mutableListOf<CardField>()
-        payload.requestedByUsername?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Requested By", it, inline = true))
-        }
-        mediaLabel?.let {
-            fields.add(CardField("Media Type", it, inline = true))
-        }
-        if (payload.is4k) {
-            fields.add(CardField("Quality", "4K UHD", inline = true))
-        }
-        payload.issueType?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Issue Type", it, inline = true))
-        }
-        payload.issueStatus?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Issue Status", it, inline = true))
-        }
-        payload.commentMessage?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Comment", it, inline = false))
-        }
-        payload.message?.takeIf { it.isNotBlank() && it != payload.subject }?.let {
-            fields.add(CardField("Details", it, inline = false))
-        }
-
         return NotificationCard(
             title = resolved.title,
             subtitle = resolved.subtitle,
             level = meta.level,
-            fields = fields,
+            fields = buildSeerrCardFields(payload, mediaLabel),
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
             eventType = eventName
         )
     }
+}
 
-    private data class HealthMetadata(
-        val titlePrefix: String,
-        val level: NotificationLevel,
-        val subtitleSuffix: String,
-        val statusEmoji: String
+private data class HealthMetadata(
+    val titlePrefix: String,
+    val level: NotificationLevel,
+    val subtitleSuffix: String,
+    val statusEmoji: String
+)
+
+private data class SeerrMetadata(
+    val defaultTitle: String,
+    val defaultSubtitle: String,
+    val level: NotificationLevel,
+    val requestIcon: String,
+    val requestAction: String
+)
+
+private class PlexMediaKind(
+    val isEpisode: Boolean,
+    val isSeason: Boolean,
+    val seriesTitle: String,
+    val mediaType: String?
+)
+
+private fun determinePlexKind(payload: MediaPayload.PlexLibraryNew): PlexMediaKind {
+    val mediaType = payload.mediaType?.lowercase()
+    val isEpisode =
+        mediaType == "episode" ||
+            payload.episodeNumber != null ||
+            payload.grandParentTitle != null
+    val isSeason =
+        !isEpisode &&
+            (
+                mediaType == "season" ||
+                    (
+                        payload.parentTitle != null &&
+                            (payload.title.startsWith("Season", ignoreCase = true) || payload.seasonNumber != null)
+                    )
+            )
+
+    val seriesTitle =
+        when {
+            isSeason -> payload.parentTitle ?: ""
+            isEpisode -> payload.grandParentTitle ?: payload.parentTitle ?: ""
+            else -> ""
+        }
+
+    return PlexMediaKind(isEpisode = isEpisode, isSeason = isSeason, seriesTitle = seriesTitle, mediaType = mediaType)
+}
+
+private fun formatTrackPercent(item: TorrentProgress): String =
+    if (item.progressPercent >= 100.0 || item.state.isComplete) {
+        "100%"
+    } else {
+        String.format(Locale.US, "%.1f%%", item.progressPercent)
+    }
+
+private fun formatTrackStatusInfo(item: TorrentProgress): String =
+    when {
+        item.state.isComplete || item.progressPercent >= 100.0 ->
+            CardFormatterService.formatBytes(item.totalSizeBytes)
+        item.state == TorrentState.DOWNLOADING -> {
+            val speed = CardFormatterService.formatSpeed(item.downloadSpeedBytesPerSec)
+            if (item.etaSeconds > 0) {
+                "$speed (ETA: ${CardFormatterService.formatDuration(item.etaSeconds)})"
+            } else {
+                speed
+            }
+        }
+        item.state == TorrentState.STALLED -> "Stalled"
+        item.state == TorrentState.QUEUED -> "Queued"
+        item.state == TorrentState.PAUSED -> "Paused"
+        item.state == TorrentState.ALLOCATING_METADATA -> "Allocating"
+        else -> "${CardFormatterService.formatBytes(
+            item.downloadedBytes
+        )} / ${CardFormatterService.formatBytes(item.totalSizeBytes)}"
+    }
+
+private fun formatServarrFullTitle(
+    seriesOrMovieTitle: String,
+    title: String,
+    epRange: String?,
+    singleEpisodeTitle: String?,
+    year: Int? = null
+): String =
+    when {
+        epRange != null && !singleEpisodeTitle.isNullOrBlank() -> {
+            val epTitle = singleEpisodeTitle.trim()
+            if (!epTitle.equals(epRange, ignoreCase = true) &&
+                !epTitle.startsWith("Episode ", ignoreCase = true)
+            ) {
+                "$seriesOrMovieTitle - $epRange - $epTitle"
+            } else {
+                "$seriesOrMovieTitle - $epRange"
+            }
+        }
+        epRange != null -> "$seriesOrMovieTitle ($epRange)"
+        year != null -> "$title ($year)"
+        else -> title
+    }
+
+private fun buildImportContext(
+    payload: MediaPayload.ArrDownload,
+    fullTitle: String,
+    epRange: String?,
+    specsSummary: String,
+    maxOverviewLength: Int
+): Map<String, Any?> {
+    val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+    val firstEpisode = payload.episodeNumbers.firstOrNull()
+    val formattedEpisode = firstEpisode?.let { String.format(Locale.US, "%02d", it) }
+
+    return mapOf(
+        "title" to fullTitle,
+        "series_title" to payload.seriesOrMovieTitle.ifBlank { payload.title },
+        "year" to payload.year?.toString(),
+        "season" to formattedSeason,
+        "season_number" to payload.seasonNumber?.toString(),
+        "episode" to formattedEpisode,
+        "episode_number" to firstEpisode?.toString(),
+        "episode_title" to payload.episodeTitle,
+        "episode_name" to payload.episodeTitle,
+        "episode_range" to epRange,
+        "quality" to payload.quality,
+        "specs" to specsSummary,
+        "video_codec" to payload.videoCodec,
+        "audio_codec" to payload.audioCodec,
+        "resolution" to payload.resolution,
+        "size" to payload.sizeBytes?.let { CardFormatterService.formatBytes(it) },
+        "total_size" to payload.sizeBytes?.let { CardFormatterService.formatBytes(it) },
+        "is_upgrade" to payload.isUpgrade.toString(),
+        "import_action" to if (payload.isUpgrade) "File Upgraded" else "File Imported",
+        "import_icon" to if (payload.isUpgrade) "⬆️" else "📁",
+        "import_type" to if (payload.isUpgrade) "Quality Upgrade" else "Library Import",
+        "overview" to CardFormatterService.truncateOverview(payload.overview, maxOverviewLength),
+        "poster_url" to payload.posterUrl,
+        "web_url" to payload.webUrl,
+        "instance_name" to (payload.instanceName ?: payload.source.displayName),
+        "source_name" to payload.source.displayName
+    )
+}
+
+private fun buildManualInteractionContext(
+    payload: MediaPayload.ServarrManualInteraction,
+    fullTitle: String,
+    epRange: String?,
+    instanceLabel: String
+): Map<String, Any?> {
+    val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+    val firstEpisode = payload.episodeNumbers.firstOrNull()
+    val formattedEpisode = firstEpisode?.let { String.format(Locale.US, "%02d", it) }
+
+    return mapOf(
+        "title" to fullTitle,
+        "series_title" to payload.seriesOrMovieTitle,
+        "season" to formattedSeason,
+        "season_number" to payload.seasonNumber?.toString(),
+        "episode" to formattedEpisode,
+        "episode_number" to firstEpisode?.toString(),
+        "episode_title" to payload.episodeTitle,
+        "episode_name" to payload.episodeTitle,
+        "episode_range" to epRange,
+        "reason" to payload.reason,
+        "release_title" to payload.releaseTitle,
+        "release_name" to payload.releaseTitle,
+        "quality" to payload.quality,
+        "size" to payload.sizeBytes?.let { CardFormatterService.formatBytes(it) },
+        "total_size" to payload.sizeBytes?.let { CardFormatterService.formatBytes(it) },
+        "indexer" to payload.indexer,
+        "download_client" to payload.downloadClient,
+        "client" to payload.downloadClient,
+        "download_id" to payload.downloadId,
+        "web_url" to payload.webUrl,
+        "poster_url" to payload.posterUrl,
+        "instance_name" to instanceLabel,
+        "source_name" to payload.source.displayName
+    )
+}
+
+private fun resolveSeerrMetadata(
+    payload: MediaPayload.SeerrEvent,
+    appName: String
+): SeerrMetadata =
+    when (payload.eventType) {
+        EventType.REQUEST_PENDING ->
+            SeerrMetadata(
+                "🛎️ New Request: ${payload.subject}",
+                "$appName • Request Pending",
+                NotificationLevel.WARNING,
+                "🛎️",
+                "New Request"
+            )
+        EventType.REQUEST_APPROVED, EventType.REQUEST_AUTO_APPROVED -> {
+            val approvedType =
+                if (payload.eventType == EventType.REQUEST_AUTO_APPROVED) "Auto-Approved" else "Approved"
+            SeerrMetadata(
+                "✅ Request $approvedType: ${payload.subject}",
+                "$appName • Request $approvedType",
+                NotificationLevel.SUCCESS,
+                "✅",
+                "Request $approvedType"
+            )
+        }
+        EventType.REQUEST_AVAILABLE ->
+            SeerrMetadata(
+                "🍿 Request Available: ${payload.subject}",
+                "$appName • Media Available",
+                NotificationLevel.SUCCESS,
+                "🍿",
+                "Request Available"
+            )
+        EventType.REQUEST_DECLINED ->
+            SeerrMetadata(
+                "❌ Request Declined: ${payload.subject}",
+                "$appName • Request Declined",
+                NotificationLevel.ERROR,
+                "❌",
+                "Request Declined"
+            )
+        EventType.REQUEST_FAILED ->
+            SeerrMetadata(
+                "🚨 Request Failed: ${payload.subject}",
+                "$appName • Request Processing Failed",
+                NotificationLevel.ERROR,
+                "🚨",
+                "Request Failed"
+            )
+        EventType.ISSUE_CREATED ->
+            SeerrMetadata(
+                "⚠️ Issue Reported: ${payload.subject}",
+                "$appName • Issue Report",
+                NotificationLevel.WARNING,
+                "⚠️",
+                "Issue Reported"
+            )
+        EventType.ISSUE_COMMENT ->
+            SeerrMetadata(
+                "💬 Issue Comment: ${payload.subject}",
+                "$appName • Issue Update",
+                NotificationLevel.INFO,
+                "💬",
+                "Issue Comment"
+            )
+        EventType.ISSUE_RESOLVED ->
+            SeerrMetadata(
+                "✅ Issue Resolved: ${payload.subject}",
+                "$appName • Issue Resolved",
+                NotificationLevel.SUCCESS,
+                "✅",
+                "Issue Resolved"
+            )
+        EventType.ISSUE_REOPENED ->
+            SeerrMetadata(
+                "⚠️ Issue Reopened: ${payload.subject}",
+                "$appName • Issue Reopened",
+                NotificationLevel.WARNING,
+                "⚠️",
+                "Issue Reopened"
+            )
+        else ->
+            SeerrMetadata(
+                "🔔 ${payload.subject}",
+                "$appName • Notification",
+                NotificationLevel.INFO,
+                "🔔",
+                "Notification"
+            )
+    }
+
+private val SEERR_ISSUE_EVENTS =
+    setOf(
+        EventType.ISSUE_CREATED,
+        EventType.ISSUE_COMMENT,
+        EventType.ISSUE_RESOLVED,
+        EventType.ISSUE_REOPENED
     )
 
-    private data class SeerrMetadata(
-        val defaultTitle: String,
-        val defaultSubtitle: String,
-        val level: NotificationLevel,
-        val requestIcon: String,
-        val requestAction: String
+private fun resolveSeerrMediaLabel(mediaType: String?): String? =
+    mediaType?.takeIf { it.isNotBlank() }?.let {
+        when (it.lowercase()) {
+            "movie" -> "🎬 Movie"
+            "tv" -> "📺 TV Series"
+            else -> it.replaceFirstChar { c -> c.uppercase() }
+        }
+    }
+
+private fun buildSeerrContext(
+    payload: MediaPayload.SeerrEvent,
+    meta: SeerrMetadata,
+    appName: String,
+    mediaLabel: String?
+): Map<String, Any?> =
+    mapOf(
+        "title" to meta.defaultTitle,
+        "subject" to payload.subject,
+        "request_icon" to meta.requestIcon,
+        "request_action" to meta.requestAction,
+        "request_status" to meta.defaultSubtitle.substringAfter(" • "),
+        "requested_by" to payload.requestedByUsername,
+        "media_type" to mediaLabel,
+        "quality" to if (payload.is4k) "4K UHD" else null,
+        "issue_type" to payload.issueType,
+        "issue_status" to payload.issueStatus,
+        "comment" to payload.commentMessage,
+        "message" to payload.message?.takeIf { it != payload.subject },
+        "web_url" to payload.webUrl,
+        "poster_url" to payload.image,
+        "instance_name" to appName,
+        "source_name" to payload.source.displayName
     )
+
+private fun buildSeerrActions(
+    webUrl: String?,
+    appName: String,
+    isIssue: Boolean
+): List<ActionLink> =
+    if (!webUrl.isNullOrBlank()) {
+        val actionLabel = if (isIssue) "⚠️ View Issue in $appName" else "🌐 Open in $appName"
+        listOf(ActionLink(label = actionLabel, url = webUrl, style = ActionStyle.PRIMARY))
+    } else {
+        emptyList()
+    }
+
+private fun buildSeerrCardFields(
+    payload: MediaPayload.SeerrEvent,
+    mediaLabel: String?
+): List<CardField> {
+    val fields = mutableListOf<CardField>()
+    payload.requestedByUsername?.takeIf { it.isNotBlank() }?.let {
+        fields.add(CardField("Requested By", it, inline = true))
+    }
+    mediaLabel?.let {
+        fields.add(CardField("Media Type", it, inline = true))
+    }
+    if (payload.is4k) {
+        fields.add(CardField("Quality", "4K UHD", inline = true))
+    }
+    payload.issueType?.takeIf { it.isNotBlank() }?.let {
+        fields.add(CardField("Issue Type", it, inline = true))
+    }
+    payload.issueStatus?.takeIf { it.isNotBlank() }?.let {
+        fields.add(CardField("Issue Status", it, inline = true))
+    }
+    payload.commentMessage?.takeIf { it.isNotBlank() }?.let {
+        fields.add(CardField("Comment", it, inline = false))
+    }
+    payload.message?.takeIf { it.isNotBlank() && it != payload.subject }?.let {
+        fields.add(CardField("Details", it, inline = false))
+    }
+    return fields
 }

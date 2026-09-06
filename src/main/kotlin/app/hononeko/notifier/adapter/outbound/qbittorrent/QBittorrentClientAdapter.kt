@@ -72,30 +72,6 @@ class QBittorrentClientAdapter(
             }
         }
 
-    @Serializable
-    private data class QBitTorrentDto(
-        val hash: String,
-        val name: String? = null,
-        val progress: Double = 0.0,
-        val dlspeed: Long = 0,
-        val upspeed: Long = 0,
-        val eta: Long = 0,
-        @SerialName("total_size")
-        val totalSize: Long = 0,
-        val completed: Long = 0,
-        val state: String = "unknown",
-        val tags: String? = null,
-        val category: String? = null,
-        @SerialName("num_seeds")
-        val numSeeds: Int = 0,
-        @SerialName("num_complete")
-        val numComplete: Int = 0,
-        @SerialName("num_leechs")
-        val numLeechs: Int = 0,
-        @SerialName("num_incomplete")
-        val numIncomplete: Int = 0
-    )
-
     override suspend fun getTorrentProgress(hash: String): Either<DomainError.TorrentClientError, TorrentProgress?> {
         val normalizedHash = hash.trim().lowercase()
         if (!isValidHash(normalizedHash)) {
@@ -248,32 +224,6 @@ class QBittorrentClientAdapter(
             }
         }
 
-    private fun QBitTorrentDto.toTorrentProgress(): TorrentProgress {
-        val progressPercent = (progress * 100.0).coerceIn(0.0, 100.0)
-        val parsedTags =
-            tags
-                ?.split(",")
-                ?.map { it.trim() }
-                ?.filter { it.isNotBlank() } ?: emptyList()
-        return TorrentProgress(
-            hash = hash,
-            name = name ?: "Unknown",
-            progressPercent = progressPercent,
-            progressRatio = progress,
-            downloadSpeedBytesPerSec = dlspeed,
-            uploadSpeedBytesPerSec = upspeed,
-            etaSeconds = eta,
-            totalSizeBytes = totalSize,
-            downloadedBytes = completed,
-            seedsCount = numSeeds,
-            seedsTotal = numComplete,
-            peersCount = numLeechs,
-            peersTotal = numIncomplete,
-            state = mapState(state),
-            tags = parsedTags
-        )
-    }
-
     private suspend fun parseTorrentResponse(
         response: HttpResponse,
         hash: String
@@ -306,71 +256,7 @@ class QBittorrentClientAdapter(
             return Either.Right(torrentList.first().toTorrentProgress())
         }
 
-        val totalSize = torrentList.sumOf { it.totalSize }
-        val totalCompleted = torrentList.sumOf { it.completed }
-        val totalDlSpeed = torrentList.sumOf { it.dlspeed }
-        val totalUpSpeed = torrentList.sumOf { it.upspeed }
-        val maxEta = torrentList.maxOfOrNull { it.eta } ?: 0L
-        val maxSeeds = torrentList.maxOfOrNull { it.numSeeds } ?: 0
-        val maxSeedsTotal = torrentList.maxOfOrNull { it.numComplete } ?: 0
-        val maxPeers = torrentList.maxOfOrNull { it.numLeechs } ?: 0
-        val maxPeersTotal = torrentList.maxOfOrNull { it.numIncomplete } ?: 0
-
-        val aggregateRatio =
-            if (totalSize > 0) {
-                (totalCompleted.toDouble() / totalSize.toDouble()).coerceIn(0.0, 1.0)
-            } else {
-                (torrentList.map { it.progress }.average()).coerceIn(0.0, 1.0)
-            }
-        val aggregatePercent = (aggregateRatio * 100.0).coerceIn(0.0, 100.0)
-
-        val states = torrentList.map { mapState(it.state) }
-        val aggregateState =
-            when {
-                states.all { it == TorrentState.COMPLETED } -> TorrentState.COMPLETED
-                states.any { it == TorrentState.DOWNLOADING } -> TorrentState.DOWNLOADING
-                states.any { it == TorrentState.ALLOCATING_METADATA } -> TorrentState.ALLOCATING_METADATA
-                states.any { it == TorrentState.CHECKING } -> TorrentState.CHECKING
-                states.all { it == TorrentState.STALLED } -> TorrentState.STALLED
-                states.all { it == TorrentState.PAUSED } -> TorrentState.PAUSED
-                states.all { it == TorrentState.QUEUED } -> TorrentState.QUEUED
-                else -> TorrentState.DOWNLOADING
-            }
-
-        val allTags =
-            torrentList
-                .flatMap { it.tags?.split(",") ?: emptyList() }
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .distinct()
-
-        val childItems =
-            if (torrentList.size > 1) {
-                torrentList.map { it.toTorrentProgress() }
-            } else {
-                emptyList()
-            }
-
-        return Either.Right(
-            TorrentProgress(
-                hash = hash,
-                name = torrentList.firstOrNull()?.name ?: "Multi-torrent Download",
-                progressPercent = aggregatePercent,
-                progressRatio = aggregateRatio,
-                downloadSpeedBytesPerSec = totalDlSpeed,
-                uploadSpeedBytesPerSec = totalUpSpeed,
-                etaSeconds = maxEta,
-                totalSizeBytes = totalSize,
-                downloadedBytes = totalCompleted,
-                seedsCount = maxSeeds,
-                seedsTotal = maxSeedsTotal,
-                peersCount = maxPeers,
-                peersTotal = maxPeersTotal,
-                state = aggregateState,
-                items = childItems,
-                tags = allTags
-            )
-        )
+        return Either.Right(aggregateMultiTorrent(torrentList, hash))
     }
 
     private suspend fun ensureAuthenticated(force: Boolean = false) {
@@ -429,16 +315,137 @@ class QBittorrentClientAdapter(
         }
         return null
     }
+}
 
-    private fun mapState(state: String): TorrentState =
-        when (state.lowercase()) {
-            "downloading", "forceddl" -> TorrentState.DOWNLOADING
-            "metadl", "forcedmetadl" -> TorrentState.ALLOCATING_METADATA
-            "stalleddl" -> TorrentState.STALLED
-            "uploading", "forcedup", "stalledup", "pausedup", "queuedup", "checkingup" -> TorrentState.COMPLETED
-            "pauseddl" -> TorrentState.PAUSED
-            "queueddl" -> TorrentState.QUEUED
-            "checkingdl", "checkingresumedata" -> TorrentState.CHECKING
-            else -> TorrentState.UNKNOWN
+@Serializable
+private data class QBitTorrentDto(
+    val hash: String,
+    val name: String? = null,
+    val progress: Double = 0.0,
+    val dlspeed: Long = 0,
+    val upspeed: Long = 0,
+    val eta: Long = 0,
+    @SerialName("total_size")
+    val totalSize: Long = 0,
+    val completed: Long = 0,
+    val state: String = "unknown",
+    val tags: String? = null,
+    val category: String? = null,
+    @SerialName("num_seeds")
+    val numSeeds: Int = 0,
+    @SerialName("num_complete")
+    val numComplete: Int = 0,
+    @SerialName("num_leechs")
+    val numLeechs: Int = 0,
+    @SerialName("num_incomplete")
+    val numIncomplete: Int = 0
+)
+
+private fun QBitTorrentDto.toTorrentProgress(): TorrentProgress {
+    val progressPercent = (progress * 100.0).coerceIn(0.0, 100.0)
+    val parsedTags =
+        tags
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() } ?: emptyList()
+    return TorrentProgress(
+        hash = hash,
+        name = name ?: "Unknown",
+        progressPercent = progressPercent,
+        progressRatio = progress,
+        downloadSpeedBytesPerSec = dlspeed,
+        uploadSpeedBytesPerSec = upspeed,
+        etaSeconds = eta,
+        totalSizeBytes = totalSize,
+        downloadedBytes = completed,
+        seedsCount = numSeeds,
+        seedsTotal = numComplete,
+        peersCount = numLeechs,
+        peersTotal = numIncomplete,
+        state = mapState(state),
+        tags = parsedTags
+    )
+}
+
+private fun mapState(state: String): TorrentState =
+    when (state.lowercase()) {
+        "downloading", "forceddl" -> TorrentState.DOWNLOADING
+        "metadl", "forcedmetadl" -> TorrentState.ALLOCATING_METADATA
+        "stalleddl" -> TorrentState.STALLED
+        "uploading", "forcedup", "stalledup", "pausedup", "queuedup", "checkingup" -> TorrentState.COMPLETED
+        "pauseddl" -> TorrentState.PAUSED
+        "queueddl" -> TorrentState.QUEUED
+        "checkingdl", "checkingresumedata" -> TorrentState.CHECKING
+        else -> TorrentState.UNKNOWN
+    }
+
+private fun resolveAggregateState(states: List<TorrentState>): TorrentState =
+    when {
+        states.all { it == TorrentState.COMPLETED } -> TorrentState.COMPLETED
+        states.any { it == TorrentState.DOWNLOADING } -> TorrentState.DOWNLOADING
+        states.any { it == TorrentState.ALLOCATING_METADATA } -> TorrentState.ALLOCATING_METADATA
+        states.any { it == TorrentState.CHECKING } -> TorrentState.CHECKING
+        states.all { it == TorrentState.STALLED } -> TorrentState.STALLED
+        states.all { it == TorrentState.PAUSED } -> TorrentState.PAUSED
+        states.all { it == TorrentState.QUEUED } -> TorrentState.QUEUED
+        else -> TorrentState.DOWNLOADING
+    }
+
+private fun aggregateMultiTorrent(
+    torrentList: List<QBitTorrentDto>,
+    hash: String
+): TorrentProgress {
+    val totalSize = torrentList.sumOf { it.totalSize }
+    val totalCompleted = torrentList.sumOf { it.completed }
+    val totalDlSpeed = torrentList.sumOf { it.dlspeed }
+    val totalUpSpeed = torrentList.sumOf { it.upspeed }
+    val maxEta = torrentList.maxOfOrNull { it.eta } ?: 0L
+    val maxSeeds = torrentList.maxOfOrNull { it.numSeeds } ?: 0
+    val maxSeedsTotal = torrentList.maxOfOrNull { it.numComplete } ?: 0
+    val maxPeers = torrentList.maxOfOrNull { it.numLeechs } ?: 0
+    val maxPeersTotal = torrentList.maxOfOrNull { it.numIncomplete } ?: 0
+
+    val aggregateRatio =
+        if (totalSize > 0) {
+            (totalCompleted.toDouble() / totalSize.toDouble()).coerceIn(0.0, 1.0)
+        } else {
+            (torrentList.map { it.progress }.average()).coerceIn(0.0, 1.0)
         }
+    val aggregatePercent = (aggregateRatio * 100.0).coerceIn(0.0, 100.0)
+
+    val states = torrentList.map { mapState(it.state) }
+    val aggregateState = resolveAggregateState(states)
+
+    val allTags =
+        torrentList
+            .flatMap { it.tags?.split(",") ?: emptyList() }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+    val childItems =
+        if (torrentList.size > 1) {
+            torrentList.map { it.toTorrentProgress() }
+        } else {
+            emptyList()
+        }
+
+    return TorrentProgress(
+        hash = hash,
+        name = torrentList.firstOrNull()?.name ?: "Multi-torrent Download",
+        progressPercent = aggregatePercent,
+        progressRatio = aggregateRatio,
+        downloadSpeedBytesPerSec = totalDlSpeed,
+        uploadSpeedBytesPerSec = totalUpSpeed,
+        etaSeconds = maxEta,
+        totalSizeBytes = totalSize,
+        downloadedBytes = totalCompleted,
+        seedsCount = maxSeeds,
+        seedsTotal = maxSeedsTotal,
+        peersCount = maxPeers,
+        peersTotal = maxPeersTotal,
+        state = aggregateState,
+        items = childItems,
+        tags = allTags
+    )
 }

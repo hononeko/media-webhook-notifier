@@ -40,42 +40,61 @@ class TemplateEngine(
 ) {
     companion object {
         private val TAG_PATTERN: Pattern = Pattern.compile("\\{([a-zA-Z0-9_-]+)}")
+        private val EVENT_ALIASES: Map<String, List<String>> =
+            mapOf(
+                "grab" to
+                    listOf(
+                        "servarr.grab",
+                        "servarr_grab",
+                        "arr.grab",
+                        "download.grab",
+                        "download_grab",
+                        "torrent.grab"
+                    ),
+                "download_progress" to listOf("download_progress", "download.progress", "progress"),
+                "progress" to listOf("download_progress", "download.progress", "progress"),
+                "download_complete" to listOf("download_complete", "download.complete", "complete"),
+                "complete" to listOf("download_complete", "download.complete", "complete"),
+                "download_stalled" to listOf("download_stalled", "download.stalled", "stalled"),
+                "stalled" to listOf("download_stalled", "download.stalled", "stalled"),
+                "import" to listOf("import", "servarr.import", "arr.import"),
+                "manual_interaction" to
+                    listOf("manual_interaction", "servarr.manual_interaction", "arr.manual_interaction"),
+                "health" to listOf("health", "servarr.health", "system.health"),
+                "media_available" to
+                    listOf(
+                        "media_available",
+                        "media_server.available",
+                        "media.available",
+                        "available"
+                    ),
+                "available" to
+                    listOf(
+                        "media_available",
+                        "media_server.available",
+                        "media.available",
+                        "available"
+                    ),
+                "request" to listOf("request", "seerr.request", "seerr_request"),
+                "issue" to
+                    listOf(
+                        "issue",
+                        "seerr.issue",
+                        "seerr_issue",
+                        "request",
+                        "seerr.request",
+                        "seerr_request"
+                    )
+            )
     }
 
     val theme get() = config.theme
 
-    fun getEventTemplate(eventName: String): EventTemplate? =
-        config.events[eventName]
-            ?: when (eventName) {
-                "grab" ->
-                    config.events["servarr.grab"] ?: config.events["servarr_grab"] ?: config.events["arr.grab"]
-                        ?: config.events["download.grab"] ?: config.events["download_grab"]
-                        ?: config.events["torrent.grab"]
-                "download_progress", "progress" ->
-                    config.events["download_progress"] ?: config.events["download.progress"]
-                        ?: config.events["progress"]
-                "download_complete", "complete" ->
-                    config.events["download_complete"] ?: config.events["download.complete"]
-                        ?: config.events["complete"]
-                "download_stalled", "stalled" ->
-                    config.events["download_stalled"] ?: config.events["download.stalled"] ?: config.events["stalled"]
-                "import" -> config.events["import"] ?: config.events["servarr.import"] ?: config.events["arr.import"]
-                "manual_interaction" ->
-                    config.events["manual_interaction"] ?: config.events["servarr.manual_interaction"]
-                        ?: config.events["arr.manual_interaction"]
-                "health" -> config.events["health"] ?: config.events["servarr.health"] ?: config.events["system.health"]
-                "media_available", "available" ->
-                    config.events["media_available"] ?: config.events["media_server.available"]
-                        ?: config.events["media.available"]
-                        ?: config.events["available"]
-                "request" ->
-                    config.events["request"] ?: config.events["seerr.request"]
-                        ?: config.events["seerr_request"]
-                "issue" ->
-                    config.events["issue"] ?: config.events["seerr.issue"] ?: config.events["seerr_issue"]
-                        ?: getEventTemplate("request")
-                else -> null
-            }
+    fun getEventTemplate(eventName: String): EventTemplate? {
+        val direct = config.events[eventName]
+        val aliases = EVENT_ALIASES[eventName]
+        return direct ?: aliases?.firstNotNullOfOrNull { config.events[it] }
+    }
 
     fun interpolate(
         template: String?,

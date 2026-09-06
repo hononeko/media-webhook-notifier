@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.inbound.web.provider
 
+import app.hononeko.notifier.adapter.inbound.web.dto.PlexMetadataDto
 import app.hononeko.notifier.adapter.inbound.web.dto.PlexWebhookDto
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.EventType
@@ -108,40 +109,14 @@ class PlexWebhookProvider(
         val durationSec = meta?.duration?.let { it / 1000 }
         val mediaType = meta?.type?.lowercase()
 
-        val isExplicitEpisode =
-            mediaType == "episode" ||
-                meta?.parentIndex != null ||
-                (meta?.grandparentTitle != null && meta?.parentTitle != null)
-
-        val seasonNumber =
-            if (meta != null) {
-                when {
-                    mediaType == "season" -> meta.index ?: extractSeasonNumber(meta.title)
-                    isExplicitEpisode -> meta.parentIndex ?: extractSeasonNumber(meta.parentTitle)
-                    else -> meta.index
-                }
-            } else {
-                null
-            }
-
-        val episodeNumber =
-            if (meta != null && isExplicitEpisode) {
-                meta.index
-            } else {
-                null
-            }
+        val isExplicitEpisode = isPlexEpisode(meta, mediaType)
+        val seasonNumber = resolvePlexSeason(meta, mediaType, isExplicitEpisode)
+        val episodeNumber = if (meta != null && isExplicitEpisode) meta.index else null
 
         val effectivePosterUrl = sanitizeHttpUrl(meta?.thumb)
         val parentPosterUrl = sanitizeHttpUrl(meta?.parentThumb)
         val grandparentPosterUrl = sanitizeHttpUrl(meta?.grandparentThumb)
-
-        val rawAddedAt = meta?.addedAt
-        val effectiveAddedAt =
-            when {
-                rawAddedAt == null -> null
-                rawAddedAt > 100_000_000_000L -> rawAddedAt / 1000L
-                else -> rawAddedAt
-            }
+        val effectiveAddedAt = normalizeAddedAt(meta?.addedAt)
 
         return MediaPayload.PlexLibraryNew(
             source = AppSource.PLEX,
@@ -177,5 +152,31 @@ class PlexWebhookProvider(
         if (title.isNullOrBlank()) return null
         val match = seasonPattern.find(title)
         return match?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun isPlexEpisode(
+        meta: PlexMetadataDto?,
+        mediaType: String?
+    ): Boolean =
+        mediaType == "episode" ||
+            meta?.parentIndex != null ||
+            (meta?.grandparentTitle != null && meta.parentTitle != null)
+
+    private fun resolvePlexSeason(
+        meta: PlexMetadataDto?,
+        mediaType: String?,
+        isEpisode: Boolean
+    ): Int? {
+        if (meta == null) return null
+        return when {
+            mediaType == "season" -> meta.index ?: extractSeasonNumber(meta.title)
+            isEpisode -> meta.parentIndex ?: extractSeasonNumber(meta.parentTitle)
+            else -> meta.index
+        }
+    }
+
+    private fun normalizeAddedAt(rawAddedAt: Long?): Long? {
+        if (rawAddedAt == null) return null
+        return if (rawAddedAt > 100_000_000_000L) rawAddedAt / 1000L else rawAddedAt
     }
 }

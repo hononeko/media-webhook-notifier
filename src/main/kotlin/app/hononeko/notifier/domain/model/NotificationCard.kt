@@ -13,6 +13,7 @@ data class NotificationCard(
     val actions: List<ActionLink> = emptyList(),
     val eventType: String? = null
 ) {
+    @Suppress("CyclomaticComplexMethod")
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is NotificationCard) return false
