@@ -36,9 +36,7 @@ object ConfigLoader {
     private fun loadTemplatesConfig(reader: EnvReader): TemplateConfig {
         val defaultStream =
             ConfigLoader::class.java.classLoader.getResourceAsStream("templates.default.yaml")
-                ?: throw IllegalStateException(
-                    "Default templates resource 'templates.default.yaml' not found on classpath!"
-                )
+                ?: error("Default templates resource 'templates.default.yaml' not found on classpath!")
         val defaultContent = defaultStream.bufferedReader().use { it.readText() }
         val defaultConfig = YamlParser.parseTemplateConfig(defaultContent)
 

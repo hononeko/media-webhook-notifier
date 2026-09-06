@@ -367,7 +367,9 @@ class QBittorrentClientAdapterTest {
                         val items =
                             mockStates
                                 .mapIndexed { idx, st ->
-                                    """{"hash":"h$idx","name":"Item $idx","progress":0.5,"total_size":0,"completed":0,"state":"$st","dlspeed":0,"upspeed":0,"eta":0,"num_seeds":1,"num_complete":1,"num_leechs":1,"num_incomplete":1}"""
+                                    """{"hash":"h$idx","name":"Item $idx","progress":0.5,"total_size":0,""" +
+                                        """"completed":0,"state":"$st","dlspeed":0,"upspeed":0,"eta":0,""" +
+                                        """"num_seeds":1,"num_complete":1,"num_leechs":1,"num_incomplete":1}"""
                                 }.joinToString(",", "[", "]")
                         respond(
                             content = items,
@@ -500,7 +502,7 @@ class QBittorrentClientAdapterTest {
 
             val exceptionEngine =
                 MockEngine { _ ->
-                    throw RuntimeException("Network crash")
+                    throw java.io.IOException("Network crash")
                 }
             val exceptionAdapter = QBittorrentClientAdapter(QBittorrentConfig(), exceptionEngine)
             val tagResult = exceptionAdapter.addTorrentTags("hash1", listOf("tag1"))

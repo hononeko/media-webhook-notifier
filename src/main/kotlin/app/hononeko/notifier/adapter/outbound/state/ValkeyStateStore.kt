@@ -223,6 +223,7 @@ class ValkeyStateStore(
             }
         }
 
+    @Suppress("SpreadOperator")
     override suspend fun clear() =
         withContext(Dispatchers.IO) {
             fallbackStore.clear()

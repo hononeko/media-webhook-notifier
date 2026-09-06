@@ -153,10 +153,12 @@ class HealthController(
         val accept = call.request.header("Accept") ?: ""
         val format = call.request.queryParameters["format"] ?: ""
 
-        if (format.equals("prometheus", ignoreCase = true) ||
-            format.equals("text", ignoreCase = true) ||
-            (accept.contains("text/plain") && !accept.contains("application/json"))
-        ) {
+        val isExplicitText =
+            format.equals("prometheus", ignoreCase = true) ||
+                format.equals("text", ignoreCase = true)
+        val isPlainTextAccept = accept.contains("text/plain") && !accept.contains("application/json")
+
+        if (isExplicitText || isPlainTextAccept) {
             call.respondText(
                 buildPrometheusMetrics(),
                 ContentType.parse("text/plain; version=0.0.4")

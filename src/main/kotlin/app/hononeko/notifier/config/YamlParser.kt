@@ -413,11 +413,9 @@ object YamlParser {
                 val c = line[i]
                 if (c == '\'' && !inDoubleQuote) inSingleQuote = !inSingleQuote
                 if (c == '"' && !inSingleQuote) inDoubleQuote = !inDoubleQuote
-                if (c == ':' &&
-                    !inSingleQuote &&
-                    !inDoubleQuote &&
-                    (i == line.length - 1 || line[i + 1].isWhitespace())
-                ) {
+                val isQuoted = inSingleQuote || inDoubleQuote
+                val isKeyTerminator = i == line.length - 1 || line[i + 1].isWhitespace()
+                if (c == ':' && !isQuoted && isKeyTerminator) {
                     return i
                 }
             }
