@@ -16,34 +16,32 @@ class MediaAvailableDeduplicator(
 
     fun computeKeys(payload: MediaPayload): List<String> =
         when (payload) {
-            is MediaPayload.PlexLibraryNew -> {
-                val instance = (payload.instanceName ?: "").trim().lowercase()
-                val serverId = (payload.serverMachineIdentifier ?: "").trim().lowercase()
-                val keys = mutableListOf<String>()
-                if (payload.ratingKeys.isNotEmpty()) {
-                    for (rk in payload.ratingKeys) {
-                        if (rk.isNotBlank()) {
-                            keys.add("plex:$instance:$serverId:${rk.trim()}")
-                        }
-                    }
-                } else if (!payload.ratingKey.isNullOrBlank()) {
-                    keys.add("plex:$instance:$serverId:${payload.ratingKey.trim()}")
-                } else {
-                    val grandParent = (payload.grandParentTitle ?: "").trim().lowercase()
-                    val parent = (payload.parentTitle ?: "").trim().lowercase()
-                    val title = payload.title.trim().lowercase()
-                    val season = payload.seasonNumber ?: 0
-                    val ep = payload.episodeNumber ?: 0
-                    val yr = payload.year ?: 0
-                    keys.add("plex:$instance:$grandParent:$parent:$title:s$season:e$ep:$yr")
-                }
-                keys
-            }
+            is MediaPayload.PlexLibraryNew -> computePlexKeys(payload)
             is MediaPayload.JellyfinItemAdded -> {
                 computeKey(payload)?.let { listOf(it) } ?: emptyList()
             }
             else -> emptyList()
         }
+
+    private fun computePlexKeys(payload: MediaPayload.PlexLibraryNew): List<String> {
+        val instance = (payload.instanceName ?: "").trim().lowercase()
+        val serverId = (payload.serverMachineIdentifier ?: "").trim().lowercase()
+        if (payload.ratingKeys.isNotEmpty()) {
+            return payload.ratingKeys
+                .filter { it.isNotBlank() }
+                .map { "plex:$instance:$serverId:${it.trim()}" }
+        }
+        if (!payload.ratingKey.isNullOrBlank()) {
+            return listOf("plex:$instance:$serverId:${payload.ratingKey.trim()}")
+        }
+        val grandParent = (payload.grandParentTitle ?: "").trim().lowercase()
+        val parent = (payload.parentTitle ?: "").trim().lowercase()
+        val title = payload.title.trim().lowercase()
+        val season = payload.seasonNumber ?: 0
+        val ep = payload.episodeNumber ?: 0
+        val yr = payload.year ?: 0
+        return listOf("plex:$instance:$grandParent:$parent:$title:s$season:e$ep:$yr")
+    }
 
     fun computeKey(payload: MediaPayload): String? =
         when (payload) {

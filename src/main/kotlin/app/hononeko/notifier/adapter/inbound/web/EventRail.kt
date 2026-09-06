@@ -76,54 +76,7 @@ class EventRail(
                 val workers =
                     (1..count).map { workerId ->
                         launch {
-                            logger.debug("EventRail worker #{} started", workerId)
-                            while (isActive) {
-                                val hasUrgent = !urgentChannel.isClosedForReceive
-                                val hasStandard = !standardChannel.isClosedForReceive
-                                if (!hasUrgent && !hasStandard) {
-                                    break
-                                }
-
-                                val payload =
-                                    try {
-                                        select<MediaPayload?> {
-                                            if (hasUrgent) {
-                                                urgentChannel.onReceiveCatching { it.getOrNull() }
-                                            }
-                                            if (hasStandard) {
-                                                standardChannel.onReceiveCatching { it.getOrNull() }
-                                            }
-                                        }
-                                    } catch (_: CancellationException) {
-                                        break
-                                    }
-
-                                if (payload == null) {
-                                    if (urgentChannel.isClosedForReceive && standardChannel.isClosedForReceive) {
-                                        break
-                                    }
-                                    continue
-                                }
-
-                                try {
-                                    val result = ingestService.execute(payload)
-                                    if (result is Either.Left) {
-                                        logger.warn(
-                                            "Ingest returned domain error for {} ({}): {}",
-                                            payload.eventType,
-                                            payload.source,
-                                            result.value
-                                        )
-                                        deadLetterBuffer.record(payload, result.value.toString())
-                                    }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    logger.error("Error processing payload from event rail: ${e.message}", e)
-                                    deadLetterBuffer.record(payload, e.message ?: "Unexpected exception")
-                                }
-                            }
-                            logger.debug("EventRail worker #{} stopped", workerId)
+                            runWorker(workerId, ingestService)
                         }
                     }
                 workers.joinAll()
@@ -131,6 +84,66 @@ class EventRail(
 
         consumerJobs.add(parentJob)
         return parentJob
+    }
+
+    private fun hasOpenChannels(): Boolean = !urgentChannel.isClosedForReceive || !standardChannel.isClosedForReceive
+
+    private suspend fun CoroutineScope.runWorker(
+        workerId: Int,
+        ingestService: IngestWebhookUseCase
+    ) {
+        logger.debug("EventRail worker #{} started", workerId)
+        while (isActive && hasOpenChannels()) {
+            val payload = receiveNextPayload()
+            if (payload != null) {
+                processPayload(payload, ingestService)
+            }
+        }
+        logger.debug("EventRail worker #{} stopped", workerId)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun receiveNextPayload(): MediaPayload? {
+        val hasUrgent = !urgentChannel.isClosedForReceive
+        val hasStandard = !standardChannel.isClosedForReceive
+        if (!hasUrgent && !hasStandard) {
+            return null
+        }
+        return try {
+            select<MediaPayload?> {
+                if (hasUrgent) {
+                    urgentChannel.onReceiveCatching { it.getOrNull() }
+                }
+                if (hasStandard) {
+                    standardChannel.onReceiveCatching { it.getOrNull() }
+                }
+            }
+        } catch (_: CancellationException) {
+            null
+        }
+    }
+
+    private suspend fun processPayload(
+        payload: MediaPayload,
+        ingestService: IngestWebhookUseCase
+    ) {
+        try {
+            val result = ingestService.execute(payload)
+            if (result is Either.Left) {
+                logger.warn(
+                    "Ingest returned domain error for {} ({}): {}",
+                    payload.eventType,
+                    payload.source,
+                    result.value
+                )
+                deadLetterBuffer.record(payload, result.value.toString())
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.error("Error processing payload from event rail: ${e.message}", e)
+            deadLetterBuffer.record(payload, e.message ?: "Unexpected exception")
+        }
     }
 
     fun close() {
