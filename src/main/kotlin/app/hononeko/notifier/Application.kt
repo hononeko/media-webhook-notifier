@@ -26,7 +26,9 @@ import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
+import app.hononeko.notifier.domain.service.AlertUseCases
 import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
@@ -34,6 +36,7 @@ import app.hononeko.notifier.domain.service.MediaAvailableDeduplicator
 import app.hononeko.notifier.domain.service.MediaAvailableService
 import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.MediaRequestService
+import app.hononeko.notifier.domain.service.ReconciliationConfig
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
 import app.hononeko.notifier.domain.service.TemplateEngine
@@ -122,11 +125,14 @@ fun buildDependencies(
             torrentClient = torrentClient,
             notificationPublisher = notificationPublisher,
             activeTrackerStore = activeTrackerStore,
-            pollIntervalSeconds = config.qbittorrent.pollIntervalSeconds,
-            maxPollingMinutes = config.qbittorrent.maxPollingMinutes,
-            stalledTimeoutMinutes = config.qbittorrent.stalledTimeoutMinutes,
-            webuiPublicUrl = config.qbittorrent.webuiPublicUrl,
-            tagPrefix = config.qbittorrent.tagPrefix,
+            config =
+                DownloadTrackerConfig(
+                    pollIntervalSeconds = config.qbittorrent.pollIntervalSeconds,
+                    maxPollingMinutes = config.qbittorrent.maxPollingMinutes,
+                    stalledTimeoutMinutes = config.qbittorrent.stalledTimeoutMinutes,
+                    webuiPublicUrl = config.qbittorrent.webuiPublicUrl,
+                    tagPrefix = config.qbittorrent.tagPrefix
+                ),
             scope = scope
         )
 
@@ -136,9 +142,12 @@ fun buildDependencies(
             trackDownloadUseCase = downloadTracker,
             activeTrackerStore = activeTrackerStore,
             notificationPublisher = notificationPublisher,
-            intervalMinutes = config.qbittorrent.reconciliationIntervalMinutes,
-            enabled = config.qbittorrent.reconciliationEnabled,
-            tagPrefix = config.qbittorrent.tagPrefix
+            config =
+                ReconciliationConfig(
+                    intervalMinutes = config.qbittorrent.reconciliationIntervalMinutes,
+                    enabled = config.qbittorrent.reconciliationEnabled,
+                    tagPrefix = config.qbittorrent.tagPrefix
+                )
         )
     reconciliationService.start(scope)
 
@@ -194,13 +203,16 @@ fun buildDependencies(
 
     val ingestWebhookService =
         IngestWebhookService(
-            seasonDebouncer = seasonDebouncer,
             trackDownloadUseCase = downloadTracker,
             announceMediaImportedUseCase = mediaImportedService,
             announceMediaAvailableUseCase = mediaAvailableService,
-            announceSystemHealthUseCase = systemHealthService,
-            announceManualInteractionUseCase = manualInteractionService,
-            announceMediaRequestUseCase = mediaRequestService
+            seasonDebouncer = seasonDebouncer,
+            alertUseCases =
+                AlertUseCases(
+                    systemHealth = systemHealthService,
+                    manualInteraction = manualInteractionService,
+                    mediaRequest = mediaRequestService
+                )
         )
 
     val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)

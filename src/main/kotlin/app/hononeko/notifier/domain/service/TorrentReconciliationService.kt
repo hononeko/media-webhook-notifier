@@ -17,15 +17,22 @@ import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicLong
 
+data class ReconciliationConfig(
+    val intervalMinutes: Long = 5L,
+    val enabled: Boolean = true,
+    val tagPrefix: String = "mwn_"
+)
+
 class TorrentReconciliationService(
     private val torrentClient: TorrentClientPort,
     private val trackDownloadUseCase: TrackDownloadUseCase,
     private val activeTrackerStore: ActiveTrackerStore,
     private val notificationPublisher: NotificationPublisherPort,
-    private val intervalMinutes: Long = 5L,
-    val enabled: Boolean = true,
-    val tagPrefix: String = "mwn_"
+    private val config: ReconciliationConfig = ReconciliationConfig()
 ) {
+    val enabled: Boolean get() = config.enabled
+    val tagPrefix: String get() = config.tagPrefix
+    private val intervalMinutes: Long get() = config.intervalMinutes
     private val logger = LoggerFactory.getLogger(TorrentReconciliationService::class.java)
     private val totalRuns = AtomicLong(0)
     private val totalResumed = AtomicLong(0)

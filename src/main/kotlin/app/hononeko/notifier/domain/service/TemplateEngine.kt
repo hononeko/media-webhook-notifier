@@ -164,22 +164,19 @@ class TemplateEngine(
 
     fun resolveCard(
         eventName: String,
-        defaultTitle: String,
-        defaultSubtitle: String?,
-        defaultArtworkUrl: String?,
-        defaultActions: List<ActionLink>,
+        defaults: DefaultCardSpec,
         context: Map<String, Any?>
     ): ResolvedTemplateCard {
         val customTemplate = getEventTemplate(eventName)
         val title =
             customTemplate?.title?.takeIf { it.isNotBlank() }?.let {
                 interpolate(it, context)
-            } ?: defaultTitle
+            } ?: defaults.title
 
         val subtitle =
             customTemplate?.subtitle?.takeIf { it.isNotBlank() }?.let {
                 interpolate(it, context)
-            } ?: defaultSubtitle
+            } ?: defaults.subtitle
 
         val imageEmbedEnabled = customTemplate?.imageEmbed != false
         val artworkUrl =
@@ -188,14 +185,14 @@ class TemplateEngine(
             } else {
                 customTemplate?.artworkUrl?.takeIf { it.isNotBlank() }?.let {
                     interpolate(it, context).ifBlank { null }
-                } ?: defaultArtworkUrl
+                } ?: defaults.artworkUrl
             }
 
         val actions =
             if (customTemplate != null && customTemplate.actions.isNotEmpty()) {
                 renderActions(customTemplate.actions, context)
             } else {
-                defaultActions
+                defaults.actions
             }
 
         val customBody =
@@ -259,10 +256,7 @@ class TemplateEngine(
         val resolved =
             resolveCard(
                 eventName = eventName,
-                defaultTitle = defaults.title,
-                defaultSubtitle = defaults.subtitle,
-                defaultArtworkUrl = defaults.artworkUrl,
-                defaultActions = defaults.actions,
+                defaults = defaults,
                 context = context
             )
 
