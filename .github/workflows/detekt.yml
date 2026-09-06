@@ -66,6 +66,7 @@ jobs:
           detekt \
             --input "${{ github.workspace }}/src" \
             --base-path "${{ github.workspace }}" \
+            --config "${{ github.workspace }}/config/detekt/detekt.yml" \
             --build-upon-default-config \
             --report "sarif:${{ github.workspace }}/detekt.sarif.json"
 
