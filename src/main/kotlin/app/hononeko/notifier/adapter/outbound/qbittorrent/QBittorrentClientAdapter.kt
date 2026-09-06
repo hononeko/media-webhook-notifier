@@ -125,9 +125,6 @@ class QBittorrentClientAdapter(
         } catch (e: IOException) {
             logger.debug("Failed to fetch torrent progress for hash {}: {}", normalizedHash, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
-        } catch (e: IllegalStateException) {
-            logger.debug("Failed to fetch torrent progress for hash {}: {}", normalizedHash, e.message)
-            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
     }
 
@@ -168,9 +165,6 @@ class QBittorrentClientAdapter(
                     } catch (e: SerializationException) {
                         logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
                         return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
-                    } catch (e: IllegalArgumentException) {
-                        logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
-                        return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
                     }
 
                 Either.Right(torrentList.map { it.toTorrentProgress() })
@@ -178,9 +172,6 @@ class QBittorrentClientAdapter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
-            logger.debug("Failed to fetch active torrents: {}", e.message)
-            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
-        } catch (e: IllegalStateException) {
             logger.debug("Failed to fetch active torrents: {}", e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
@@ -237,9 +228,6 @@ class QBittorrentClientAdapter(
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
-            logger.debug("Failed to {} tags {}: {}", action, tagString, e.message)
-            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
-        } catch (e: IllegalStateException) {
             logger.debug("Failed to {} tags {}: {}", action, tagString, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
@@ -313,9 +301,6 @@ class QBittorrentClientAdapter(
             try {
                 jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
             } catch (e: SerializationException) {
-                logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
-                return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
-            } catch (e: IllegalArgumentException) {
                 logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
                 return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
             }
@@ -438,8 +423,6 @@ class QBittorrentClientAdapter(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: IOException) {
-                logger.warn("qBittorrent authentication request failed: {}", e.message)
-            } catch (e: IllegalStateException) {
                 logger.warn("qBittorrent authentication request failed: {}", e.message)
             }
         }

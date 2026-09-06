@@ -5,12 +5,10 @@ import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.request.receiveText
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
-import java.io.IOException
 
 class JellyfinWebhookProvider : WebhookProviderStrategy {
     private val logger = LoggerFactory.getLogger(JellyfinWebhookProvider::class.java)
@@ -26,24 +24,12 @@ class JellyfinWebhookProvider : WebhookProviderStrategy {
         call: ApplicationCall,
         callerName: String?
     ): WebhookProcessResult {
-        val rawText =
-            try {
-                call.receiveText()
-            } catch (e: BadRequestException) {
-                logger.warn("Failed to read Jellyfin webhook request body: ${e.message}")
-                return WebhookProcessResult.InvalidPayload("Invalid request body: ${e.message}")
-            } catch (e: IOException) {
-                logger.warn("Failed to read Jellyfin webhook request body: ${e.message}")
-                return WebhookProcessResult.InvalidPayload("Invalid request body: ${e.message}")
-            }
+        val rawText = call.receiveText()
 
         val dto =
             try {
                 json.decodeFromString(JellyfinWebhookDto.serializer(), rawText)
             } catch (e: SerializationException) {
-                logger.warn("Failed to parse Jellyfin webhook payload: ${e.message}")
-                return WebhookProcessResult.InvalidPayload("Invalid Jellyfin payload: ${e.message}")
-            } catch (e: IllegalArgumentException) {
                 logger.warn("Failed to parse Jellyfin webhook payload: ${e.message}")
                 return WebhookProcessResult.InvalidPayload("Invalid Jellyfin payload: ${e.message}")
             }

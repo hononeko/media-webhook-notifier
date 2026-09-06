@@ -8,7 +8,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.request.contentType
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveText
@@ -17,7 +16,6 @@ import io.ktor.utils.io.toByteArray
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
-import java.io.IOException
 
 class PlexWebhookProvider(
     private val json: Json = Json { ignoreUnknownKeys = true }
@@ -40,15 +38,8 @@ class PlexWebhookProvider(
                     json.decodeFromString(PlexWebhookDto.serializer(), rawText) to null
                 }
             } catch (e: SerializationException) {
-                return handlePayloadError(e)
-            } catch (e: IllegalArgumentException) {
-                return handlePayloadError(e)
-            } catch (e: IllegalStateException) {
-                return handlePayloadError(e)
-            } catch (e: BadRequestException) {
-                return handlePayloadError(e)
-            } catch (e: IOException) {
-                return handlePayloadError(e)
+                logger.warn("Failed to parse Plex webhook payload: ${e.message}")
+                return WebhookProcessResult.InvalidPayload("Invalid Plex payload: ${e.message}")
             } ?: return WebhookProcessResult.InvalidPayload("Missing payload in multipart request")
 
         val event = dto.event?.trim()
@@ -73,11 +64,6 @@ class PlexWebhookProvider(
     }
 
     override fun getSchemaJson(): String? = SchemaLoader.loadSchema("schemas/plex.json")
-
-    private fun handlePayloadError(e: Throwable): WebhookProcessResult.InvalidPayload {
-        logger.warn("Failed to parse Plex webhook payload: ${e.message}")
-        return WebhookProcessResult.InvalidPayload("Invalid Plex payload: ${e.message}")
-    }
 
     private suspend fun parseMultipartPayload(call: ApplicationCall): Pair<PlexWebhookDto, ByteArray?>? {
         val multipart = call.receiveMultipart()

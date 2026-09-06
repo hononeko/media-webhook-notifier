@@ -150,6 +150,20 @@ class ValkeyStateStoreTest {
             // Get checks fallback
             every { mockJedis.get(any<String>()) } throws JedisConnectionException("Socket timeout")
             assertEquals("stored-in-fallback", store.get("fallback-item"))
+
+            // Set checks fallback
+            every { mockJedis.set(any<String>(), any<String>()) } throws JedisConnectionException("Socket timeout")
+            store.set("fallback-item-2", "val-2")
+            assertEquals("val-2", fallback.get("fallback-item-2"))
+
+            // Delete falls back
+            fallback.set("fallback-item-del", "val-del")
+            every { mockJedis.del(any<String>()) } throws JedisConnectionException("Socket timeout")
+            assertTrue(store.delete("fallback-item-del"))
+
+            // Clear falls back
+            every { mockJedis.scan(any<String>(), any<ScanParams>()) } throws JedisConnectionException("Socket timeout")
+            store.clear()
         }
 
     @Test
@@ -161,4 +175,23 @@ class ValkeyStateStoreTest {
         store.close()
         verify(exactly = 1) { mockJedis.close() }
     }
+
+    @Test
+    fun `should handle error during close safely`() {
+        val mockJedis = mockk<UnifiedJedis>()
+        every { mockJedis.close() } throws JedisConnectionException("Close error")
+        val config = StateConfig(url = "redis://localhost:6379")
+        val store = ValkeyStateStore(config = config, injectedJedis = mockJedis)
+
+        store.close()
+        verify(exactly = 1) { mockJedis.close() }
+    }
+
+    @Test
+    fun `should handle invalid url gracefully during initJedis`() =
+        runTest {
+            val config = StateConfig(url = "http://invalid-host:not-a-port")
+            val store = ValkeyStateStore(config = config)
+            assertFalse(store.healthCheck())
+        }
 }
