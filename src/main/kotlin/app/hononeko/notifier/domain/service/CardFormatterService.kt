@@ -675,13 +675,87 @@ object CardFormatterService {
             is MediaPayload.SeerrEvent -> buildSeerrCard(payload, engine)
         }
 
+    private class MediaServerItemDetails(
+        val sourceName: String,
+        val actionEmoji: String,
+        val itemTitle: String,
+        val seriesTitle: String,
+        val fullTitle: String,
+        val seasonLabel: String?,
+        val seasonNumber: Int?,
+        val episodeNumber: Int?,
+        val resolvedMediaType: String,
+        val year: Int?,
+        val overview: String?,
+        val posterUrl: String?,
+        val artworkBytes: ByteArray? = null,
+        val specs: MediaSpecs,
+        val deepLinkUrl: String?,
+        val mediaServerName: String
+    )
+
     private fun renderMediaServerCard(
-        defaults: DefaultCardSpec,
-        specs: MediaSpecs,
-        artworkBytes: ByteArray?,
-        context: Map<String, Any?>,
+        details: MediaServerItemDetails,
         engine: TemplateEngine
     ): NotificationCard {
+        val formattedSeason = details.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val formattedEpisode = details.episodeNumber?.let { String.format(Locale.US, "%02d", it) }
+        val specsSummary =
+            listOfNotNull(
+                details.specs.resolution,
+                details.specs.video,
+                details.specs.audio
+            ).joinToString(" • ")
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to details.fullTitle,
+                "item_title" to details.itemTitle,
+                "series_title" to details.seriesTitle.ifBlank { details.itemTitle },
+                "season" to formattedSeason,
+                "season_number" to details.seasonNumber?.toString(),
+                "season_title" to (details.seasonLabel ?: formattedSeason?.let { "Season $it" }),
+                "episode" to formattedEpisode,
+                "episode_number" to details.episodeNumber?.toString(),
+                "episode_title" to details.itemTitle,
+                "media_type" to details.resolvedMediaType,
+                "year" to details.year?.toString(),
+                "specs" to specsSummary,
+                "overview" to truncateOverview(details.overview, engine.theme.maxOverviewLength),
+                "video_codec" to details.specs.video,
+                "audio_codec" to details.specs.audio,
+                "resolution" to details.specs.resolution,
+                "rating" to details.specs.score,
+                "score" to details.specs.score,
+                "duration" to details.specs.duration,
+                "deep_link_url" to details.deepLinkUrl,
+                "media_server_name" to details.mediaServerName,
+                "poster_url" to details.posterUrl,
+                "instance_name" to details.mediaServerName,
+                "source_name" to details.sourceName
+            )
+
+        val defaultActions =
+            if (!details.deepLinkUrl.isNullOrBlank()) {
+                listOf(
+                    ActionLink(
+                        label = "${details.actionEmoji} Watch on ${details.sourceName}",
+                        url = details.deepLinkUrl,
+                        style = ActionStyle.PRIMARY
+                    )
+                )
+            } else {
+                emptyList()
+            }
+
+        val defaults =
+            DefaultCardSpec(
+                title = "🍿 ${details.fullTitle} now available on ${details.mediaServerName}",
+                body = details.overview,
+                artworkUrl = details.posterUrl,
+                actions = defaultActions
+            )
+
         val resolved =
             engine.resolveCard(
                 eventName = "media_available",
@@ -689,7 +763,7 @@ object CardFormatterService {
                 context = context
             )
 
-        val finalArtworkBytes = if (resolved.imageEmbedEnabled) artworkBytes else null
+        val finalArtworkBytes = if (resolved.imageEmbedEnabled) details.artworkBytes else null
 
         if (resolved.customBody != null) {
             return NotificationCard(
@@ -709,7 +783,7 @@ object CardFormatterService {
             subtitle = resolved.subtitle,
             overview = truncateOverview(defaults.body, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
-            mediaSpecs = specs,
+            mediaSpecs = details.specs,
             artworkUrl = resolved.artworkUrl,
             artworkBytes = finalArtworkBytes,
             actions = resolved.actions,
@@ -858,54 +932,27 @@ object CardFormatterService {
                 duration = effectiveDuration?.let { formatDuration(it) }
             )
 
-        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
-        val formattedEpisode = payload.episodeNumber?.let { String.format(Locale.US, "%02d", it) }
-        val specsSummary = listOfNotNull(payload.resolution, payload.videoCodec, payload.audioCodec).joinToString(" • ")
-
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to fullTitle,
-                "item_title" to payload.title,
-                "series_title" to seriesTitle.ifBlank { payload.title },
-                "season" to formattedSeason,
-                "season_number" to payload.seasonNumber?.toString(),
-                "season_title" to (seasonLabel ?: formattedSeason?.let { "Season $it" }),
-                "episode" to formattedEpisode,
-                "episode_number" to payload.episodeNumber?.toString(),
-                "episode_title" to payload.title,
-                "media_type" to resolvedMediaType,
-                "year" to payload.year?.toString(),
-                "specs" to specsSummary,
-                "overview" to truncateOverview(payload.summary, engine.theme.maxOverviewLength),
-                "video_codec" to payload.videoCodec,
-                "audio_codec" to payload.audioCodec,
-                "resolution" to payload.resolution,
-                "rating" to specs.score,
-                "score" to specs.score,
-                "duration" to specs.duration,
-                "deep_link_url" to deepLinkUrl,
-                "media_server_name" to mediaServerName,
-                "poster_url" to effectivePosterUrl,
-                "instance_name" to mediaServerName,
-                "source_name" to "Plex"
+        val details =
+            MediaServerItemDetails(
+                sourceName = "Plex",
+                actionEmoji = "🎬",
+                itemTitle = payload.title,
+                seriesTitle = seriesTitle,
+                fullTitle = fullTitle,
+                seasonLabel = seasonLabel,
+                seasonNumber = payload.seasonNumber,
+                episodeNumber = payload.episodeNumber,
+                resolvedMediaType = resolvedMediaType,
+                year = payload.year,
+                overview = payload.summary,
+                posterUrl = effectivePosterUrl,
+                artworkBytes = payload.artworkBytes,
+                specs = specs,
+                deepLinkUrl = deepLinkUrl,
+                mediaServerName = mediaServerName
             )
 
-        val defaultActions =
-            if (!deepLinkUrl.isNullOrBlank()) {
-                listOf(ActionLink(label = "🎬 Watch on Plex", url = deepLinkUrl, style = ActionStyle.PRIMARY))
-            } else {
-                emptyList()
-            }
-
-        val defaults =
-            DefaultCardSpec(
-                title = "🍿 $fullTitle now available on $mediaServerName",
-                body = payload.summary,
-                artworkUrl = effectivePosterUrl,
-                actions = defaultActions
-            )
-
-        return renderMediaServerCard(defaults, specs, payload.artworkBytes, context, engine)
+        return renderMediaServerCard(details, engine)
     }
 
     private fun buildJellyfinCard(
@@ -952,54 +999,27 @@ object CardFormatterService {
                 resolution = payload.resolution
             )
 
-        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
-        val formattedEpisode = payload.episodeNumber?.let { String.format(Locale.US, "%02d", it) }
-        val specsSummary = listOfNotNull(payload.resolution, payload.videoCodec, payload.audioCodec).joinToString(" • ")
-
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to fullTitle,
-                "item_title" to payload.title,
-                "series_title" to seriesTitle.ifBlank { payload.title },
-                "season" to formattedSeason,
-                "season_number" to payload.seasonNumber?.toString(),
-                "season_title" to (seasonLabel ?: formattedSeason?.let { "Season $it" }),
-                "episode" to formattedEpisode,
-                "episode_number" to payload.episodeNumber?.toString(),
-                "episode_title" to payload.title,
-                "media_type" to resolvedMediaType,
-                "year" to payload.year?.toString(),
-                "specs" to specsSummary,
-                "overview" to truncateOverview(payload.overview, engine.theme.maxOverviewLength),
-                "video_codec" to payload.videoCodec,
-                "audio_codec" to payload.audioCodec,
-                "resolution" to payload.resolution,
-                "rating" to null,
-                "score" to null,
-                "duration" to null,
-                "deep_link_url" to deepLinkUrl,
-                "media_server_name" to mediaServerName,
-                "poster_url" to payload.posterUrl,
-                "instance_name" to mediaServerName,
-                "source_name" to "Jellyfin"
+        val details =
+            MediaServerItemDetails(
+                sourceName = "Jellyfin",
+                actionEmoji = "🍿",
+                itemTitle = payload.title,
+                seriesTitle = seriesTitle,
+                fullTitle = fullTitle,
+                seasonLabel = seasonLabel,
+                seasonNumber = payload.seasonNumber,
+                episodeNumber = payload.episodeNumber,
+                resolvedMediaType = resolvedMediaType,
+                year = payload.year,
+                overview = payload.overview,
+                posterUrl = payload.posterUrl,
+                artworkBytes = null,
+                specs = specs,
+                deepLinkUrl = deepLinkUrl,
+                mediaServerName = mediaServerName
             )
 
-        val defaultActions =
-            if (!deepLinkUrl.isNullOrBlank()) {
-                listOf(ActionLink(label = "🍿 Watch on Jellyfin", url = deepLinkUrl, style = ActionStyle.PRIMARY))
-            } else {
-                emptyList()
-            }
-
-        val defaults =
-            DefaultCardSpec(
-                title = "🍿 $fullTitle now available on $mediaServerName",
-                body = payload.overview,
-                artworkUrl = payload.posterUrl,
-                actions = defaultActions
-            )
-
-        return renderMediaServerCard(defaults, specs, null, context, engine)
+        return renderMediaServerCard(details, engine)
     }
 
     fun buildHealthCard(
