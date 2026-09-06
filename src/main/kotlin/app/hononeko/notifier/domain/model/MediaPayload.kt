@@ -73,6 +73,7 @@ sealed interface MediaPayload {
         val deepLinkUrl: String? = null,
         override val instanceName: String? = null
     ) : MediaPayload {
+        @Suppress("CyclomaticComplexMethod")
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (other !is PlexLibraryNew) return false
@@ -110,6 +111,7 @@ sealed interface MediaPayload {
             return true
         }
 
+        @Suppress("CyclomaticComplexMethod")
         override fun hashCode(): Int {
             var result = source.hashCode()
             result = 31 * result + eventType.hashCode()

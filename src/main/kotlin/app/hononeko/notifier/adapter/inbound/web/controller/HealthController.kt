@@ -150,15 +150,7 @@ class HealthController(
 
     suspend fun handleMetrics(call: ApplicationCall) {
         logger.debug("Handling metrics collection")
-        val accept = call.request.header("Accept") ?: ""
-        val format = call.request.queryParameters["format"] ?: ""
-
-        val isExplicitText =
-            format.equals("prometheus", ignoreCase = true) ||
-                format.equals("text", ignoreCase = true)
-        val isPlainTextAccept = accept.contains("text/plain") && !accept.contains("application/json")
-
-        if (isExplicitText || isPlainTextAccept) {
+        if (wantsPrometheusFormat(call)) {
             call.respondText(
                 buildPrometheusMetrics(),
                 ContentType.parse("text/plain; version=0.0.4")
@@ -166,6 +158,20 @@ class HealthController(
             return
         }
 
+        call.respond<MetricsDto>(HttpStatusCode.OK, buildJsonMetrics())
+    }
+
+    private fun wantsPrometheusFormat(call: ApplicationCall): Boolean {
+        val accept = call.request.header("Accept") ?: ""
+        val format = call.request.queryParameters["format"] ?: ""
+        val isExplicitText =
+            format.equals("prometheus", ignoreCase = true) ||
+                format.equals("text", ignoreCase = true)
+        val isPlainTextAccept = accept.contains("text/plain") && !accept.contains("application/json")
+        return isExplicitText || isPlainTextAccept
+    }
+
+    private suspend fun buildJsonMetrics(): MetricsDto {
         val runtime = Runtime.getRuntime()
         val totalMemory = runtime.totalMemory()
         val freeMemory = runtime.freeMemory()
@@ -175,37 +181,34 @@ class HealthController(
         val uptime = System.currentTimeMillis() - startTimeMillis
         val activeTrackers = downloadTracker?.activeTrackerCount() ?: 0
 
-        val metrics =
-            MetricsDto(
-                service = SERVICE_NAME,
-                status = "UP",
-                uptimeMillis = uptime,
-                activeTrackersCount = activeTrackers,
-                eventRail =
-                    EventRailMetricsDto(
-                        closed = eventRail?.isClosed ?: false,
-                        running = eventRail?.isRunning ?: false,
-                        activeWorkers = eventRail?.activeWorkersCount ?: 0,
-                        deadLetterCount = eventRail?.deadLetterBuffer?.size() ?: 0
-                    ),
-                reconciliation =
-                    ReconciliationMetricsDto(
-                        enabled = reconciliationService?.enabled ?: false,
-                        runCount = reconciliationService?.runCount ?: 0L,
-                        resumedCount = reconciliationService?.resumedCount ?: 0L
-                    ),
-                memory =
-                    MemoryMetricsDto(
-                        usedBytes = usedMemory,
-                        freeBytes = freeMemory,
-                        totalBytes = totalMemory,
-                        maxBytes = maxMemory
-                    ),
-                stateStoreHealthy = stateStore?.healthCheck(),
-                timestamp = System.currentTimeMillis()
-            )
-
-        call.respond<MetricsDto>(HttpStatusCode.OK, metrics)
+        return MetricsDto(
+            service = SERVICE_NAME,
+            status = "UP",
+            uptimeMillis = uptime,
+            activeTrackersCount = activeTrackers,
+            eventRail =
+                EventRailMetricsDto(
+                    closed = eventRail?.isClosed ?: false,
+                    running = eventRail?.isRunning ?: false,
+                    activeWorkers = eventRail?.activeWorkersCount ?: 0,
+                    deadLetterCount = eventRail?.deadLetterBuffer?.size() ?: 0
+                ),
+            reconciliation =
+                ReconciliationMetricsDto(
+                    enabled = reconciliationService?.enabled ?: false,
+                    runCount = reconciliationService?.runCount ?: 0L,
+                    resumedCount = reconciliationService?.resumedCount ?: 0L
+                ),
+            memory =
+                MemoryMetricsDto(
+                    usedBytes = usedMemory,
+                    freeBytes = freeMemory,
+                    totalBytes = totalMemory,
+                    maxBytes = maxMemory
+                ),
+            stateStoreHealthy = stateStore?.healthCheck(),
+            timestamp = System.currentTimeMillis()
+        )
     }
 
     suspend fun handlePrometheusMetrics(call: ApplicationCall) {
