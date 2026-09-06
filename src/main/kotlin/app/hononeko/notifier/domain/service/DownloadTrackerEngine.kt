@@ -158,58 +158,40 @@ class DownloadTrackerEngine(
         }
     }
 
+    private class TrackingLoopState(
+        var missingCount: Int = 0,
+        var stalledDurationSeconds: Long = 0L,
+        var lastDownloadedBytes: Long = 0L,
+        var lastKnownProgress: TorrentProgress? = null
+    )
+
     private suspend fun runTrackingLoop(
         hash: String,
         payload: MediaPayload.ArrGrab,
         handle: NotificationHandle
     ) {
         logger.info("Starting live tracking loop for {} ({})", payload.title, hash)
-        var missingCount = 0
-        var stalledDurationSeconds = 0L
+        val state = TrackingLoopState()
         var elapsedSeconds = 0L
-        var lastDownloadedBytes = 0L
-        var lastKnownProgress: TorrentProgress? = null
-
         val maxPollingSeconds = maxPollingMinutes * 60
+        var isRunning = true
 
         try {
-            while (elapsedSeconds < maxPollingSeconds) {
+            while (elapsedSeconds < maxPollingSeconds && isRunning) {
                 delay(pollIntervalSeconds * 1000)
                 elapsedSeconds += pollIntervalSeconds
 
-                val progress = fetchTorrentProgress(hash)
-                if (progress == null) {
-                    missingCount++
-                    if (handleMissingTorrent(hash, payload, handle, lastKnownProgress, missingCount)) {
-                        break
-                    }
-                } else {
-                    missingCount = 0
-                    lastKnownProgress = progress
-
-                    val step =
-                        processActiveProgress(
-                            hash = hash,
-                            payload = payload,
-                            handle = handle,
-                            progress = progress,
-                            lastDownloadedBytes = lastDownloadedBytes,
-                            stalledDurationSeconds = stalledDurationSeconds
-                        )
-
-                    stalledDurationSeconds = step.newStalledDurationSeconds
-                    lastDownloadedBytes = step.newDownloadedBytes
-                    activeTrackerStore.updateProgress(hash, progress, stalledDurationSeconds)
-
-                    if (step.isTerminal) {
-                        break
-                    }
-                }
+                isRunning = processTrackingTick(hash, payload, handle, state)
             }
 
             if (elapsedSeconds >= maxPollingSeconds) {
                 logger.warn("Tracking for {} reached max limit of {}m. Halting.", hash, maxPollingMinutes)
-                val stalledCard = CardFormatterService.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
+                val stalledCard =
+                    CardFormatterService.buildStalledCard(
+                        payload,
+                        state.lastKnownProgress,
+                        webuiPublicUrl
+                    )
                 notificationPublisher.cancelProgress(handle, stalledCard)
                 cleanupTags(hash, handle)
                 activeTrackerStore.cancel(hash)
@@ -228,6 +210,39 @@ class DownloadTrackerEngine(
                 trackingLocks.remove(hash)
             }
         }
+    }
+
+    private suspend fun processTrackingTick(
+        hash: String,
+        payload: MediaPayload.ArrGrab,
+        handle: NotificationHandle,
+        state: TrackingLoopState
+    ): Boolean {
+        val progress = fetchTorrentProgress(hash)
+        if (progress == null) {
+            state.missingCount++
+            val shouldHalt = handleMissingTorrent(hash, payload, handle, state.lastKnownProgress, state.missingCount)
+            return !shouldHalt
+        }
+
+        state.missingCount = 0
+        state.lastKnownProgress = progress
+
+        val step =
+            processActiveProgress(
+                hash = hash,
+                payload = payload,
+                handle = handle,
+                progress = progress,
+                lastDownloadedBytes = state.lastDownloadedBytes,
+                stalledDurationSeconds = state.stalledDurationSeconds
+            )
+
+        state.stalledDurationSeconds = step.newStalledDurationSeconds
+        state.lastDownloadedBytes = step.newDownloadedBytes
+        activeTrackerStore.updateProgress(hash, progress, state.stalledDurationSeconds)
+
+        return !step.isTerminal
     }
 
     private suspend fun fetchTorrentProgress(hash: String): TorrentProgress? =

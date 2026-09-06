@@ -72,20 +72,27 @@ object YamlParser {
     private fun parseEventsMap(eventsMap: Map<String, Any?>): Map<String, EventTemplate> {
         val events = mutableMapOf<String, EventTemplate>()
         for ((key, obj) in eventsMap) {
-            if (obj !is Map<*, *>) continue
-            val map = obj as Map<String, Any?>
+            val map = obj as? Map<String, Any?> ?: continue
             if (isEventTemplateMap(map)) {
                 events[key] = parseEventTemplate(map)
             } else {
-                for ((subKey, subObj) in map) {
-                    if (subObj !is Map<*, *>) continue
-                    val subMap = subObj as Map<String, Any?>
-                    val template = parseEventTemplate(subMap)
-                    registerEventAliases(events, key, subKey, template)
-                }
+                parseNestedEvents(events, key, map)
             }
         }
         return events
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseNestedEvents(
+        events: MutableMap<String, EventTemplate>,
+        category: String,
+        nestedMap: Map<String, Any?>
+    ) {
+        for ((subKey, subObj) in nestedMap) {
+            val subMap = subObj as? Map<String, Any?> ?: continue
+            val template = parseEventTemplate(subMap)
+            registerEventAliases(events, category, subKey, template)
+        }
     }
 
     private fun registerEventAliases(
@@ -182,25 +189,23 @@ object YamlParser {
 
                 if (trimmed.isBlank()) {
                     index++
-                    continue
+                } else {
+                    val currentIndent = countIndent(rawLine)
+                    if (currentIndent <= parentIndent && parentIndent != -1) {
+                        break
+                    }
+
+                    val colonIdx = findKeySeparator(trimmed)
+                    if (colonIdx == -1) {
+                        index++
+                    } else {
+                        val key = trimmed.substring(0, colonIdx).trim().trim('"', '\'')
+                        val valuePart = trimmed.substring(colonIdx + 1).trim()
+                        index++
+
+                        result[key] = parseMapValue(currentIndent, valuePart)
+                    }
                 }
-
-                val currentIndent = countIndent(rawLine)
-                if (currentIndent <= parentIndent && parentIndent != -1) {
-                    break
-                }
-
-                val colonIdx = findKeySeparator(trimmed)
-                if (colonIdx == -1) {
-                    index++
-                    continue
-                }
-
-                val key = trimmed.substring(0, colonIdx).trim().trim('"', '\'')
-                val valuePart = trimmed.substring(colonIdx + 1).trim()
-                index++
-
-                result[key] = parseMapValue(currentIndent, valuePart)
             }
 
             return result
@@ -239,20 +244,16 @@ object YamlParser {
 
                 if (trimmed.isBlank()) {
                     index++
-                    continue
-                }
+                } else {
+                    val currentIndent = countIndent(rawLine)
+                    val isExiting = (currentIndent <= parentIndent && parentIndent != -1) || !trimmed.startsWith("-")
+                    if (isExiting) {
+                        break
+                    }
 
-                val currentIndent = countIndent(rawLine)
-                if (currentIndent <= parentIndent && parentIndent != -1) {
-                    break
+                    val itemContent = trimmed.substring(1).trim()
+                    result.add(parseListItem(itemContent, currentIndent))
                 }
-
-                if (!trimmed.startsWith("-")) {
-                    break
-                }
-
-                val itemContent = trimmed.substring(1).trim()
-                result.add(parseListItem(itemContent, currentIndent))
             }
 
             return result
@@ -307,23 +308,34 @@ object YamlParser {
                 val sibTrim = stripComment(sibRaw).trim()
                 if (sibTrim.isBlank()) {
                     index++
-                    continue
-                }
-                val sibIndent = countIndent(sibRaw)
-                if (sibIndent <= currentIndent || sibTrim.startsWith("-")) {
-                    break
-                }
-                val sibColon = findKeySeparator(sibTrim)
-                if (sibColon != -1) {
-                    val sKey = sibTrim.substring(0, sibColon).trim().trim('"', '\'')
-                    val sVal = sibTrim.substring(sibColon + 1).trim()
-                    index++
-                    itemMap[sKey] = parseScalar(sVal)
                 } else {
-                    index++
+                    val sibIndent = countIndent(sibRaw)
+                    if (sibIndent <= currentIndent || sibTrim.startsWith("-")) {
+                        break
+                    }
+                    val sibColon = findKeySeparator(sibTrim)
+                    if (sibColon != -1) {
+                        val sKey = sibTrim.substring(0, sibColon).trim().trim('"', '\'')
+                        val sVal = sibTrim.substring(sibColon + 1).trim()
+                        index++
+                        itemMap[sKey] = parseScalar(sVal)
+                    } else {
+                        index++
+                    }
                 }
             }
         }
+
+        private fun shouldHaltBlockScalar(
+            currentIndent: Int,
+            parentIndent: Int,
+            blockIndent: Int?
+        ): Boolean =
+            if (blockIndent == null) {
+                currentIndent <= parentIndent
+            } else {
+                currentIndent < blockIndent
+            }
 
         private fun parseBlockScalar(
             parentIndent: Int,
@@ -337,22 +349,24 @@ object YamlParser {
                 if (rawLine.isBlank()) {
                     sb.append("\n")
                     index++
-                    continue
-                }
-
-                val currentIndent = countIndent(rawLine)
-                if (blockIndent == null) {
-                    if (currentIndent <= parentIndent) {
+                } else {
+                    val currentIndent = countIndent(rawLine)
+                    if (shouldHaltBlockScalar(currentIndent, parentIndent, blockIndent)) {
                         break
                     }
-                    blockIndent = currentIndent
-                } else if (currentIndent < blockIndent) {
-                    break
-                }
+                    if (blockIndent == null) {
+                        blockIndent = currentIndent
+                    }
 
-                val content = if (rawLine.length >= blockIndent) rawLine.substring(blockIndent) else rawLine.trimStart()
-                sb.append(content).append("\n")
-                index++
+                    val content =
+                        if (rawLine.length >= blockIndent) {
+                            rawLine.substring(blockIndent)
+                        } else {
+                            rawLine.trimStart()
+                        }
+                    sb.append(content).append("\n")
+                    index++
+                }
             }
 
             val rawResult = sb.toString()
