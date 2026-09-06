@@ -25,26 +25,31 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
+data class DownloadTrackerConfig(
+    val pollIntervalSeconds: Long = 5,
+    val maxPollingMinutes: Long = 30,
+    val stalledTimeoutMinutes: Long = 15,
+    val missingGraceAttempts: Int = 6,
+    val webuiPublicUrl: String? = null,
+    val tagPrefix: String = "mwn_"
+)
+
 class DownloadTrackerEngine(
     private val torrentClient: TorrentClientPort,
     private val notificationPublisher: NotificationPublisherPort,
     private val activeTrackerStore: ActiveTrackerStore,
-    private val pollIntervalSeconds: Long = 5,
-    private val maxPollingMinutes: Long = 30,
-    private val stalledTimeoutMinutes: Long = 15,
-    private val missingGraceAttempts: Int = 6,
-    private val webuiPublicUrl: String? = null,
-    private val tagPrefix: String = "mwn_",
+    private val config: DownloadTrackerConfig = DownloadTrackerConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 ) : TrackDownloadUseCase {
+    private val pollIntervalSeconds: Long get() = config.pollIntervalSeconds
+    private val maxPollingMinutes: Long get() = config.maxPollingMinutes
+    private val stalledTimeoutMinutes: Long get() = config.stalledTimeoutMinutes
+    private val missingGraceAttempts: Int get() = config.missingGraceAttempts
+    private val webuiPublicUrl: String? get() = config.webuiPublicUrl
+    private val tagPrefix: String get() = config.tagPrefix
+
     private val logger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
     private val trackingLocks = ConcurrentHashMap<String, Mutex>()
-
-    private data class TrackerStep(
-        val isTerminal: Boolean,
-        val newStalledDurationSeconds: Long,
-        val newDownloadedBytes: Long
-    )
 
     override suspend fun track(
         hash: String,
@@ -228,21 +233,16 @@ class DownloadTrackerEngine(
         state.missingCount = 0
         state.lastKnownProgress = progress
 
-        val step =
+        val isTerminal =
             processActiveProgress(
                 hash = hash,
                 payload = payload,
                 handle = handle,
                 progress = progress,
-                lastDownloadedBytes = state.lastDownloadedBytes,
-                stalledDurationSeconds = state.stalledDurationSeconds
+                state = state
             )
 
-        state.stalledDurationSeconds = step.newStalledDurationSeconds
-        state.lastDownloadedBytes = step.newDownloadedBytes
-        activeTrackerStore.updateProgress(hash, progress, state.stalledDurationSeconds)
-
-        return !step.isTerminal
+        return !isTerminal
     }
 
     private suspend fun fetchTorrentProgress(hash: String): TorrentProgress? =
@@ -278,28 +278,27 @@ class DownloadTrackerEngine(
         payload: MediaPayload.ArrGrab,
         handle: NotificationHandle,
         progress: TorrentProgress,
-        lastDownloadedBytes: Long,
-        stalledDurationSeconds: Long
-    ): TrackerStep {
+        state: TrackingLoopState
+    ): Boolean {
         if (progress.progressPercent >= 100 || progress.state.isComplete) {
             logger.info("Torrent {} reached 100%. Dispatching completion card.", hash)
             val completionCard = CardFormatterService.buildCompletionCard(payload, progress, webuiPublicUrl)
             notificationPublisher.completeProgress(handle, completionCard)
             cleanupTags(hash, handle)
             activeTrackerStore.complete(hash)
-            return TrackerStep(
-                isTerminal = true,
-                newStalledDurationSeconds = 0L,
-                newDownloadedBytes = progress.downloadedBytes
-            )
+            state.stalledDurationSeconds = 0L
+            state.lastDownloadedBytes = progress.downloadedBytes
+            return true
         }
 
         val maxStalledSeconds = stalledTimeoutMinutes * 60
         val isStalled =
             progress.state.isStalled ||
-                (progress.downloadSpeedBytesPerSec == 0L && progress.downloadedBytes == lastDownloadedBytes)
+                (progress.downloadSpeedBytesPerSec == 0L && progress.downloadedBytes == state.lastDownloadedBytes)
 
-        val updatedStalledSeconds = if (isStalled) stalledDurationSeconds + pollIntervalSeconds else 0L
+        val updatedStalledSeconds = if (isStalled) state.stalledDurationSeconds + pollIntervalSeconds else 0L
+        state.stalledDurationSeconds = updatedStalledSeconds
+        state.lastDownloadedBytes = progress.downloadedBytes
 
         if (updatedStalledSeconds >= maxStalledSeconds) {
             logger.warn("Torrent {} stalled for {}s. Halting.", hash, updatedStalledSeconds)
@@ -307,19 +306,12 @@ class DownloadTrackerEngine(
             notificationPublisher.cancelProgress(handle, stalledCard)
             cleanupTags(hash, handle)
             activeTrackerStore.cancel(hash)
-            return TrackerStep(
-                isTerminal = true,
-                newStalledDurationSeconds = updatedStalledSeconds,
-                newDownloadedBytes = progress.downloadedBytes
-            )
+            return true
         }
 
         dispatchProgressUpdate(hash, payload, handle, progress)
-        return TrackerStep(
-            isTerminal = false,
-            newStalledDurationSeconds = updatedStalledSeconds,
-            newDownloadedBytes = progress.downloadedBytes
-        )
+        activeTrackerStore.updateProgress(hash, progress, state.stalledDurationSeconds)
+        return false
     }
 
     private suspend fun dispatchProgressUpdate(

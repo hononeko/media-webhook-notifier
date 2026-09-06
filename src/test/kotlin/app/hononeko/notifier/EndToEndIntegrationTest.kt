@@ -17,6 +17,8 @@ import app.hononeko.notifier.domain.model.TorrentProgress
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
+import app.hononeko.notifier.domain.service.AlertUseCases
+import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
@@ -118,9 +120,12 @@ class EndToEndIntegrationTest {
                     torrentClient = mockTorrentClient,
                     notificationPublisher = mockPublisher,
                     activeTrackerStore = InMemoryActiveTrackerStore(),
-                    pollIntervalSeconds = 1L,
-                    maxPollingMinutes = 1L,
-                    stalledTimeoutMinutes = 1L,
+                    config =
+                        DownloadTrackerConfig(
+                            pollIntervalSeconds = 1L,
+                            maxPollingMinutes = 1L,
+                            stalledTimeoutMinutes = 1L
+                        ),
                     scope = testScope
                 )
 
@@ -149,13 +154,16 @@ class EndToEndIntegrationTest {
 
             val ingestWebhookService =
                 IngestWebhookService(
-                    seasonDebouncer = seasonDebouncer,
                     trackDownloadUseCase = downloadTracker,
                     announceMediaImportedUseCase = mediaImportedService,
                     announceMediaAvailableUseCase = mediaAvailableService,
-                    announceSystemHealthUseCase = systemHealthService,
-                    announceManualInteractionUseCase = manualInteractionService,
-                    announceMediaRequestUseCase = mediaRequestService
+                    seasonDebouncer = seasonDebouncer,
+                    alertUseCases =
+                        AlertUseCases(
+                            systemHealth = systemHealthService,
+                            manualInteraction = manualInteractionService,
+                            mediaRequest = mediaRequestService
+                        )
                 )
 
             val eventRail = EventRail(capacity = 100)

@@ -13,14 +13,18 @@ import arrow.core.Either
 import arrow.core.raise.either
 import org.slf4j.LoggerFactory
 
+data class AlertUseCases(
+    val systemHealth: AnnounceSystemHealthUseCase? = null,
+    val manualInteraction: AnnounceManualInteractionUseCase? = null,
+    val mediaRequest: AnnounceMediaRequestUseCase? = null
+)
+
 class IngestWebhookService(
-    private val seasonDebouncer: SeasonDebouncer? = null,
     private val trackDownloadUseCase: TrackDownloadUseCase,
     private val announceMediaImportedUseCase: AnnounceMediaImportedUseCase,
     private val announceMediaAvailableUseCase: AnnounceMediaAvailableUseCase,
-    private val announceSystemHealthUseCase: AnnounceSystemHealthUseCase? = null,
-    private val announceManualInteractionUseCase: AnnounceManualInteractionUseCase? = null,
-    private val announceMediaRequestUseCase: AnnounceMediaRequestUseCase? = null
+    private val seasonDebouncer: SeasonDebouncer? = null,
+    private val alertUseCases: AlertUseCases = AlertUseCases()
 ) : IngestWebhookUseCase {
     private val logger = LoggerFactory.getLogger(IngestWebhookService::class.java)
 
@@ -59,13 +63,13 @@ class IngestWebhookService(
                     }
                 }
                 is MediaPayload.ServarrHealth -> {
-                    announceSystemHealthUseCase?.announce(payload)?.bind()
+                    alertUseCases.systemHealth?.announce(payload)?.bind()
                 }
                 is MediaPayload.ServarrManualInteraction -> {
-                    announceManualInteractionUseCase?.announce(payload)?.bind()
+                    alertUseCases.manualInteraction?.announce(payload)?.bind()
                 }
                 is MediaPayload.SeerrEvent -> {
-                    announceMediaRequestUseCase?.announce(payload)?.bind()
+                    alertUseCases.mediaRequest?.announce(payload)?.bind()
                 }
             }
         }

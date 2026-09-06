@@ -136,14 +136,17 @@ class IngestWebhookServiceTest {
                     trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
                     announceMediaImportedUseCase = { Either.Right(Unit) },
                     announceMediaAvailableUseCase = { Either.Right(Unit) },
-                    announceSystemHealthUseCase = { payload ->
-                        healthPayloads.add(payload)
-                        Either.Right(Unit)
-                    },
-                    announceManualInteractionUseCase = { payload ->
-                        manualPayloads.add(payload)
-                        Either.Right(Unit)
-                    }
+                    alertUseCases =
+                        AlertUseCases(
+                            systemHealth = { payload ->
+                                healthPayloads.add(payload)
+                                Either.Right(Unit)
+                            },
+                            manualInteraction = { payload ->
+                                manualPayloads.add(payload)
+                                Either.Right(Unit)
+                            }
+                        )
                 )
 
             val health =
@@ -180,10 +183,13 @@ class IngestWebhookServiceTest {
                     trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
                     announceMediaImportedUseCase = { Either.Right(Unit) },
                     announceMediaAvailableUseCase = { Either.Right(Unit) },
-                    announceMediaRequestUseCase = { payload ->
-                        seerrPayloads.add(payload)
-                        Either.Right(Unit)
-                    }
+                    alertUseCases =
+                        AlertUseCases(
+                            mediaRequest = { payload ->
+                                seerrPayloads.add(payload)
+                                Either.Right(Unit)
+                            }
+                        )
                 )
 
             val seerrEvent =

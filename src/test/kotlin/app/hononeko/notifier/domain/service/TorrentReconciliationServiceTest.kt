@@ -368,7 +368,7 @@ class TorrentReconciliationServiceTest {
                     trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher,
-                    enabled = false
+                    config = ReconciliationConfig(enabled = false)
                 )
             assertEquals(0, disabledService.reconcile())
             assertNull(disabledService.start(this))
@@ -476,7 +476,7 @@ class TorrentReconciliationServiceTest {
                     trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher,
-                    intervalMinutes = 1
+                    config = ReconciliationConfig(intervalMinutes = 1)
                 )
 
             val job = reconciliationService.start(testScope)

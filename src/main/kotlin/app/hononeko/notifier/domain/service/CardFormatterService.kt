@@ -178,10 +178,13 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = "grab",
-                defaultTitle = "⏳ Downloading: $titleText",
-                defaultSubtitle = payload.instanceName ?: payload.source.displayName,
-                defaultArtworkUrl = payload.posterUrl,
-                defaultActions = emptyList(),
+                defaults =
+                    DefaultCardSpec(
+                        title = "⏳ Downloading: $titleText",
+                        subtitle = payload.instanceName ?: payload.source.displayName,
+                        artworkUrl = payload.posterUrl,
+                        actions = emptyList()
+                    ),
                 context = context
             )
 
@@ -413,10 +416,13 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = "download_complete",
-                defaultTitle = "✅ Download Complete: $titleText",
-                defaultSubtitle = payload.instanceName ?: payload.source.displayName,
-                defaultArtworkUrl = payload.posterUrl,
-                defaultActions = emptyList(),
+                defaults =
+                    DefaultCardSpec(
+                        title = "✅ Download Complete: $titleText",
+                        subtitle = payload.instanceName ?: payload.source.displayName,
+                        artworkUrl = payload.posterUrl,
+                        actions = emptyList()
+                    ),
                 context = context
             )
 
@@ -489,10 +495,13 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = "download_stalled",
-                defaultTitle = "⚠️ Download Stalled: $titleText",
-                defaultSubtitle = payload.instanceName ?: payload.source.displayName,
-                defaultArtworkUrl = payload.posterUrl,
-                defaultActions = emptyList(),
+                defaults =
+                    DefaultCardSpec(
+                        title = "⚠️ Download Stalled: $titleText",
+                        subtitle = payload.instanceName ?: payload.source.displayName,
+                        artworkUrl = payload.posterUrl,
+                        actions = emptyList()
+                    ),
                 context = context
             )
 
@@ -617,10 +626,13 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = "import",
-                defaultTitle = defaultTitle,
-                defaultSubtitle = defaultSubtitle,
-                defaultArtworkUrl = payload.posterUrl,
-                defaultActions = emptyList(),
+                defaults =
+                    DefaultCardSpec(
+                        title = defaultTitle,
+                        subtitle = defaultSubtitle,
+                        artworkUrl = payload.posterUrl,
+                        actions = emptyList()
+                    ),
                 context = context
             )
 
@@ -663,93 +675,17 @@ object CardFormatterService {
             is MediaPayload.SeerrEvent -> buildSeerrCard(payload, engine)
         }
 
-    private fun buildMediaServerCard(
-        sourceName: String,
-        actionEmoji: String,
-        fullTitle: String,
-        itemTitle: String,
-        seriesTitle: String,
-        seasonNumber: Int?,
-        seasonLabel: String?,
-        episodeNumber: Int?,
-        mediaType: String,
-        year: Int?,
-        overview: String?,
-        posterUrl: String?,
-        artworkBytes: ByteArray? = null,
-        videoCodec: String?,
-        audioCodec: String?,
-        resolution: String?,
-        rating: Double?,
-        durationSeconds: Long?,
-        deepLinkUrl: String?,
-        instanceName: String?,
+    private fun renderMediaServerCard(
+        defaults: DefaultCardSpec,
+        specs: MediaSpecs,
+        artworkBytes: ByteArray?,
+        context: Map<String, Any?>,
         engine: TemplateEngine
     ): NotificationCard {
-        val mediaServerName =
-            instanceName?.takeUnless { it.equals(sourceName, ignoreCase = true) }
-                ?: sourceName
-
-        val defaultSubtitle: String? = null
-
-        val specsSummary =
-            listOfNotNull(
-                resolution,
-                videoCodec,
-                audioCodec
-            ).joinToString(" • ")
-
-        val formattedSeason = seasonNumber?.let { String.format(Locale.US, "%02d", it) }
-        val formattedEpisode = episodeNumber?.let { String.format(Locale.US, "%02d", it) }
-
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to fullTitle,
-                "item_title" to itemTitle,
-                "series_title" to seriesTitle.ifBlank { itemTitle },
-                "season" to formattedSeason,
-                "season_number" to seasonNumber?.toString(),
-                "season_title" to (seasonLabel ?: formattedSeason?.let { "Season $it" }),
-                "episode" to formattedEpisode,
-                "episode_number" to episodeNumber?.toString(),
-                "episode_title" to itemTitle,
-                "media_type" to mediaType,
-                "year" to year?.toString(),
-                "specs" to specsSummary,
-                "overview" to truncateOverview(overview, engine.theme.maxOverviewLength),
-                "video_codec" to videoCodec,
-                "audio_codec" to audioCodec,
-                "resolution" to resolution,
-                "rating" to rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
-                "score" to rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
-                "duration" to durationSeconds?.let { formatDuration(it) },
-                "deep_link_url" to deepLinkUrl,
-                "media_server_name" to mediaServerName,
-                "poster_url" to posterUrl,
-                "instance_name" to mediaServerName,
-                "source_name" to sourceName
-            )
-
-        val defaultActions =
-            if (!deepLinkUrl.isNullOrBlank()) {
-                listOf(
-                    ActionLink(
-                        label = "$actionEmoji Watch on $sourceName",
-                        url = deepLinkUrl,
-                        style = ActionStyle.PRIMARY
-                    )
-                )
-            } else {
-                emptyList()
-            }
-
         val resolved =
             engine.resolveCard(
                 eventName = "media_available",
-                defaultTitle = "🍿 $fullTitle now available on $mediaServerName",
-                defaultSubtitle = defaultSubtitle,
-                defaultArtworkUrl = posterUrl,
-                defaultActions = defaultActions,
+                defaults = defaults,
                 context = context
             )
 
@@ -768,19 +704,10 @@ object CardFormatterService {
             )
         }
 
-        val specs =
-            MediaSpecs(
-                video = videoCodec,
-                audio = audioCodec,
-                resolution = resolution,
-                score = rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
-                duration = durationSeconds?.let { formatDuration(it) }
-            )
-
         return NotificationCard(
             title = resolved.title,
             subtitle = resolved.subtitle,
-            overview = truncateOverview(overview, engine.theme.maxOverviewLength),
+            overview = truncateOverview(defaults.body, engine.theme.maxOverviewLength),
             level = NotificationLevel.SUCCESS,
             mediaSpecs = specs,
             artworkUrl = resolved.artworkUrl,
@@ -806,43 +733,49 @@ object CardFormatterService {
         episodeNumber: Int
     ): String = "S%02dE%02d".format(Locale.US, seasonNumber, episodeNumber)
 
-    private fun formatMediaServerFullTitle(
-        isSeason: Boolean,
-        isEpisode: Boolean,
+    private fun formatSeasonTitle(
+        seriesTitle: String,
+        itemTitle: String,
+        seasonLabel: String?
+    ): String =
+        when {
+            seriesTitle.isNotBlank() && seasonLabel != null -> "$seriesTitle - $seasonLabel"
+            seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
+            else -> itemTitle
+        }
+
+    private fun formatEpisodeTitle(
         seriesTitle: String,
         itemTitle: String,
         seasonNumber: Int?,
         episodeNumber: Int?,
-        seasonLabel: String?,
-        year: Int?,
-        episodeNumbers: List<Int> = if (episodeNumber != null) listOf(episodeNumber) else emptyList()
+        episodeNumbers: List<Int>
+    ): String {
+        if (seriesTitle.isBlank()) return itemTitle
+        if (seasonNumber != null && episodeNumbers.size > 1) {
+            val epRange = formatEpisodeRange(seasonNumber, episodeNumbers)
+            return epRange?.let { "$seriesTitle - $it" } ?: "$seriesTitle - $itemTitle"
+        }
+        if (seasonNumber != null && episodeNumber != null) {
+            val epCode = formatEpisodeCode(seasonNumber, episodeNumber)
+            return if (itemTitle.isNotBlank() &&
+                !itemTitle.equals(epCode, ignoreCase = true) &&
+                !itemTitle.startsWith("Episode ", ignoreCase = true)
+            ) {
+                "$seriesTitle - $epCode - $itemTitle"
+            } else {
+                "$seriesTitle - $epCode"
+            }
+        }
+        return "$seriesTitle - $itemTitle"
+    }
+
+    private fun formatStandaloneTitle(
+        seriesTitle: String,
+        itemTitle: String,
+        year: Int?
     ): String =
         when {
-            isSeason && seriesTitle.isNotBlank() && seasonLabel != null -> "$seriesTitle - $seasonLabel"
-            isSeason && seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
-            isEpisode && seriesTitle.isNotBlank() && seasonNumber != null && episodeNumbers.size > 1 -> {
-                val epRange = formatEpisodeRange(seasonNumber, episodeNumbers)
-                if (epRange != null) {
-                    "$seriesTitle - $epRange"
-                } else {
-                    "$seriesTitle - $itemTitle"
-                }
-            }
-            isEpisode &&
-                seriesTitle.isNotBlank() &&
-                seasonNumber != null &&
-                episodeNumber != null -> {
-                val epCode = formatEpisodeCode(seasonNumber, episodeNumber)
-                if (itemTitle.isNotBlank() &&
-                    !itemTitle.equals(epCode, ignoreCase = true) &&
-                    !itemTitle.startsWith("Episode ", ignoreCase = true)
-                ) {
-                    "$seriesTitle - $epCode - $itemTitle"
-                } else {
-                    "$seriesTitle - $epCode"
-                }
-            }
-            isEpisode && seriesTitle.isNotBlank() -> "$seriesTitle - $itemTitle"
             seriesTitle.isNotBlank() && seriesTitle != itemTitle -> "$seriesTitle - $itemTitle"
             year != null -> "$itemTitle ($year)"
             else -> itemTitle
@@ -892,17 +825,18 @@ object CardFormatterService {
 
         val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)
         val fullTitle =
-            formatMediaServerFullTitle(
-                isSeason = isSeason,
-                isEpisode = isEpisode,
-                seriesTitle = seriesTitle,
-                itemTitle = payload.title,
-                seasonNumber = payload.seasonNumber,
-                episodeNumber = payload.episodeNumber,
-                seasonLabel = seasonLabel,
-                year = payload.year,
-                episodeNumbers = payload.episodeNumbers
-            )
+            when {
+                isSeason -> formatSeasonTitle(seriesTitle, payload.title, seasonLabel)
+                isEpisode ->
+                    formatEpisodeTitle(
+                        seriesTitle,
+                        payload.title,
+                        payload.seasonNumber,
+                        payload.episodeNumber,
+                        payload.episodeNumbers
+                    )
+                else -> formatStandaloneTitle(seriesTitle, payload.title, payload.year)
+            }
 
         val effectivePosterUrl = payload.posterUrl ?: payload.parentPosterUrl ?: payload.grandparentPosterUrl
         val effectiveDuration =
@@ -912,30 +846,66 @@ object CardFormatterService {
                 payload.durationSeconds
             }
         val resolvedMediaType = resolveMediaType(isSeason, isEpisode, mediaType, seriesTitle, payload.year)
+        val deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
+        val mediaServerName = payload.instanceName?.takeUnless { it.equals("Plex", ignoreCase = true) } ?: "Plex"
 
-        return buildMediaServerCard(
-            sourceName = "Plex",
-            actionEmoji = "🎬",
-            fullTitle = fullTitle,
-            itemTitle = payload.title,
-            seriesTitle = seriesTitle.ifBlank { payload.title },
-            seasonNumber = payload.seasonNumber,
-            seasonLabel = seasonLabel,
-            episodeNumber = payload.episodeNumber,
-            mediaType = resolvedMediaType,
-            year = payload.year,
-            overview = payload.summary,
-            posterUrl = effectivePosterUrl,
-            artworkBytes = payload.artworkBytes,
-            videoCodec = payload.videoCodec,
-            audioCodec = payload.audioCodec,
-            resolution = payload.resolution,
-            rating = payload.rating,
-            durationSeconds = effectiveDuration,
-            deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload),
-            instanceName = payload.instanceName,
-            engine = engine
-        )
+        val specs =
+            MediaSpecs(
+                video = payload.videoCodec,
+                audio = payload.audioCodec,
+                resolution = payload.resolution,
+                score = payload.rating?.let { String.format(Locale.US, SCORE_FORMAT, it) },
+                duration = effectiveDuration?.let { formatDuration(it) }
+            )
+
+        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val formattedEpisode = payload.episodeNumber?.let { String.format(Locale.US, "%02d", it) }
+        val specsSummary = listOfNotNull(payload.resolution, payload.videoCodec, payload.audioCodec).joinToString(" • ")
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to fullTitle,
+                "item_title" to payload.title,
+                "series_title" to seriesTitle.ifBlank { payload.title },
+                "season" to formattedSeason,
+                "season_number" to payload.seasonNumber?.toString(),
+                "season_title" to (seasonLabel ?: formattedSeason?.let { "Season $it" }),
+                "episode" to formattedEpisode,
+                "episode_number" to payload.episodeNumber?.toString(),
+                "episode_title" to payload.title,
+                "media_type" to resolvedMediaType,
+                "year" to payload.year?.toString(),
+                "specs" to specsSummary,
+                "overview" to truncateOverview(payload.summary, engine.theme.maxOverviewLength),
+                "video_codec" to payload.videoCodec,
+                "audio_codec" to payload.audioCodec,
+                "resolution" to payload.resolution,
+                "rating" to specs.score,
+                "score" to specs.score,
+                "duration" to specs.duration,
+                "deep_link_url" to deepLinkUrl,
+                "media_server_name" to mediaServerName,
+                "poster_url" to effectivePosterUrl,
+                "instance_name" to mediaServerName,
+                "source_name" to "Plex"
+            )
+
+        val defaultActions =
+            if (!deepLinkUrl.isNullOrBlank()) {
+                listOf(ActionLink(label = "🎬 Watch on Plex", url = deepLinkUrl, style = ActionStyle.PRIMARY))
+            } else {
+                emptyList()
+            }
+
+        val defaults =
+            DefaultCardSpec(
+                title = "🍿 $fullTitle now available on $mediaServerName",
+                body = payload.summary,
+                artworkUrl = effectivePosterUrl,
+                actions = defaultActions
+            )
+
+        return renderMediaServerCard(defaults, specs, payload.artworkBytes, context, engine)
     }
 
     private fun buildJellyfinCard(
@@ -957,43 +927,79 @@ object CardFormatterService {
         val seriesTitle = payload.seriesName ?: ""
         val seasonLabel = resolveSeasonLabel(isSeason, payload.title, payload.seasonNumber)
         val fullTitle =
-            formatMediaServerFullTitle(
-                isSeason = isSeason,
-                isEpisode = isEpisode,
-                seriesTitle = seriesTitle,
-                itemTitle = payload.title,
-                seasonNumber = payload.seasonNumber,
-                episodeNumber = payload.episodeNumber,
-                seasonLabel = seasonLabel,
-                year = payload.year,
-                episodeNumbers = payload.episodeNumbers
-            )
+            when {
+                isSeason -> formatSeasonTitle(seriesTitle, payload.title, seasonLabel)
+                isEpisode ->
+                    formatEpisodeTitle(
+                        seriesTitle,
+                        payload.title,
+                        payload.seasonNumber,
+                        payload.episodeNumber,
+                        payload.episodeNumbers
+                    )
+                else -> formatStandaloneTitle(seriesTitle, payload.title, payload.year)
+            }
 
         val resolvedMediaType = resolveMediaType(isSeason, isEpisode, type, seriesTitle, payload.year)
+        val deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload)
+        val mediaServerName =
+            payload.instanceName?.takeUnless { it.equals("Jellyfin", ignoreCase = true) } ?: "Jellyfin"
 
-        return buildMediaServerCard(
-            sourceName = "Jellyfin",
-            actionEmoji = "🍿",
-            fullTitle = fullTitle,
-            itemTitle = payload.title,
-            seriesTitle = seriesTitle.ifBlank { payload.title },
-            seasonNumber = payload.seasonNumber,
-            seasonLabel = seasonLabel,
-            episodeNumber = payload.episodeNumber,
-            mediaType = resolvedMediaType,
-            year = payload.year,
-            overview = payload.overview,
-            posterUrl = payload.posterUrl,
-            artworkBytes = null,
-            videoCodec = payload.videoCodec,
-            audioCodec = payload.audioCodec,
-            resolution = payload.resolution,
-            rating = null,
-            durationSeconds = null,
-            deepLinkUrl = payload.deepLinkUrl ?: mediaServerPort?.resolveDeepLink(payload),
-            instanceName = payload.instanceName,
-            engine = engine
-        )
+        val specs =
+            MediaSpecs(
+                video = payload.videoCodec,
+                audio = payload.audioCodec,
+                resolution = payload.resolution
+            )
+
+        val formattedSeason = payload.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val formattedEpisode = payload.episodeNumber?.let { String.format(Locale.US, "%02d", it) }
+        val specsSummary = listOfNotNull(payload.resolution, payload.videoCodec, payload.audioCodec).joinToString(" • ")
+
+        val context =
+            mutableMapOf<String, Any?>(
+                "title" to fullTitle,
+                "item_title" to payload.title,
+                "series_title" to seriesTitle.ifBlank { payload.title },
+                "season" to formattedSeason,
+                "season_number" to payload.seasonNumber?.toString(),
+                "season_title" to (seasonLabel ?: formattedSeason?.let { "Season $it" }),
+                "episode" to formattedEpisode,
+                "episode_number" to payload.episodeNumber?.toString(),
+                "episode_title" to payload.title,
+                "media_type" to resolvedMediaType,
+                "year" to payload.year?.toString(),
+                "specs" to specsSummary,
+                "overview" to truncateOverview(payload.overview, engine.theme.maxOverviewLength),
+                "video_codec" to payload.videoCodec,
+                "audio_codec" to payload.audioCodec,
+                "resolution" to payload.resolution,
+                "rating" to null,
+                "score" to null,
+                "duration" to null,
+                "deep_link_url" to deepLinkUrl,
+                "media_server_name" to mediaServerName,
+                "poster_url" to payload.posterUrl,
+                "instance_name" to mediaServerName,
+                "source_name" to "Jellyfin"
+            )
+
+        val defaultActions =
+            if (!deepLinkUrl.isNullOrBlank()) {
+                listOf(ActionLink(label = "🍿 Watch on Jellyfin", url = deepLinkUrl, style = ActionStyle.PRIMARY))
+            } else {
+                emptyList()
+            }
+
+        val defaults =
+            DefaultCardSpec(
+                title = "🍿 $fullTitle now available on $mediaServerName",
+                body = payload.overview,
+                artworkUrl = payload.posterUrl,
+                actions = defaultActions
+            )
+
+        return renderMediaServerCard(defaults, specs, null, context, engine)
     }
 
     fun buildHealthCard(
@@ -1035,10 +1041,13 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = "health",
-                defaultTitle = defaultTitle,
-                defaultSubtitle = defaultSubtitle,
-                defaultArtworkUrl = null,
-                defaultActions = emptyList(),
+                defaults =
+                    DefaultCardSpec(
+                        title = defaultTitle,
+                        subtitle = defaultSubtitle,
+                        artworkUrl = null,
+                        actions = emptyList()
+                    ),
                 context = context
             )
 
@@ -1141,10 +1150,13 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = "manual_interaction",
-                defaultTitle = defaultTitle,
-                defaultSubtitle = defaultSubtitle,
-                defaultArtworkUrl = payload.posterUrl,
-                defaultActions = defaultActions,
+                defaults =
+                    DefaultCardSpec(
+                        title = defaultTitle,
+                        subtitle = defaultSubtitle,
+                        artworkUrl = payload.posterUrl,
+                        actions = defaultActions
+                    ),
                 context = context
             )
 
@@ -1348,10 +1360,13 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = eventName,
-                defaultTitle = meta.defaultTitle,
-                defaultSubtitle = meta.defaultSubtitle,
-                defaultArtworkUrl = payload.image,
-                defaultActions = defaultActions,
+                defaults =
+                    DefaultCardSpec(
+                        title = meta.defaultTitle,
+                        subtitle = meta.defaultSubtitle,
+                        artworkUrl = payload.image,
+                        actions = defaultActions
+                    ),
                 context = context
             )
 

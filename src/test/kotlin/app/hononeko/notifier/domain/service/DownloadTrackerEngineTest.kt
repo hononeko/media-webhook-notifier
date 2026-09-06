@@ -34,21 +34,13 @@ class DownloadTrackerEngineTest {
         torrentClient: TorrentClientPort,
         notificationPublisher: NotificationPublisherPort,
         activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
-        pollIntervalSeconds: Long = 5,
-        maxPollingMinutes: Long = 30,
-        stalledTimeoutMinutes: Long = 15,
-        missingGraceAttempts: Int = 6,
-        webuiPublicUrl: String? = null,
+        config: DownloadTrackerConfig = DownloadTrackerConfig(),
         scope: CoroutineScope
     ) = DownloadTrackerEngine(
         torrentClient = torrentClient,
         notificationPublisher = notificationPublisher,
         activeTrackerStore = activeTrackerStore,
-        pollIntervalSeconds = pollIntervalSeconds,
-        maxPollingMinutes = maxPollingMinutes,
-        stalledTimeoutMinutes = stalledTimeoutMinutes,
-        missingGraceAttempts = missingGraceAttempts,
-        webuiPublicUrl = webuiPublicUrl,
+        config = config,
         scope = scope
     )
 
@@ -218,7 +210,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 2,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 2),
                     scope = testScope
                 )
 
@@ -266,8 +258,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
-                    missingGraceAttempts = 3,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 1, missingGraceAttempts = 3),
                     scope = testScope
                 )
 
@@ -331,7 +322,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 10,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 10),
                     scope = testScope
                 )
 
@@ -381,8 +372,11 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
-                    maxPollingMinutes = 1, // 1 minute max
+                    config =
+                        DownloadTrackerConfig(
+                            pollIntervalSeconds = 1,
+                            maxPollingMinutes = 1
+                        ),
                     scope = testScope
                 )
 
@@ -434,8 +428,11 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
-                    stalledTimeoutMinutes = 1, // 1 minute stalled timeout
+                    config =
+                        DownloadTrackerConfig(
+                            pollIntervalSeconds = 1,
+                            stalledTimeoutMinutes = 1
+                        ),
                     scope = testScope
                 )
 
@@ -472,7 +469,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
                 )
 
@@ -527,7 +524,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = torrentClient,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
                 )
 
@@ -580,7 +577,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = client,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
                 )
 
@@ -639,7 +636,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = client,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
                 )
 
@@ -705,7 +702,7 @@ class DownloadTrackerEngineTest {
                 createEngine(
                     torrentClient = client,
                     notificationPublisher = publisher,
-                    pollIntervalSeconds = 1,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
                 )
 
