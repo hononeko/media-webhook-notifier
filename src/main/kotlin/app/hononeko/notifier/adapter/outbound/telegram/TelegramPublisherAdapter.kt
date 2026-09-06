@@ -25,7 +25,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
@@ -320,8 +319,6 @@ class TelegramPublisherAdapter(
                         }
                 )
             handleSendResponse(response)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             handleDeliveryException("photo binary", e)
         }
@@ -348,8 +345,6 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleSendResponse(response)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             handleDeliveryException("photo", e)
         }
@@ -375,8 +370,6 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleSendResponse(response)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             handleDeliveryException("text", e)
         }
@@ -404,8 +397,6 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleEditResponse(response)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             handleDeliveryException("edit text", e)
         }
@@ -433,8 +424,6 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleEditResponse(response)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             handleDeliveryException("edit caption", e)
         }

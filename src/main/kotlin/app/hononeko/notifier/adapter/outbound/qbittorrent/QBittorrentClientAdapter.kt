@@ -20,7 +20,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
@@ -120,8 +119,6 @@ class QBittorrentClientAdapter(
             } else {
                 parseTorrentResponse(response, normalizedHash)
             }
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             logger.debug("Failed to fetch torrent progress for hash {}: {}", normalizedHash, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
@@ -169,8 +166,6 @@ class QBittorrentClientAdapter(
 
                 Either.Right(torrentList.map { it.toTorrentProgress() })
             }
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             logger.debug("Failed to fetch active torrents: {}", e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
@@ -225,8 +220,6 @@ class QBittorrentClientAdapter(
                 executePostWithAuth(endpoint, params)
             }
             Either.Right(Unit)
-        } catch (e: CancellationException) {
-            throw e
         } catch (e: IOException) {
             logger.debug("Failed to {} tags {}: {}", action, tagString, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
@@ -420,8 +413,6 @@ class QBittorrentClientAdapter(
                     sidCookie.set(sid)
                     logger.debug("Successfully authenticated with qBittorrent")
                 }
-            } catch (e: CancellationException) {
-                throw e
             } catch (e: IOException) {
                 logger.warn("qBittorrent authentication request failed: {}", e.message)
             }

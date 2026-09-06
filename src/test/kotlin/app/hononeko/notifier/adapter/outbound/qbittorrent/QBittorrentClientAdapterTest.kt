@@ -341,10 +341,12 @@ class QBittorrentClientAdapterTest {
                     throw java.io.IOException("Network down")
                 }
 
-            val config = QBittorrentConfig(url = "http://localhost:8080")
+            val config = QBittorrentConfig(url = "http://localhost:8080", username = "admin", password = "secret")
             val adapter = QBittorrentClientAdapter(config, mockEngine)
             val result = adapter.getTorrentProgress("hash123")
             assertTrue(result.isLeft())
+            assertTrue(adapter.getActiveTorrents().isLeft())
+            assertTrue(adapter.addTorrentTags("hash123", listOf("tag")).isLeft())
         }
 
     @Test
