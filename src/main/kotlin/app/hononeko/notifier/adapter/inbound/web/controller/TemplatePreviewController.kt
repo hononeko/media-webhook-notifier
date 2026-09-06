@@ -225,20 +225,12 @@ class TemplatePreviewController {
 
         val engine =
             if (!request.templateYaml.isNullOrBlank()) {
-                try {
-                    TemplateEngine(
-                        YamlParser.parseTemplateConfig(
-                            request.templateYaml,
-                            defaultTheme = CardFormatterService.templateEngine.theme
-                        )
+                val templateConfig =
+                    YamlParser.parseTemplateConfig(
+                        request.templateYaml,
+                        defaultTheme = CardFormatterService.templateEngine.theme
                     )
-                } catch (e: Exception) {
-                    call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("status" to "error", "message" to "YAML parsing error: ${e.message}")
-                    )
-                    return
-                }
+                TemplateEngine(templateConfig)
             } else {
                 CardFormatterService.templateEngine
             }

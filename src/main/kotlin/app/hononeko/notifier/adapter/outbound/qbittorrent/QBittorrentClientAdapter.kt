@@ -24,9 +24,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
 
 class QBittorrentClientAdapter(
@@ -117,7 +119,7 @@ class QBittorrentClientAdapter(
             } else {
                 parseTorrentResponse(response, normalizedHash)
             }
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             logger.debug("Failed to fetch torrent progress for hash {}: {}", normalizedHash, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
@@ -157,14 +159,14 @@ class QBittorrentClientAdapter(
                 val torrentList: List<QBitTorrentDto> =
                     try {
                         jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
-                    } catch (e: Exception) {
+                    } catch (e: SerializationException) {
                         logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
                         return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
                     }
 
                 Either.Right(torrentList.map { it.toTorrentProgress() })
             }
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             logger.debug("Failed to fetch active torrents: {}", e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
@@ -218,7 +220,7 @@ class QBittorrentClientAdapter(
                 executePostWithAuth(endpoint, params)
             }
             Either.Right(Unit)
-        } catch (e: Exception) {
+        } catch (e: IOException) {
             logger.debug("Failed to {} tags {}: {}", action, tagString, e.message)
             Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
         }
@@ -291,7 +293,7 @@ class QBittorrentClientAdapter(
         val torrentList: List<QBitTorrentDto> =
             try {
                 jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
-            } catch (e: Exception) {
+            } catch (e: SerializationException) {
                 logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
                 return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
             }
@@ -411,7 +413,7 @@ class QBittorrentClientAdapter(
                     sidCookie.set(sid)
                     logger.debug("Successfully authenticated with qBittorrent")
                 }
-            } catch (e: Exception) {
+            } catch (e: IOException) {
                 logger.warn("qBittorrent authentication request failed: {}", e.message)
             }
         }

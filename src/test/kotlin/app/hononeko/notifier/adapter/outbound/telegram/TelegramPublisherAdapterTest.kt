@@ -630,6 +630,11 @@ class TelegramPublisherAdapterTest {
                 )
             val updateResult = adapter.updateProgress(handle, progress)
             assertTrue(updateResult.isLeft())
+
+            // Update photo progress
+            val photoHandle = NotificationHandle("telegram", "-100123", "123", isPhoto = true)
+            val updatePhotoResult = adapter.updateProgress(photoHandle, progress)
+            assertTrue(updatePhotoResult.isLeft())
         }
 
     @Test

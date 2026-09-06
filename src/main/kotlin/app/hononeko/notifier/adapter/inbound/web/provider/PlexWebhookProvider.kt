@@ -13,6 +13,7 @@ import io.ktor.server.request.receiveMultipart
 import io.ktor.server.request.receiveText
 import io.ktor.utils.io.core.readBytes
 import io.ktor.utils.io.toByteArray
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
@@ -36,7 +37,7 @@ class PlexWebhookProvider(
                     val rawText = call.receiveText()
                     json.decodeFromString(PlexWebhookDto.serializer(), rawText) to null
                 }
-            } catch (e: Exception) {
+            } catch (e: SerializationException) {
                 logger.warn("Failed to parse Plex webhook payload: ${e.message}")
                 return WebhookProcessResult.InvalidPayload("Invalid Plex payload: ${e.message}")
             } ?: return WebhookProcessResult.InvalidPayload("Missing payload in multipart request")

@@ -136,6 +136,7 @@ class TorrentReconciliationService(
         return resumedThisRun
     }
 
+    @Suppress("TooGenericExceptionCaught")
     fun start(scope: CoroutineScope): Job? {
         if (!enabled) {
             logger.info("Torrent reconciliation loop is disabled via configuration.")

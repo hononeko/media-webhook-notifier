@@ -11,6 +11,7 @@ import redis.clients.jedis.DefaultJedisClientConfig
 import redis.clients.jedis.RedisClient
 import redis.clients.jedis.RedisProtocol
 import redis.clients.jedis.UnifiedJedis
+import redis.clients.jedis.exceptions.JedisException
 import redis.clients.jedis.params.ScanParams
 import redis.clients.jedis.params.SetParams
 import redis.clients.jedis.util.JedisURIHelper
@@ -55,8 +56,11 @@ class ValkeyStateStore(
                 .clientConfig(clientConfig)
                 .poolConfig(poolConfig)
                 .build()
-        } catch (e: Exception) {
+        } catch (e: JedisException) {
             logger.error("Failed to initialize Valkey/Redis connection pool for '{}': {}", cfg.url, e.message, e)
+            null
+        } catch (e: IllegalArgumentException) {
+            logger.error("Invalid Valkey/Redis configuration for '{}': {}", cfg.url, e.message, e)
             null
         }
     }
@@ -115,7 +119,7 @@ class ValkeyStateStore(
                 val result = client.set(namespacedKey, value, params)
                 isHealthy = true
                 result == "OK"
-            } catch (e: Exception) {
+            } catch (e: JedisException) {
                 isHealthy = false
                 logger.warn("Valkey tryAcquire failed for key '{}', falling back to in-memory: {}", key, e.message)
                 fallbackStore.tryAcquire(key, ttlSeconds, value, nowMillis)
@@ -136,7 +140,7 @@ class ValkeyStateStore(
                 val existsInValkey = client.exists(namespacedKey)
                 isHealthy = true
                 existsInValkey || fallbackStore.exists(key, nowMillis)
-            } catch (e: Exception) {
+            } catch (e: JedisException) {
                 isHealthy = false
                 logger.warn("Valkey exists failed for key '{}', falling back to in-memory: {}", key, e.message)
                 fallbackStore.exists(key, nowMillis)
@@ -157,7 +161,7 @@ class ValkeyStateStore(
                 val value = client.get(namespacedKey)
                 isHealthy = true
                 value ?: fallbackStore.get(key, nowMillis)
-            } catch (e: Exception) {
+            } catch (e: JedisException) {
                 isHealthy = false
                 logger.warn("Valkey get failed for key '{}', falling back to in-memory: {}", key, e.message)
                 fallbackStore.get(key, nowMillis)
@@ -183,7 +187,7 @@ class ValkeyStateStore(
                 client.set(namespacedKey, value)
             }
             isHealthy = true
-        } catch (e: Exception) {
+        } catch (e: JedisException) {
             isHealthy = false
             logger.warn("Valkey set failed for key '{}', falling back to in-memory: {}", key, e.message)
             fallbackStore.set(key, value, ttlSeconds, nowMillis)
@@ -199,7 +203,7 @@ class ValkeyStateStore(
                 val deleted = client.del(namespacedKey) > 0
                 isHealthy = true
                 deleted || fbDeleted
-            } catch (e: Exception) {
+            } catch (e: JedisException) {
                 isHealthy = false
                 logger.warn("Valkey delete failed for key '{}': {}", key, e.message)
                 fbDeleted
@@ -216,7 +220,7 @@ class ValkeyStateStore(
                 val pong = client.ping()
                 isHealthy = pong.equals("PONG", ignoreCase = true)
                 isHealthy
-            } catch (e: Exception) {
+            } catch (e: JedisException) {
                 isHealthy = false
                 logger.debug("Valkey healthCheck ping failed: {}", e.message)
                 false
@@ -241,7 +245,7 @@ class ValkeyStateStore(
                     cursor = scanResult.cursor
                 } while (!scanResult.isCompleteIteration && cursor != ScanParams.SCAN_POINTER_START)
                 isHealthy = true
-            } catch (e: Exception) {
+            } catch (e: JedisException) {
                 isHealthy = false
                 logger.warn("Valkey clear failed for pattern '$keyPrefix*': {}", e.message)
             }
@@ -250,7 +254,7 @@ class ValkeyStateStore(
     override fun close() {
         try {
             jedis?.close()
-        } catch (e: Exception) {
+        } catch (e: JedisException) {
             logger.warn("Error closing Valkey Jedis client: {}", e.message)
         }
     }
