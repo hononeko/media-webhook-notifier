@@ -216,6 +216,7 @@ class DomainModelTest {
     }
 
     @Test
+    @Suppress("EqualsNullCall")
     fun `should test NotificationCard equality and hashCode thoroughly`() {
         val bytes1 = byteArrayOf(1, 2, 3)
         val bytes2 = byteArrayOf(1, 2, 3)
@@ -265,6 +266,7 @@ class DomainModelTest {
     }
 
     @Test
+    @Suppress("EqualsNullCall")
     fun `should test PlexLibraryNew equality and hashCode thoroughly`() {
         val bytes1 = byteArrayOf(10, 20)
         val bytes2 = byteArrayOf(10, 20)

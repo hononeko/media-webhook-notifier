@@ -94,7 +94,7 @@ class EventRail(
                                                 standardChannel.onReceiveCatching { it.getOrNull() }
                                             }
                                         }
-                                    } catch (e: CancellationException) {
+                                    } catch (_: CancellationException) {
                                         break
                                     }
 

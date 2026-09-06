@@ -319,8 +319,9 @@ class TelegramPublisherAdapter(
                         }
                 )
             handleSendResponse(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             logger.warn("Network error sending Telegram photo binary: {}", e.message)
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
@@ -347,8 +348,9 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleSendResponse(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             logger.warn("Network error sending Telegram photo: {}", e.message)
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
@@ -374,8 +376,9 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleSendResponse(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             logger.warn("Network error sending Telegram text: {}", e.message)
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
@@ -403,8 +406,9 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleEditResponse(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }
@@ -431,8 +435,9 @@ class TelegramPublisherAdapter(
                     setBody(payload)
                 }
             handleEditResponse(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (e is CancellationException) throw e
             Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
         }
     }
@@ -493,7 +498,8 @@ class TelegramPublisherAdapter(
                 .toString()
                 .startsWith("2")
         ) {
-            // If message was not modified, Telegram returns 400 Bad Request ("message is not modified"), which is safe to ignore
+            // If message was not modified, Telegram returns 400 Bad Request
+            // ("message is not modified"), which is safe to ignore
             if (raw.contains("message is not modified", ignoreCase = true)) {
                 return Either.Right(Unit)
             }

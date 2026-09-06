@@ -1008,23 +1008,23 @@ object CardFormatterService {
             payload.level.equals("error", ignoreCase = true) ||
                 payload.level.equals("critical", ignoreCase = true)
 
-        val (titlePrefix, level, subtitleSuffix, statusEmoji) =
+        val meta =
             when {
-                isRestored -> Quadruple("Health Restored", NotificationLevel.SUCCESS, "Health Status", "✅")
-                isError -> Quadruple("Health Error", NotificationLevel.ERROR, "Health Alert", "🚨")
-                else -> Quadruple("Health Warning", NotificationLevel.WARNING, "Health Warning", "⚠️")
+                isRestored -> HealthMetadata("Health Restored", NotificationLevel.SUCCESS, "Health Status", "✅")
+                isError -> HealthMetadata("Health Error", NotificationLevel.ERROR, "Health Alert", "🚨")
+                else -> HealthMetadata("Health Warning", NotificationLevel.WARNING, "Health Warning", "⚠️")
             }
 
         val instanceLabel = payload.instanceName ?: payload.source.displayName
-        val defaultTitle = "$statusEmoji $titlePrefix: $instanceLabel"
-        val defaultSubtitle = "$instanceLabel • $subtitleSuffix"
+        val defaultTitle = "${meta.statusEmoji} ${meta.titlePrefix}: $instanceLabel"
+        val defaultSubtitle = "$instanceLabel • ${meta.subtitleSuffix}"
 
         val context =
             mutableMapOf<String, Any?>(
                 "title" to defaultTitle,
-                "health_status" to titlePrefix,
-                "health_icon" to statusEmoji,
-                "health_type" to subtitleSuffix,
+                "health_status" to meta.titlePrefix,
+                "health_icon" to meta.statusEmoji,
+                "health_type" to meta.subtitleSuffix,
                 "message" to payload.message,
                 "issue_type" to payload.type,
                 "wiki_url" to payload.wikiUrl,
@@ -1046,7 +1046,7 @@ object CardFormatterService {
             return NotificationCard(
                 title = resolved.title,
                 subtitle = resolved.subtitle,
-                level = level,
+                level = meta.level,
                 customBody = resolved.customBody,
                 actions = resolved.actions,
                 eventType = "health"
@@ -1062,7 +1062,7 @@ object CardFormatterService {
         return NotificationCard(
             title = resolved.title,
             subtitle = resolved.subtitle,
-            level = level,
+            level = meta.level,
             fields = fields,
             actions = resolved.actions,
             eventType = "health"
@@ -1196,10 +1196,10 @@ object CardFormatterService {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val appName = payload.instanceName ?: payload.source.displayName
-        val (defaultTitle, defaultSubtitle, level, requestIcon, requestAction) =
+        val meta =
             when (payload.eventType) {
                 EventType.REQUEST_PENDING -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "🛎️ New Request: ${payload.subject}",
                         "$appName • Request Pending",
                         NotificationLevel.WARNING,
@@ -1216,7 +1216,7 @@ object CardFormatterService {
                         } else {
                             "Approved"
                         }
-                    Quintuple(
+                    SeerrMetadata(
                         "✅ Request $approvedType: ${payload.subject}",
                         "$appName • Request $approvedType",
                         NotificationLevel.SUCCESS,
@@ -1225,7 +1225,7 @@ object CardFormatterService {
                     )
                 }
                 EventType.REQUEST_AVAILABLE -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "🍿 Request Available: ${payload.subject}",
                         "$appName • Media Available",
                         NotificationLevel.SUCCESS,
@@ -1234,7 +1234,7 @@ object CardFormatterService {
                     )
                 }
                 EventType.REQUEST_DECLINED -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "❌ Request Declined: ${payload.subject}",
                         "$appName • Request Declined",
                         NotificationLevel.ERROR,
@@ -1243,7 +1243,7 @@ object CardFormatterService {
                     )
                 }
                 EventType.REQUEST_FAILED -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "🚨 Request Failed: ${payload.subject}",
                         "$appName • Request Processing Failed",
                         NotificationLevel.ERROR,
@@ -1252,7 +1252,7 @@ object CardFormatterService {
                     )
                 }
                 EventType.ISSUE_CREATED -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "⚠️ Issue Reported: ${payload.subject}",
                         "$appName • Issue Report",
                         NotificationLevel.WARNING,
@@ -1261,7 +1261,7 @@ object CardFormatterService {
                     )
                 }
                 EventType.ISSUE_COMMENT -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "💬 Issue Comment: ${payload.subject}",
                         "$appName • Issue Update",
                         NotificationLevel.INFO,
@@ -1270,7 +1270,7 @@ object CardFormatterService {
                     )
                 }
                 EventType.ISSUE_RESOLVED -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "✅ Issue Resolved: ${payload.subject}",
                         "$appName • Issue Resolved",
                         NotificationLevel.SUCCESS,
@@ -1279,7 +1279,7 @@ object CardFormatterService {
                     )
                 }
                 EventType.ISSUE_REOPENED -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "⚠️ Issue Reopened: ${payload.subject}",
                         "$appName • Issue Reopened",
                         NotificationLevel.WARNING,
@@ -1288,7 +1288,7 @@ object CardFormatterService {
                     )
                 }
                 else -> {
-                    Quintuple(
+                    SeerrMetadata(
                         "🔔 ${payload.subject}",
                         "$appName • Notification",
                         NotificationLevel.INFO,
@@ -1309,11 +1309,11 @@ object CardFormatterService {
 
         val context =
             mutableMapOf<String, Any?>(
-                "title" to defaultTitle,
+                "title" to meta.defaultTitle,
                 "subject" to payload.subject,
-                "request_icon" to requestIcon,
-                "request_action" to requestAction,
-                "request_status" to defaultSubtitle.substringAfter(" • "),
+                "request_icon" to meta.requestIcon,
+                "request_action" to meta.requestAction,
+                "request_status" to meta.defaultSubtitle.substringAfter(" • "),
                 "requested_by" to payload.requestedByUsername,
                 "media_type" to mediaLabel,
                 "quality" to if (payload.is4k) "4K UHD" else null,
@@ -1348,8 +1348,8 @@ object CardFormatterService {
         val resolved =
             engine.resolveCard(
                 eventName = eventName,
-                defaultTitle = defaultTitle,
-                defaultSubtitle = defaultSubtitle,
+                defaultTitle = meta.defaultTitle,
+                defaultSubtitle = meta.defaultSubtitle,
                 defaultArtworkUrl = payload.image,
                 defaultActions = defaultActions,
                 context = context
@@ -1359,7 +1359,7 @@ object CardFormatterService {
             return NotificationCard(
                 title = resolved.title,
                 subtitle = resolved.subtitle,
-                level = level,
+                level = meta.level,
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
                 actions = resolved.actions,
@@ -1393,7 +1393,7 @@ object CardFormatterService {
         return NotificationCard(
             title = resolved.title,
             subtitle = resolved.subtitle,
-            level = level,
+            level = meta.level,
             fields = fields,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
@@ -1401,18 +1401,18 @@ object CardFormatterService {
         )
     }
 
-    private data class Quadruple<A, B, C, D>(
-        val first: A,
-        val second: B,
-        val third: C,
-        val fourth: D
+    private data class HealthMetadata(
+        val titlePrefix: String,
+        val level: NotificationLevel,
+        val subtitleSuffix: String,
+        val statusEmoji: String
     )
 
-    private data class Quintuple<A, B, C, D, E>(
-        val first: A,
-        val second: B,
-        val third: C,
-        val fourth: D,
-        val fifth: E
+    private data class SeerrMetadata(
+        val defaultTitle: String,
+        val defaultSubtitle: String,
+        val level: NotificationLevel,
+        val requestIcon: String,
+        val requestAction: String
     )
 }

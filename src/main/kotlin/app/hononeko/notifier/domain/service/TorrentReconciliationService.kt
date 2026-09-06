@@ -90,7 +90,8 @@ class TorrentReconciliationService(
                         )
 
                     logger.info(
-                        "Reconciliation found existing tracked torrent: {} (hash: {}, msgId: {}, isPhoto: {}). Resuming progress loop.",
+                        "Reconciliation found existing tracked torrent: {} (hash: {}, msgId: {}, isPhoto: {}). " +
+                            "Resuming progress loop.",
                         torrent.name,
                         normalizedHash,
                         messageId,
@@ -145,7 +146,7 @@ class TorrentReconciliationService(
                 try {
                     reconcile()
                 } catch (e: CancellationException) {
-                    break
+                    throw e
                 } catch (e: Exception) {
                     logger.error("Error during torrent reconciliation sweep: {}", e.message, e)
                 }

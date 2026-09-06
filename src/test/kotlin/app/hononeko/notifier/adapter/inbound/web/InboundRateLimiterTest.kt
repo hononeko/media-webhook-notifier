@@ -55,7 +55,7 @@ class InboundRateLimiterTest {
                 }
             }
 
-            for (i in 1..10) {
+            repeat(10) {
                 val res = client.post("/test")
                 assertEquals(HttpStatusCode.OK, res.status)
             }
