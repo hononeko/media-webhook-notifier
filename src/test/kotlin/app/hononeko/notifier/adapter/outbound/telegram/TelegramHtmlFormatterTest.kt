@@ -157,6 +157,63 @@ class TelegramHtmlFormatterTest {
     }
 
     @Test
+    fun `buildProgressHtml includes episodeTracks even when custom body does not include them`() {
+        val tracks =
+            """
+            <code>[██████████]</code> <b>100%</b> • <b>E01:</b> 2.64 GB
+            <code>[████████░░]</code> <b>82.5%</b> • <b>E02:</b> 12.1 MB/s (ETA: 4s)
+            """.trimIndent()
+
+        val update =
+            ProgressUpdate(
+                trackingKey = "multi_key",
+                title = "⏳ Downloading: Show (S01E01-E02)",
+                subtitle = "Sonarr",
+                percent = 91.25,
+                progressBar = "[█████████░]",
+                speedFormatted = "20.6 MB/s",
+                etaFormatted = "15s",
+                sizeFormatted = "5.0 GB / 5.28 GB",
+                peersInfo = "15 seeds",
+                stateText = "Downloading",
+                episodeTracks = tracks,
+                customBody = "<code>[█████████░]</code> <b>91.25%</b>\n▪ <b>Status:</b> Downloading"
+            )
+
+        val html = TelegramHtmlFormatter.buildProgressHtml(update)
+        assertTrue(html.contains("<b>E01:</b> 2.64 GB"))
+        assertTrue(html.contains("<b>E02:</b> 12.1 MB/s"))
+        assertTrue(html.contains("▪ <b>Status:</b> Downloading"))
+    }
+
+    @Test
+    fun `buildProgressHtml does not duplicate episodeTracks when custom body already contains them`() {
+        val tracks = "<code>[██████████]</code> <b>100%</b> • <b>E01:</b> 2.64 GB"
+        val customBody = "$tracks\n<code>[██████████]</code> <b>100%</b>\n▪ <b>Status:</b> Downloading"
+
+        val update =
+            ProgressUpdate(
+                trackingKey = "multi_key",
+                title = "Show",
+                subtitle = "Sonarr",
+                percent = 100.0,
+                progressBar = "[██████████]",
+                speedFormatted = "0 B/s",
+                etaFormatted = "",
+                sizeFormatted = "2.64 GB",
+                peersInfo = "0 seeds",
+                stateText = "Completed",
+                episodeTracks = tracks,
+                customBody = customBody
+            )
+
+        val html = TelegramHtmlFormatter.buildProgressHtml(update)
+        val firstIdx = html.indexOf(tracks)
+        val lastIdx = html.lastIndexOf(tracks)
+        assertEquals(firstIdx, lastIdx)
+    }
+
+    @Test
     fun `buildCardHtml skips specs and empty italic lines when blank`() {
         val cardWithEmptySpecs =
             NotificationCard(

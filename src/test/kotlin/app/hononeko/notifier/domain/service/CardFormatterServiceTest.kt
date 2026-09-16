@@ -1148,6 +1148,25 @@ class CardFormatterServiceTest {
         assertTrue(update.episodeTracks.contains("<b>82.5%</b> • <b>E02:</b> 12.0 MB/s (ETA: 4s)"))
         assertTrue(update.episodeTracks.contains("<b>45.0%</b> • <b>E03:</b> 8.0 MB/s (ETA: 22s)"))
 
+        val defaultYaml =
+            javaClass.classLoader
+                .getResourceAsStream(
+                    "templates.default.yaml"
+                )!!
+                .bufferedReader()
+                .readText()
+        val defaultEngine =
+            TemplateEngine(
+                app.hononeko.notifier.config.YamlParser
+                    .parseTemplateConfig(defaultYaml)
+            )
+        val templatedUpdate =
+            CardFormatterService.buildProgressUpdate(grab, multiProgress, "https://qbit.example.com", defaultEngine)
+        assertNotNull(templatedUpdate.customBody)
+        assertTrue(templatedUpdate.customBody.contains("E01"))
+        assertTrue(templatedUpdate.customBody.contains("E02"))
+        assertTrue(templatedUpdate.customBody.contains("E03"))
+
         // Verify completion card includes Episodes field
         val completionCard =
             CardFormatterService.buildCompletionCard(
@@ -1158,6 +1177,58 @@ class CardFormatterServiceTest {
         val episodesField = completionCard.fields.firstOrNull { it.name == "Episodes" }
         assertNotNull(episodesField)
         assertEquals("E01, E02, E03 (3 episodes)", episodesField.value)
+    }
+
+    @Test
+    fun `should sort out-of-order episode tracks ascending by episode number`() {
+        val ep1 =
+            TorrentProgress(
+                hash = "hash1",
+                name = "Show.S01E01.1080p",
+                progressPercent = 100.0,
+                progressRatio = 1.0,
+                downloadSpeedBytesPerSec = 0L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 0L,
+                totalSizeBytes = 1000L,
+                downloadedBytes = 1000L,
+                state = TorrentState.COMPLETED
+            )
+        val ep2 =
+            TorrentProgress(
+                hash = "hash2",
+                name = "Show.S01E02.1080p",
+                progressPercent = 50.0,
+                progressRatio = 0.5,
+                downloadSpeedBytesPerSec = 1000L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 10L,
+                totalSizeBytes = 1000L,
+                downloadedBytes = 500L,
+                state = TorrentState.DOWNLOADING
+            )
+        val ep7 =
+            TorrentProgress(
+                hash = "hash7",
+                name = "Show.S01E07.1080p",
+                progressPercent = 30.0,
+                progressRatio = 0.3,
+                downloadSpeedBytesPerSec = 500L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 30L,
+                totalSizeBytes = 1000L,
+                downloadedBytes = 300L,
+                state = TorrentState.DOWNLOADING
+            )
+
+        // Pass out of order: E02, E07, E01
+        val tracks = CardFormatterService.formatEpisodeTracks(listOf(ep2, ep7, ep1))
+        assertNotNull(tracks)
+        val lines = tracks.lines()
+        assertEquals(3, lines.size)
+        assertTrue(lines[0].contains("E01"))
+        assertTrue(lines[1].contains("E02"))
+        assertTrue(lines[2].contains("E07"))
     }
 
     @Test

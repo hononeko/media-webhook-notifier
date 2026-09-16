@@ -13,6 +13,7 @@ events:
       title: "⏳ Downloading {title} from {indexer}"
       subtitle: "{instance_name}"
       body: |
+        {episode_tracks}
         <code>{progress_bar}</code> <b>{progress_percent}%</b>
 
         ▪ <b>Release:</b> {release_name}

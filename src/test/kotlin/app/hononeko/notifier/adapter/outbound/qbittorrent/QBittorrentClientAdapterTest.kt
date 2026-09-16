@@ -170,6 +170,126 @@ class QBittorrentClientAdapterTest {
         }
 
     @Test
+    fun `should sort aggregated child torrents by episode number in ascending order`() =
+        runTest {
+            val combinedHash = "hash2|hash1|hash3"
+            val mockEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/api/v2/torrents/info" -> {
+                            val jsonResponse =
+                                """
+                                [
+                                  {
+                                    "hash": "hash2",
+                                    "name": "Severance.S02E02.1080p",
+                                    "progress": 0.5,
+                                    "dlspeed": 1000,
+                                    "upspeed": 0,
+                                    "eta": 100,
+                                    "total_size": 1000,
+                                    "completed": 500,
+                                    "state": "downloading"
+                                  },
+                                  {
+                                    "hash": "hash1",
+                                    "name": "Severance.S02E01.1080p",
+                                    "progress": 0.9,
+                                    "dlspeed": 2000,
+                                    "upspeed": 0,
+                                    "eta": 20,
+                                    "total_size": 1000,
+                                    "completed": 900,
+                                    "state": "downloading"
+                                  },
+                                  {
+                                    "hash": "hash3",
+                                    "name": "Severance.S02E03.1080p",
+                                    "progress": 0.2,
+                                    "dlspeed": 500,
+                                    "upspeed": 0,
+                                    "eta": 200,
+                                    "total_size": 1000,
+                                    "completed": 200,
+                                    "state": "downloading"
+                                  }
+                                ]
+                                """.trimIndent()
+                            respond(
+                                content = jsonResponse,
+                                status = HttpStatusCode.OK,
+                                headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                        else -> respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val config = QBittorrentConfig(url = "http://localhost:8080")
+            val adapter = QBittorrentClientAdapter(config, mockEngine)
+
+            val result = adapter.getTorrentProgress(combinedHash)
+            assertTrue(result.isRight())
+
+            val progress = (result as Either.Right).value
+            assertNotNull(progress)
+            assertEquals(3, progress.items.size)
+            assertEquals("hash1", progress.items[0].hash)
+            assertEquals("Severance.S02E01.1080p", progress.items[0].name)
+            assertEquals("hash2", progress.items[1].hash)
+            assertEquals("Severance.S02E02.1080p", progress.items[1].name)
+            assertEquals("hash3", progress.items[2].hash)
+            assertEquals("Severance.S02E03.1080p", progress.items[2].name)
+        }
+
+    @Test
+    fun `should maintain multi-torrent aggregate when querying multi-hash even if only one torrent is returned`() =
+        runTest {
+            val combinedHash = "hash1|hash2"
+            val mockEngine =
+                MockEngine { request ->
+                    when (request.url.encodedPath) {
+                        "/api/v2/torrents/info" -> {
+                            val jsonResponse =
+                                """
+                                [
+                                  {
+                                    "hash": "hash1",
+                                    "name": "Severance.S02E01.1080p",
+                                    "progress": 0.5,
+                                    "dlspeed": 1000,
+                                    "upspeed": 0,
+                                    "eta": 100,
+                                    "total_size": 1000,
+                                    "completed": 500,
+                                    "state": "downloading"
+                                  }
+                                ]
+                                """.trimIndent()
+                            respond(
+                                content = jsonResponse,
+                                status = HttpStatusCode.OK,
+                                headers = headersOf(HttpHeaders.ContentType, "application/json")
+                            )
+                        }
+                        else -> respond("Not Found", HttpStatusCode.NotFound)
+                    }
+                }
+
+            val config = QBittorrentConfig(url = "http://localhost:8080")
+            val adapter = QBittorrentClientAdapter(config, mockEngine)
+
+            val result = adapter.getTorrentProgress(combinedHash)
+            assertTrue(result.isRight())
+
+            val progress = (result as Either.Right).value
+            assertNotNull(progress)
+            assertEquals(combinedHash, progress.hash)
+            assertEquals(1, progress.items.size)
+            assertEquals("hash1", progress.items[0].hash)
+        }
+
+    @Test
     fun `should re-authenticate when receiving 403 Forbidden on expired session`() =
         runTest {
             val hash = "hash_reauth"
