@@ -25,23 +25,22 @@
     {
       "description": "Group Kotlin compiler, plugins, and official libraries",
       "matchPackageNames": [
-        "org.jetbrains.kotlin/**",
-        "org.jetbrains.kotlinx/**",
-        "org.jetbrains.kotlin.*"
+        "org.jetbrains.kotlin*",
+        "org.jetbrains.kotlinx*"
       ],
       "groupName": "Kotlin & Kotlinx"
     },
     {
       "description": "Group all Ktor server and client dependencies",
       "matchPackageNames": [
-        "io.ktor/**"
+        "io.ktor*"
       ],
       "groupName": "Ktor"
     },
     {
       "description": "Group Arrow-kt functional library ecosystem",
       "matchPackageNames": [
-        "io.arrow-kt/**"
+        "io.arrow-kt*"
       ],
       "groupName": "Arrow-kt"
     },
@@ -49,7 +48,7 @@
       "description": "Group GraalVM native build tools, GitHub action, and base images",
       "matchPackageNames": [
         "ghcr.io/graalvm/**",
-        "org.graalvm.buildtools/**",
+        "org.graalvm.buildtools*",
         "graalvm/setup-graalvm"
       ],
       "groupName": "GraalVM"
@@ -58,7 +57,7 @@
       "description": "Group Gradle wrapper and Gradle GitHub actions",
       "matchPackageNames": [
         "gradle",
-        "org.gradle/**",
+        "org.gradle*",
         "gradle/actions/**",
         "gradle/actions"
       ],
@@ -71,7 +70,7 @@
       ],
       "matchPackageNames": [
         "!ghcr.io/graalvm/**",
-        "!org.graalvm.buildtools/**",
+        "!org.graalvm.buildtools*",
         "!graalvm/setup-graalvm",
         "!gradle/actions/**",
         "!gradle/actions"
