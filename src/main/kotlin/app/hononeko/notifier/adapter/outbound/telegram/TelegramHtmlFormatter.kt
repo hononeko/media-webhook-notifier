@@ -82,6 +82,9 @@ object TelegramHtmlFormatter {
         }
 
         if (!update.customBody.isNullOrBlank()) {
+            if (!update.episodeTracks.isNullOrBlank() && !update.customBody.contains(update.episodeTracks)) {
+                sb.append("\n").append(update.episodeTracks).append("\n")
+            }
             sb.append("\n").append(update.customBody)
         } else {
             if (!update.episodeTracks.isNullOrBlank()) {

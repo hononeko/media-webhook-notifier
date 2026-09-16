@@ -5,6 +5,7 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.TorrentProgress
 import app.hononeko.notifier.domain.model.TorrentState
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
+import app.hononeko.notifier.domain.service.CardFormatterService
 import arrow.core.Either
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -252,7 +253,7 @@ class QBittorrentClientAdapter(
             return Either.Right(null)
         }
 
-        if (torrentList.size == 1) {
+        if (torrentList.size == 1 && !hash.contains("|")) {
             return Either.Right(torrentList.first().toTorrentProgress())
         }
 
@@ -424,15 +425,22 @@ private fun aggregateMultiTorrent(
             .distinct()
 
     val childItems =
-        if (torrentList.size > 1) {
-            torrentList.map { it.toTorrentProgress() }
+        if (torrentList.size > 1 || hash.contains("|")) {
+            torrentList
+                .map { it.toTorrentProgress() }
+                .sortedWith(
+                    compareBy(
+                        { CardFormatterService.extractEpisodeNumber(it.name) ?: Int.MAX_VALUE },
+                        { it.name }
+                    )
+                )
         } else {
             emptyList()
         }
 
     return TorrentProgress(
         hash = hash,
-        name = torrentList.firstOrNull()?.name ?: "Multi-torrent Download",
+        name = childItems.firstOrNull()?.name ?: torrentList.firstOrNull()?.name ?: "Multi-torrent Download",
         progressPercent = aggregatePercent,
         progressRatio = aggregateRatio,
         downloadSpeedBytesPerSec = totalDlSpeed,

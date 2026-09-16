@@ -25,7 +25,16 @@ class InMemoryActiveTrackerStore : ActiveTrackerStore {
         return false
     }
 
-    override fun get(hash: String): ActiveTrackerSession? = sessions[hash.trim().lowercase()]
+    override fun get(hash: String): ActiveTrackerSession? {
+        val normalized = hash.trim().lowercase()
+        if (normalized.isBlank()) return null
+        val direct = sessions[normalized]
+        if (direct != null) return direct
+        return sessions.values.firstOrNull { session ->
+            session.hash.split("|").any { it.equals(normalized, ignoreCase = true) } ||
+                session.payload.downloadIds.any { it.equals(normalized, ignoreCase = true) }
+        }
+    }
 
     override fun updateProgress(
         hash: String,
@@ -59,7 +68,15 @@ class InMemoryActiveTrackerStore : ActiveTrackerStore {
 
     override fun activeCount(): Int = sessions.size
 
-    override fun isTracking(hash: String): Boolean = sessions.containsKey(hash.trim().lowercase())
+    override fun isTracking(hash: String): Boolean {
+        val normalized = hash.trim().lowercase()
+        if (normalized.isBlank()) return false
+        if (sessions.containsKey(normalized)) return true
+        return sessions.values.any { session ->
+            session.hash.split("|").any { it.equals(normalized, ignoreCase = true) } ||
+                session.payload.downloadIds.any { it.equals(normalized, ignoreCase = true) }
+        }
+    }
 
     override fun stopAll() {
         sessions.values.forEach { session ->

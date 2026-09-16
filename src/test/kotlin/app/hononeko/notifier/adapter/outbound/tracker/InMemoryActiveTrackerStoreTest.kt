@@ -59,7 +59,7 @@ class InMemoryActiveTrackerStoreTest {
             val retrieved = store.get("HASH1")
             assertNotNull(retrieved)
             assertEquals("hash1", retrieved.hash)
-            assertEquals("Show 1", (retrieved.payload as MediaPayload.ArrGrab).title)
+            assertEquals("Show 1", retrieved.payload.title)
             assertEquals(true, retrieved.isPhoto)
         }
 
@@ -150,5 +150,24 @@ class InMemoryActiveTrackerStoreTest {
             assertEquals(0, store.activeCount())
             assertTrue(session1.job.isCancelled)
             assertTrue(session2.job.isCancelled)
+        }
+
+    @Test
+    fun `should recognize individual sub-hashes when tracking multi-torrent session`() =
+        runTest {
+            val store = InMemoryActiveTrackerStore()
+            val multiSession = createSession("hash1|hash2|hash3", "Multi Show")
+            store.register(multiSession)
+
+            assertTrue(store.isTracking("hash1|hash2|hash3"))
+            assertTrue(store.isTracking("hash1"))
+            assertTrue(store.isTracking("hash2"))
+            assertTrue(store.isTracking("hash3"))
+            assertTrue(store.isTracking(" HASH2 "))
+            assertFalse(store.isTracking("hash4"))
+
+            val retrievedSub = store.get("hash2")
+            assertNotNull(retrievedSub)
+            assertEquals("hash1|hash2|hash3", retrievedSub.hash)
         }
 }

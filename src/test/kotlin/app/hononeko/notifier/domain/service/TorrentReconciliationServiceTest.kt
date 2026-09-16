@@ -492,4 +492,170 @@ class TorrentReconciliationServiceTest {
 
             job.cancel()
         }
+
+    @Test
+    fun `should group untracked torrents with same mwn_msg tag into a single trackExisting call`() =
+        runTest {
+            val store = InMemoryActiveTrackerStore()
+            val publisher = FakeNotificationPublisher()
+
+            val resumedCalls = Collections.synchronizedList(mutableListOf<Pair<String, MediaPayload.ArrGrab>>())
+            val trackUseCase =
+                object : TrackDownloadUseCase {
+                    override suspend fun track(
+                        hash: String,
+                        initialPayload: MediaPayload.ArrGrab
+                    ): Either<DomainError, Unit> = Either.Right(Unit)
+
+                    override suspend fun trackExisting(
+                        hash: String,
+                        payload: MediaPayload.ArrGrab,
+                        handle: NotificationHandle,
+                        isPhoto: Boolean
+                    ): Either<DomainError, Unit> {
+                        resumedCalls.add(hash to payload)
+                        return Either.Right(Unit)
+                    }
+                }
+
+            val torrent1 =
+                TorrentProgress(
+                    hash = "hash_ep01",
+                    name = "Severance.S02E01.1080p",
+                    progressPercent = 40.0,
+                    progressRatio = 0.4,
+                    downloadSpeedBytesPerSec = 1000L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 100L,
+                    totalSizeBytes = 1000L,
+                    downloadedBytes = 400L,
+                    state = TorrentState.DOWNLOADING,
+                    tags = listOf("mwn_msg:5555", "mwn_photo:1", "mwn_chat:chat123")
+                )
+            val torrent2 =
+                TorrentProgress(
+                    hash = "hash_ep02",
+                    name = "Severance.S02E02.1080p",
+                    progressPercent = 60.0,
+                    progressRatio = 0.6,
+                    downloadSpeedBytesPerSec = 1000L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 100L,
+                    totalSizeBytes = 2000L,
+                    downloadedBytes = 1200L,
+                    state = TorrentState.DOWNLOADING,
+                    tags = listOf("mwn_msg:5555", "mwn_photo:1", "mwn_chat:chat123")
+                )
+
+            val torrentClient =
+                object : TorrentClientPort {
+                    override suspend fun getTorrentProgress(
+                        hash: String
+                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+
+                    override suspend fun getActiveTorrents(
+                        filter: String
+                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                        Either.Right(listOf(torrent1, torrent2))
+                }
+
+            val reconciliationService =
+                TorrentReconciliationService(
+                    torrentClient = torrentClient,
+                    trackDownloadUseCase = trackUseCase,
+                    activeTrackerStore = store,
+                    notificationPublisher = publisher
+                )
+
+            val count = reconciliationService.reconcile()
+            assertEquals(1, count)
+            assertEquals(1, resumedCalls.size)
+            val (hash, payload) = resumedCalls.first()
+            assertEquals("hash_ep01|hash_ep02", hash)
+            assertEquals("hash_ep01|hash_ep02", payload.downloadId)
+            assertEquals(listOf("hash_ep01", "hash_ep02"), payload.downloadIds)
+            assertEquals(listOf(1, 2), payload.episodeNumbers)
+            assertEquals(3000L, payload.sizeBytes)
+        }
+
+    @Test
+    fun `should skip torrents if their hash is part of an active multi-torrent session`() =
+        runTest {
+            val store = InMemoryActiveTrackerStore()
+            val publisher = FakeNotificationPublisher()
+
+            val resumedCalls = Collections.synchronizedList(mutableListOf<String>())
+            val trackUseCase =
+                object : TrackDownloadUseCase {
+                    override suspend fun track(
+                        hash: String,
+                        initialPayload: MediaPayload.ArrGrab
+                    ): Either<DomainError, Unit> = Either.Right(Unit)
+
+                    override suspend fun trackExisting(
+                        hash: String,
+                        payload: MediaPayload.ArrGrab,
+                        handle: NotificationHandle,
+                        isPhoto: Boolean
+                    ): Either<DomainError, Unit> {
+                        resumedCalls.add(hash)
+                        return Either.Right(Unit)
+                    }
+                }
+
+            val session =
+                app.hononeko.notifier.domain.model.ActiveTrackerSession(
+                    hash = "hash_ep01|hash_ep02",
+                    payload =
+                        MediaPayload.ArrGrab(
+                            source = AppSource.SONARR,
+                            downloadId = "hash_ep01|hash_ep02",
+                            downloadIds = listOf("hash_ep01", "hash_ep02"),
+                            title = "Severance",
+                            seriesOrMovieTitle = "Severance"
+                        ),
+                    handle = NotificationHandle("telegram", "chat123", "5555"),
+                    isPhoto = false,
+                    job = kotlinx.coroutines.Job()
+                )
+            store.register(session)
+
+            val torrent1 =
+                TorrentProgress(
+                    hash = "hash_ep01",
+                    name = "Severance.S02E01.1080p",
+                    progressPercent = 40.0,
+                    progressRatio = 0.4,
+                    downloadSpeedBytesPerSec = 1000L,
+                    uploadSpeedBytesPerSec = 0L,
+                    etaSeconds = 100L,
+                    totalSizeBytes = 1000L,
+                    downloadedBytes = 400L,
+                    state = TorrentState.DOWNLOADING,
+                    tags = listOf("mwn_msg:5555", "mwn_photo:0")
+                )
+
+            val torrentClient =
+                object : TorrentClientPort {
+                    override suspend fun getTorrentProgress(
+                        hash: String
+                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+
+                    override suspend fun getActiveTorrents(
+                        filter: String
+                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> = Either.Right(listOf(torrent1))
+                }
+
+            val reconciliationService =
+                TorrentReconciliationService(
+                    torrentClient = torrentClient,
+                    trackDownloadUseCase = trackUseCase,
+                    activeTrackerStore = store,
+                    notificationPublisher = publisher
+                )
+
+            val count = reconciliationService.reconcile()
+            assertEquals(0, count)
+            assertEquals(0, resumedCalls.size)
+        }
 }

@@ -225,22 +225,37 @@ object CardFormatterService {
             Regex("""(?i)(\d+)x(\d+)"""),
             Regex("""(?i)Episode\s*(\d+)""")
         )
+    private val SEASON_REGEX = Regex("""(?i)[._ -]?S(\d+)""")
 
-    fun extractEpisodeLabel(
-        torrentName: String,
-        fallbackIndex: Int = 1
-    ): String {
+    fun extractEpisodeNumber(torrentName: String): Int? {
         for (regex in EPISODE_REGEXES) {
             val match = regex.find(torrentName)
             if (match != null) {
                 val groupIdx = if (regex.pattern.contains("x")) 2 else 1
                 val epNum = match.groupValues.getOrNull(groupIdx)?.toIntOrNull()
                 if (epNum != null) {
-                    return "E%02d".format(Locale.US, epNum)
+                    return epNum
                 }
             }
         }
-        return "E%02d".format(Locale.US, fallbackIndex)
+        return null
+    }
+
+    fun extractSeasonNumber(torrentName: String): Int? {
+        val match = SEASON_REGEX.find(torrentName)
+        return match?.groupValues?.getOrNull(1)?.toIntOrNull()
+    }
+
+    fun extractEpisodeLabel(
+        torrentName: String,
+        fallbackIndex: Int = 1
+    ): String {
+        val epNum = extractEpisodeNumber(torrentName)
+        return if (epNum != null) {
+            "E%02d".format(Locale.US, epNum)
+        } else {
+            "E%02d".format(Locale.US, fallbackIndex)
+        }
     }
 
     fun formatEpisodeTracks(
@@ -250,8 +265,15 @@ object CardFormatterService {
     ): String? {
         if (items.isEmpty() || items.size <= 1) return null
 
+        val sortedItems =
+            items.sortedWith(
+                compareBy(
+                    { extractEpisodeNumber(it.name) ?: Int.MAX_VALUE },
+                    { it.name }
+                )
+            )
         val sb = StringBuilder()
-        val displayItems = items.take(maxItems)
+        val displayItems = sortedItems.take(maxItems)
         for ((idx, item) in displayItems.withIndex()) {
             val epLabel = extractEpisodeLabel(item.name, idx + 1)
             val miniBar = drawProgressBar(item.progressPercent, 8, engine.theme.progressBarStyle)
@@ -270,8 +292,8 @@ object CardFormatterService {
                 .append("\n")
         }
 
-        if (items.size > maxItems) {
-            val remaining = items.size - maxItems
+        if (sortedItems.size > maxItems) {
+            val remaining = sortedItems.size - maxItems
             sb.append("<i>...and ").append(remaining).append(" more episodes</i>\n")
         }
 
@@ -321,7 +343,12 @@ object CardFormatterService {
             }
 
         val episodeTracks = formatEpisodeTracks(progress.items, engine)
-        val releaseName = progress.name.ifBlank { payload.releaseTitle ?: payload.title }
+        val releaseName =
+            if (progress.items.size > 1) {
+                payload.releaseTitle ?: payload.title
+            } else {
+                progress.name.ifBlank { payload.releaseTitle ?: payload.title }
+            }
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
         context["release_title"] = releaseName
         context["release_name"] = releaseName
