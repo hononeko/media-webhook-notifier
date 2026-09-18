@@ -69,9 +69,10 @@ data class ActionLinkDto(
     val style: String = "DEFAULT"
 )
 
-private const val MOCK_QBIT_URL = "http://qbittorrent.lan:8080"
+private const val MOCK_QBIT_URL = "https://qbittorrent.lan:8080"
 private const val MOCK_DUNE_TITLE = "Dune: Part Two"
 private const val MOCK_DUNE_POSTER = "https://image.tmdb.org/t/p/w500/dune2.jpg"
+private const val MOCK_MULTI_EPISODE_RELEASE_NAME = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE"
 
 private val BASE_TAGS =
     listOf("title", "series_title", "season", "episode_range", "poster_url", "instance_name", "source_name")
@@ -380,12 +381,12 @@ private fun mockMultiGrab() =
     MediaPayload.ArrGrab(
         source = AppSource.SONARR,
         downloadId = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
-        title = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE",
+        title = MOCK_MULTI_EPISODE_RELEASE_NAME,
         seriesOrMovieTitle = "Love is Blind: UK",
         seasonNumber = 3,
         episodeNumbers = listOf(1, 2, 3, 4, 5),
         releaseGroup = "DEFENESTRATE",
-        releaseTitle = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE",
+        releaseTitle = MOCK_MULTI_EPISODE_RELEASE_NAME,
         quality = "WEB-DL-1080p",
         sizeBytes = 14173388800L,
         indexer = "DigitalCore (API)",
@@ -462,7 +463,7 @@ private fun mockMultiProgress(): TorrentProgress {
 
     return TorrentProgress(
         hash = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
-        name = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE",
+        name = MOCK_MULTI_EPISODE_RELEASE_NAME,
         progressPercent = 49.70,
         progressRatio = 0.4970,
         downloadSpeedBytesPerSec = 25165824L,
@@ -532,7 +533,7 @@ private fun mockDownload() =
             "Paul Atreides unites with Chani and the Fremen while seeking revenge " +
                 "against the conspirators who destroyed his family.",
         instanceName = "Radarr-4K",
-        webUrl = "http://radarr.lan:7878/movie/1"
+        webUrl = "https://radarr.lan:7878/movie/1"
     )
 
 private fun mockPlex() =
@@ -574,7 +575,7 @@ private fun mockManual() =
         downloadClient = "qBittorrent",
         reason = "Found unknown movie file",
         posterUrl = MOCK_DUNE_POSTER,
-        webUrl = "http://radarr.lan:7878/activity/queue",
+        webUrl = "https://radarr.lan:7878/activity/queue",
         instanceName = "Radarr-4K"
     )
 
@@ -587,7 +588,7 @@ private fun mockSeerr() =
         mediaType = "movie",
         is4k = true,
         image = MOCK_DUNE_POSTER,
-        webUrl = "http://overseerr.lan:5055/movie/1",
+        webUrl = "https://overseerr.lan:5055/movie/1",
         instanceName = "Overseerr"
     )
 
@@ -603,6 +604,6 @@ private fun mockIssue() =
         issueStatus = "Open",
         commentMessage = "Video playback is choppy at 45m",
         image = MOCK_DUNE_POSTER,
-        webUrl = "http://overseerr.lan:5055/issues/42",
+        webUrl = "https://overseerr.lan:5055/issues/42",
         instanceName = "Overseerr"
     )
