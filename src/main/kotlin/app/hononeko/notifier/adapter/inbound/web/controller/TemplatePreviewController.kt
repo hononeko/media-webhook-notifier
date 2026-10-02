@@ -52,7 +52,8 @@ data class RenderedCardDto(
     val fields: List<CardFieldDto> = emptyList(),
     @SerialName("artwork_url")
     val artworkUrl: String? = null,
-    val actions: List<ActionLinkDto> = emptyList()
+    val actions: List<ActionLinkDto> = emptyList(),
+    val silent: Boolean = false
 )
 
 @Serializable
@@ -247,7 +248,8 @@ class TemplatePreviewController {
                     overview = card.overview,
                     fields = card.fields.map { CardFieldDto(it.name, it.value, it.inline) },
                     artworkUrl = card.artworkUrl,
-                    actions = card.actions.map { ActionLinkDto(it.label, it.url, it.style.name) }
+                    actions = card.actions.map { ActionLinkDto(it.label, it.url, it.style.name) },
+                    silent = card.silent
                 )
             } else {
                 RenderedCardDto(
@@ -258,7 +260,8 @@ class TemplatePreviewController {
                     overview = null,
                     fields = emptyList(),
                     artworkUrl = null,
-                    actions = progressUpdate.actions.map { ActionLinkDto(it.label, it.url, it.style.name) }
+                    actions = progressUpdate.actions.map { ActionLinkDto(it.label, it.url, it.style.name) },
+                    silent = true
                 )
             }
 

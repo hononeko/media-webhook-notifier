@@ -97,6 +97,7 @@ object ConfigLoader {
                         artworkUrl = tpl.artworkUrl ?: baseTpl.artworkUrl,
                         imageEmbed = tpl.imageEmbed ?: baseTpl.imageEmbed,
                         stateText = tpl.stateText ?: baseTpl.stateText,
+                        silent = tpl.silent ?: baseTpl.silent,
                         actions = if (tpl.actions.isNotEmpty()) tpl.actions else baseTpl.actions
                     )
                 } else {

@@ -153,6 +153,17 @@ class ConfigLoaderTest {
         assertNull(config.templates.events["health"]?.imageEmbed)
         assertNull(config.templates.events["download_complete"]?.imageEmbed)
         assertNull(config.templates.events["download_stalled"]?.imageEmbed)
+
+        assertEquals(true, config.templates.events["grab"]?.silent)
+        assertEquals(true, config.templates.events["import"]?.silent)
+        assertEquals(false, config.templates.events["manual_interaction"]?.silent)
+        assertEquals(false, config.templates.events["health"]?.silent)
+        assertEquals(false, config.templates.events["download_complete"]?.silent)
+        assertEquals(false, config.templates.events["download_stalled"]?.silent)
+        assertEquals(true, config.templates.events["download_progress"]?.silent)
+        assertEquals(false, config.templates.events["media_available"]?.silent)
+        assertEquals(false, config.templates.events["request"]?.silent)
+        assertEquals(false, config.templates.events["issue"]?.silent)
     }
 
     @Test
@@ -213,5 +224,19 @@ class ConfigLoaderTest {
         assertEquals(10, config.templates.theme.progressBarLength)
         assertEquals("default", config.templates.theme.progressBarStyle)
         assertEquals("yyyy-MM-dd HH:mm", config.templates.theme.dateFormat)
+    }
+
+    @Test
+    fun `should merge silent override while preserving default template properties`() {
+        val env =
+            mapOf(
+                "TEMPLATES_YAML" to "events:\n  grab:\n    silent: false"
+            )
+        val config = ConfigLoader.load(env)
+        val grabTemplate = config.templates.events["grab"]
+        assertNotNull(grabTemplate)
+        assertEquals(false, grabTemplate.silent)
+        assertEquals(true, grabTemplate.imageEmbed)
+        assertEquals("⏳ Downloading {title} from {indexer}", grabTemplate.title)
     }
 }

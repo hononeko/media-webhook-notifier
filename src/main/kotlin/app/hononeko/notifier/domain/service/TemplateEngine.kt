@@ -16,7 +16,8 @@ data class ResolvedTemplateCard(
     val artworkUrl: String?,
     val actions: List<ActionLink>,
     val customBody: String?,
-    val imageEmbedEnabled: Boolean = true
+    val imageEmbedEnabled: Boolean = true,
+    val silent: Boolean = false
 )
 
 data class ResolvedTemplateProgress(
@@ -32,7 +33,8 @@ data class DefaultCardSpec(
     val level: NotificationLevel = NotificationLevel.INFO,
     val body: String? = null,
     val artworkUrl: String? = null,
-    val actions: List<ActionLink> = emptyList()
+    val actions: List<ActionLink> = emptyList(),
+    val silent: Boolean = false
 )
 
 class TemplateEngine(
@@ -219,13 +221,16 @@ class TemplateEngine(
                 interpolateBody(it, context)
             }
 
+        val silent = customTemplate?.silent ?: defaults.silent
+
         return ResolvedTemplateCard(
             title = title,
             subtitle = subtitle,
             artworkUrl = artworkUrl,
             actions = actions,
             customBody = customBody,
-            imageEmbedEnabled = imageEmbedEnabled
+            imageEmbedEnabled = imageEmbedEnabled,
+            silent = silent
         )
     }
 
@@ -286,7 +291,8 @@ class TemplateEngine(
             level = defaults.level,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
-            eventType = eventName
+            eventType = eventName,
+            silent = resolved.silent
         )
     }
 

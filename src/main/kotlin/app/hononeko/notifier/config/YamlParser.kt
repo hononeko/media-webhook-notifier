@@ -21,6 +21,9 @@ object YamlParser {
             "photo",
             "photos",
             "state_text",
+            "silent",
+            "silent_send",
+            "disable_notification",
             "actions"
         )
 
@@ -126,6 +129,7 @@ object YamlParser {
         val actionsList = rawActions.mapNotNull { parseAction(it) }
 
         val imageEmbed = parseImageEmbedFlag(eventProps)
+        val silent = parseSilentFlag(eventProps)
 
         return EventTemplate(
             title = eventProps["title"]?.toString(),
@@ -134,8 +138,31 @@ object YamlParser {
             artworkUrl = eventProps["artwork_url"]?.toString() ?: eventProps["poster_url"]?.toString(),
             imageEmbed = imageEmbed,
             stateText = eventProps["state_text"]?.toString(),
+            silent = silent,
             actions = actionsList
         )
+    }
+
+    private fun parseBooleanValue(v: Any?): Boolean? {
+        if (v == null) return null
+        if (v is Boolean) return v
+        val str = v.toString().trim()
+        if (str.equals("true", ignoreCase = true) || str.equals("yes", ignoreCase = true) || str == "1") {
+            return true
+        }
+        if (str.equals("false", ignoreCase = true) || str.equals("no", ignoreCase = true) || str == "0") {
+            return false
+        }
+        return null
+    }
+
+    private fun parseSilentFlag(eventProps: Map<String, Any?>): Boolean? {
+        val keys = listOf("silent", "silent_send", "disable_notification")
+        for (k in keys) {
+            val parsed = parseBooleanValue(eventProps[k])
+            if (parsed != null) return parsed
+        }
+        return null
     }
 
     private fun parseImageEmbedFlag(eventProps: Map<String, Any?>): Boolean? {
@@ -150,11 +177,8 @@ object YamlParser {
                 "photos"
             )
         for (k in keys) {
-            val v = eventProps[k] ?: continue
-            if (v is Boolean) return v
-            val str = v.toString().trim()
-            if (str.equals("true", ignoreCase = true)) return true
-            if (str.equals("false", ignoreCase = true)) return false
+            val parsed = parseBooleanValue(eventProps[k])
+            if (parsed != null) return parsed
         }
         return null
     }

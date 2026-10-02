@@ -10,6 +10,7 @@ theme:
 events:
   download:
     progress:
+      silent: true
       title: "⏳ Downloading {title} from {indexer}"
       subtitle: "{instance_name}"
       body: |
@@ -23,6 +24,7 @@ events:
         ▪ <b>Status:</b> {state}
 
     complete:
+      silent: false
       title: "✅ Download Complete: {title}"
       subtitle: "{instance_name}"
       body: |
@@ -31,6 +33,7 @@ events:
         ▪ <b>Total Size:</b> {total_size}
 
     stalled:
+      silent: false
       title: "⚠️ Download Stalled: {title}"
       subtitle: "{instance_name}"
       body: |
@@ -40,6 +43,7 @@ events:
 
   servarr:
     grab:
+      silent: true
       image_embed: true
       title: "⏳ Downloading {title} from {indexer}"
       subtitle: "{instance_name}"
@@ -49,6 +53,7 @@ events:
         ▪ <b>Size:</b> {size}
 
     import:
+      silent: true
       image_embed: false
       title: "{import_icon} {import_action}: {title}"
       subtitle: "{instance_name} • {import_type}"
@@ -59,6 +64,7 @@ events:
         <i>{overview}</i>
 
     manual_interaction:
+      silent: false
       image_embed: false
       title: "✋ Manual Import Required: {title}"
       subtitle: "{instance_name} • Manual Intervention"
@@ -73,6 +79,7 @@ events:
           style: "PRIMARY"
 
     health:
+      silent: false
       title: "{health_icon} {health_status}: {instance_name}"
       subtitle: "{instance_name} • {health_type}"
       body: |
@@ -81,6 +88,7 @@ events:
 
   media_server:
     available:
+      silent: false
       image_embed: true
       title: "🍿 {title} now available on {media_server_name}"
       body: |
@@ -96,6 +104,7 @@ events:
 
   seerr:
     request:
+      silent: false
       image_embed: true
       title: "{request_icon} {request_action}: {subject}"
       subtitle: "{instance_name} • {request_status}"
@@ -110,6 +119,7 @@ events:
           style: "PRIMARY"
 
     issue:
+      silent: false
       image_embed: false
       title: "{request_icon} {request_action}: {subject}"
       subtitle: "{instance_name} • {request_status}"

@@ -124,6 +124,24 @@ class DomainModelTest {
         assertEquals(NotificationLevel.SUCCESS, card.level)
         assertEquals(2, card.fields.size)
         assertEquals("Open WebUI", card.actions.first().label)
+        assertEquals(false, card.silent)
+    }
+
+    @Test
+    fun `should verify NotificationCard silent property and equality`() {
+        val cardDefault = NotificationCard(title = "Test")
+        assertEquals(false, cardDefault.silent)
+
+        val cardSilent = NotificationCard(title = "Test", silent = true)
+        val cardAudible = NotificationCard(title = "Test", silent = false)
+        val cardSilentClone = NotificationCard(title = "Test", silent = true)
+
+        assertEquals(true, cardSilent.silent)
+        assertEquals(false, cardAudible.silent)
+        assertEquals(cardSilent, cardSilentClone)
+        assertEquals(cardSilent.hashCode(), cardSilentClone.hashCode())
+        assertTrue(cardSilent != cardAudible)
+        assertTrue(cardSilent.hashCode() != cardAudible.hashCode())
     }
 
     @Test
@@ -448,6 +466,10 @@ class DomainModelTest {
         assertEquals("Sub", eventTemplate.subtitle)
         assertEquals("Body", eventTemplate.body)
         assertEquals(false, eventTemplate.imageEmbed)
+        assertNull(eventTemplate.silent)
+
+        val silentTemplate = EventTemplate(title = "Silent", silent = true)
+        assertEquals(true, silentTemplate.silent)
 
         val theme = ThemeConfig(maxOverviewLength = 300, progressBarLength = 15, progressBarStyle = "blocks")
         assertEquals(300, theme.maxOverviewLength)

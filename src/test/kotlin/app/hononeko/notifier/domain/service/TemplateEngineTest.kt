@@ -270,4 +270,101 @@ class TemplateEngineTest {
         assertEquals("Request", engine.getEventTemplate("issue")?.title) // fallback to request
         assertEquals(220, engine.theme.maxOverviewLength)
     }
+
+    @Test
+    fun `renderCard and resolveCard resolve silent flag from template or fallback to defaults`() {
+        val yaml =
+            """
+            events:
+              grab:
+                title: "Grab"
+                silent: false
+              import:
+                title: "Import"
+                silent: true
+              health:
+                title: "Health"
+            """.trimIndent()
+
+        val engine = TemplateEngine(YamlParser.parseTemplateConfig(yaml))
+
+        // grab has silent: false, overriding default silent: true
+        val grabCard =
+            engine.renderCard(
+                eventName = "grab",
+                defaults =
+                    DefaultCardSpec(
+                        title = "Default Grab",
+                        subtitle = null,
+                        level = NotificationLevel.PROGRESS,
+                        body = null,
+                        silent = true
+                    ),
+                context = emptyMap()
+            )
+        assertEquals(false, grabCard.silent)
+
+        // import has silent: true, overriding default silent: false
+        val importCard =
+            engine.renderCard(
+                eventName = "import",
+                defaults =
+                    DefaultCardSpec(
+                        title = "Default Import",
+                        subtitle = null,
+                        level = NotificationLevel.SUCCESS,
+                        body = null,
+                        silent = false
+                    ),
+                context = emptyMap()
+            )
+        assertEquals(true, importCard.silent)
+
+        // health has no silent specified, inherits default silent: false
+        val healthCard =
+            engine.renderCard(
+                eventName = "health",
+                defaults =
+                    DefaultCardSpec(
+                        title = "Default Health",
+                        subtitle = null,
+                        level = NotificationLevel.WARNING,
+                        body = null,
+                        silent = false
+                    ),
+                context = emptyMap()
+            )
+        assertEquals(false, healthCard.silent)
+
+        // resolveCard directly
+        val resolvedGrab =
+            engine.resolveCard(
+                eventName = "grab",
+                defaults =
+                    DefaultCardSpec(
+                        title = "Grab",
+                        subtitle = null,
+                        level = NotificationLevel.PROGRESS,
+                        body = null,
+                        silent = true
+                    ),
+                context = emptyMap()
+            )
+        assertEquals(false, resolvedGrab.silent)
+
+        val resolvedHealth =
+            engine.resolveCard(
+                eventName = "health",
+                defaults =
+                    DefaultCardSpec(
+                        title = "Health",
+                        subtitle = null,
+                        level = NotificationLevel.WARNING,
+                        body = null,
+                        silent = false
+                    ),
+                context = emptyMap()
+            )
+        assertEquals(false, resolvedHealth.silent)
+    }
 }
