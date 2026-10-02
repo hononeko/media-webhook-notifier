@@ -183,7 +183,8 @@ object CardFormatterService {
                         title = "⏳ Downloading: $titleText",
                         subtitle = payload.instanceName ?: payload.source.displayName,
                         artworkUrl = payload.posterUrl,
-                        actions = emptyList()
+                        actions = emptyList(),
+                        silent = true
                     ),
                 context = context
             )
@@ -196,7 +197,8 @@ object CardFormatterService {
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
                 actions = resolved.actions,
-                eventType = "grab"
+                eventType = "grab",
+                silent = resolved.silent
             )
         }
 
@@ -214,7 +216,8 @@ object CardFormatterService {
             fields = fields,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
-            eventType = "grab"
+            eventType = "grab",
+            silent = resolved.silent
         )
     }
 
@@ -438,7 +441,8 @@ object CardFormatterService {
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
                 actions = resolved.actions,
-                eventType = "download_complete"
+                eventType = "download_complete",
+                silent = resolved.silent
             )
         }
 
@@ -459,7 +463,8 @@ object CardFormatterService {
             fields = fields,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
-            eventType = "download_complete"
+            eventType = "download_complete",
+            silent = resolved.silent
         )
     }
 
@@ -517,7 +522,8 @@ object CardFormatterService {
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
                 actions = resolved.actions,
-                eventType = "download_stalled"
+                eventType = "download_stalled",
+                silent = resolved.silent
             )
         }
 
@@ -539,7 +545,8 @@ object CardFormatterService {
             fields = fields,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
-            eventType = "download_stalled"
+            eventType = "download_stalled",
+            silent = resolved.silent
         )
     }
 
@@ -603,7 +610,8 @@ object CardFormatterService {
                         title = defaultTitle,
                         subtitle = defaultSubtitle,
                         artworkUrl = payload.posterUrl,
-                        actions = emptyList()
+                        actions = emptyList(),
+                        silent = true
                     ),
                 context = context
             )
@@ -616,7 +624,8 @@ object CardFormatterService {
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
                 actions = resolved.actions,
-                eventType = "import"
+                eventType = "import",
+                silent = resolved.silent
             )
         }
 
@@ -628,7 +637,8 @@ object CardFormatterService {
             mediaSpecs = mediaSpecs,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
-            eventType = "import"
+            eventType = "import",
+            silent = resolved.silent
         )
     }
 
@@ -747,7 +757,8 @@ object CardFormatterService {
                 artworkUrl = resolved.artworkUrl,
                 artworkBytes = finalArtworkBytes,
                 actions = resolved.actions,
-                eventType = "media_available"
+                eventType = "media_available",
+                silent = resolved.silent
             )
         }
 
@@ -760,7 +771,8 @@ object CardFormatterService {
             artworkUrl = resolved.artworkUrl,
             artworkBytes = finalArtworkBytes,
             actions = resolved.actions,
-            eventType = "media_available"
+            eventType = "media_available",
+            silent = resolved.silent
         )
     }
 
@@ -1035,7 +1047,8 @@ object CardFormatterService {
                 level = meta.level,
                 customBody = resolved.customBody,
                 actions = resolved.actions,
-                eventType = "health"
+                eventType = "health",
+                silent = resolved.silent
             )
         }
 
@@ -1051,7 +1064,8 @@ object CardFormatterService {
             level = meta.level,
             fields = fields,
             actions = resolved.actions,
-            eventType = "health"
+            eventType = "health",
+            silent = resolved.silent
         )
     }
 
@@ -1109,7 +1123,8 @@ object CardFormatterService {
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
                 actions = resolved.actions,
-                eventType = "manual_interaction"
+                eventType = "manual_interaction",
+                silent = resolved.silent
             )
         }
 
@@ -1140,7 +1155,8 @@ object CardFormatterService {
             fields = fields,
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
-            eventType = "manual_interaction"
+            eventType = "manual_interaction",
+            silent = resolved.silent
         )
     }
 
@@ -1178,7 +1194,8 @@ object CardFormatterService {
                 customBody = resolved.customBody,
                 artworkUrl = resolved.artworkUrl,
                 actions = resolved.actions,
-                eventType = eventName
+                eventType = eventName,
+                silent = resolved.silent
             )
         }
 
@@ -1189,7 +1206,8 @@ object CardFormatterService {
             fields = buildSeerrCardFields(payload, mediaLabel),
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
-            eventType = eventName
+            eventType = eventName,
+            silent = resolved.silent
         )
     }
 }

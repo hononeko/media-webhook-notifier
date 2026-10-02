@@ -125,6 +125,8 @@ class TelegramPublisherAdapter(
         val text: String,
         @SerialName("parse_mode")
         val parseMode: String = "HTML",
+        @SerialName("disable_notification")
+        val disableNotification: Boolean? = null,
         @SerialName("reply_markup")
         val replyMarkup: InlineKeyboardMarkup? = null
     )
@@ -139,6 +141,8 @@ class TelegramPublisherAdapter(
         val caption: String? = null,
         @SerialName("parse_mode")
         val parseMode: String = "HTML",
+        @SerialName("disable_notification")
+        val disableNotification: Boolean? = null,
         @SerialName("reply_markup")
         val replyMarkup: InlineKeyboardMarkup? = null
     )
@@ -196,7 +200,7 @@ class TelegramPublisherAdapter(
             if (config.sendPhotos) {
                 val caption = truncateToLimit(textContent, 1024)
                 if (card.artworkBytes != null && card.artworkBytes.isNotEmpty()) {
-                    val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup)
+                    val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup, card.silent)
                     if (photoResult is Either.Right) {
                         val photoHandle = photoResult.value.copy(isPhoto = true)
                         photoMessageRegistry[photoHandle.messageReferenceId] = true
@@ -206,7 +210,7 @@ class TelegramPublisherAdapter(
                 } else if (!card.artworkUrl.isNullOrBlank() &&
                     (card.artworkUrl.startsWith("http://") || card.artworkUrl.startsWith("https://"))
                 ) {
-                    val photoResult = sendPhoto(card.artworkUrl, caption, markup)
+                    val photoResult = sendPhoto(card.artworkUrl, caption, markup, card.silent)
                     if (photoResult is Either.Right) {
                         val photoHandle = photoResult.value.copy(isPhoto = true)
                         photoMessageRegistry[photoHandle.messageReferenceId] = true
@@ -216,7 +220,7 @@ class TelegramPublisherAdapter(
                 }
             }
 
-            val textResult = sendMessage(textContent, markup)
+            val textResult = sendMessage(textContent, markup, card.silent)
             if (textResult is Either.Right) {
                 val textHandle = textResult.value.copy(isPhoto = false)
                 photoMessageRegistry[textHandle.messageReferenceId] = false
@@ -293,7 +297,8 @@ class TelegramPublisherAdapter(
     private suspend fun sendPhotoBytes(
         photoBytes: ByteArray,
         caption: String,
-        markup: InlineKeyboardMarkup?
+        markup: InlineKeyboardMarkup?,
+        silent: Boolean = false
     ): Either<DomainError.NotificationError, NotificationHandle> =
         try {
             val response =
@@ -305,6 +310,9 @@ class TelegramPublisherAdapter(
                             config.topicId?.let { append("message_thread_id", it.toString()) }
                             append("caption", caption)
                             append("parse_mode", "HTML")
+                            if (silent) {
+                                append("disable_notification", "true")
+                            }
                             markup?.let {
                                 append("reply_markup", jsonConfig.encodeToString(InlineKeyboardMarkup.serializer(), it))
                             }
@@ -326,7 +334,8 @@ class TelegramPublisherAdapter(
     private suspend fun sendPhoto(
         photoUrl: String,
         caption: String,
-        markup: InlineKeyboardMarkup?
+        markup: InlineKeyboardMarkup?,
+        silent: Boolean = false
     ): Either<DomainError.NotificationError, NotificationHandle> {
         val request =
             SendPhotoRequest(
@@ -334,6 +343,7 @@ class TelegramPublisherAdapter(
                 messageThreadId = config.topicId,
                 photo = photoUrl,
                 caption = caption,
+                disableNotification = if (silent) true else null,
                 replyMarkup = markup
             )
 
@@ -352,13 +362,15 @@ class TelegramPublisherAdapter(
 
     private suspend fun sendMessage(
         text: String,
-        markup: InlineKeyboardMarkup?
+        markup: InlineKeyboardMarkup?,
+        silent: Boolean = false
     ): Either<DomainError.NotificationError, NotificationHandle> {
         val request =
             SendMessageRequest(
                 chatId = config.chatId,
                 messageThreadId = config.topicId,
                 text = truncateToLimit(text, 4096),
+                disableNotification = if (silent) true else null,
                 replyMarkup = markup
             )
 

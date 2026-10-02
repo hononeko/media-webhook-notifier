@@ -54,6 +54,7 @@ theme:
 #
 # Optional event fields:
 # - `image_embed: true|false` (Control photo attachment per event type)
+# - `silent: true|false` (Send without sound/vibration; aliases: `silent_send`, `disable_notification`)
 # - `artwork_url: "{custom_url}"` (Custom artwork image URL)
 # - `actions:` (Custom inline button links)
 events:
@@ -86,6 +87,7 @@ events:
 
   servarr:
     grab:
+      silent: true
       image_embed: true
       title: "⏳ Queueing Download: {title}"
       subtitle: "{instance_name}"
@@ -106,6 +108,7 @@ events:
         <i>{overview}</i>
 
     manual_interaction:
+      silent: false
       image_embed: false
       title: "✋ Manual Import Required: {title}"
       subtitle: "{instance_name} • Manual Intervention"
@@ -261,6 +264,33 @@ body: |
 ### 4.2 Word-Boundary Overview Truncation
 The `{overview}` tag automatically trims long descriptions to `theme.max_overview_length` (default 220 characters) on space/word boundaries, adding `...` without cutting words in half.
 
+### 4.3 Silent Delivery & Audible Alerts (`silent`)
+Control whether notifications are sent silently (without alert tones or vibration on clients) per event type using `silent: true|false` (or aliases `silent_send`, `disable_notification`).
+
+**Built-in Defaults:**
+- `download.progress`: `silent: true`
+- `servarr.grab`: `silent: true`
+- `servarr.import`: `silent: true`
+- `servarr.manual_interaction`: `silent: false` (Audible)
+- `servarr.health`: `silent: false` (Audible)
+- `download.complete`: `silent: false` (Audible)
+- `download.stalled`: `silent: false` (Audible)
+- `media_server.available`: `silent: false` (Audible)
+- `seerr.request`: `silent: false` (Audible)
+- `seerr.issue`: `silent: false` (Audible)
+
+You can override any event's delivery mode in your `templates.yaml`:
+```yaml
+events:
+  servarr:
+    # Make imports audible instead of silent:
+    import:
+      silent: false
+    # Keep health issues urgent and audible:
+    health:
+      silent: false
+```
+
 ---
 
 ## 5. Stateless Sandbox Preview Endpoint
@@ -296,7 +326,8 @@ curl -X POST http://localhost:8080/api/v1/templates/preview \
     "subtitle": "Sonarr-4K",
     "level": "PROGRESS",
     "custom_body": "▪ <b>Quality:</b> WEBDL-1080p\n▪ <b>Size:</b> 2.00 GB",
-    "artwork_url": "https://image.tmdb.org/t/p/w500/sample.jpg"
+    "artwork_url": "https://image.tmdb.org/t/p/w500/sample.jpg",
+    "silent": true
   },
   "telegram_html": "<b>🎯 Grabbing: Breaking Bad - S01E01 - Pilot</b>\n<i>Sonarr-4K</i>\n\n▪ <b>Quality:</b> WEBDL-1080p\n▪ <b>Size:</b> 2.00 GB",
   "tags_available": ["title", "series_title", "season", "episode_range", "quality", "size", "indexer", "webui_url", "poster_url", "instance_name", "source_name", "download_id"]

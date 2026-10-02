@@ -13,6 +13,7 @@ import app.hononeko.notifier.domain.model.ProgressUpdate
 import arrow.core.Either
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
@@ -799,5 +800,119 @@ class TelegramPublisherAdapterTest {
                     )
                 )
             assertTrue(updateResult.isRight())
+        }
+
+    @Test
+    fun `should include disable_notification in sendMessage when card is silent and omit when not silent`() =
+        runTest {
+            var bodyContentCaptured: String? = null
+            val mockEngine =
+                MockEngine { request ->
+                    val bodyContent = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+                    bodyContentCaptured = bodyContent?.bytes()?.decodeToString() ?: ""
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":1234}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "-100123", sendPhotos = false)
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            // Silent card
+            val silentCard = NotificationCard(title = "Silent Alert", silent = true)
+            val silentResult = adapter.sendCard(silentCard)
+            assertTrue(silentResult.isRight())
+            assertTrue(bodyContentCaptured?.contains(""""disable_notification":true""") == true)
+
+            // Audible card
+            val audibleCard = NotificationCard(title = "Audible Alert", silent = false)
+            val audibleResult = adapter.sendCard(audibleCard)
+            assertTrue(audibleResult.isRight())
+            assertTrue(bodyContentCaptured.contains("disable_notification") == false)
+        }
+
+    @Test
+    fun `should include disable_notification in sendPhoto when card is silent and omit when not silent`() =
+        runTest {
+            var bodyContentCaptured: String? = null
+            val mockEngine =
+                MockEngine { request ->
+                    val bodyContent = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+                    bodyContentCaptured = bodyContent?.bytes()?.decodeToString() ?: ""
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":5678}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "-100123", sendPhotos = true)
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            // Silent photo card
+            val silentPhotoCard =
+                NotificationCard(
+                    title = "Silent Photo",
+                    artworkUrl = "https://example.com/poster.jpg",
+                    silent = true
+                )
+            val silentResult = adapter.sendCard(silentPhotoCard)
+            assertTrue(silentResult.isRight())
+            assertTrue(bodyContentCaptured?.contains(""""disable_notification":true""") == true)
+
+            // Audible photo card
+            val audiblePhotoCard =
+                NotificationCard(
+                    title = "Audible Photo",
+                    artworkUrl = "https://example.com/poster.jpg",
+                    silent = false
+                )
+            val audibleResult = adapter.sendCard(audiblePhotoCard)
+            assertTrue(audibleResult.isRight())
+            assertTrue(bodyContentCaptured.contains("disable_notification") == false)
+        }
+
+    @Test
+    fun `should include disable_notification in multipart photo when card is silent and omit when not silent`() =
+        runTest {
+            var bodyContentCaptured: String? = null
+            val mockEngine =
+                MockEngine { request ->
+                    val bytes = request.body.toByteArray()
+                    bodyContentCaptured = bytes.decodeToString()
+                    respond(
+                        content = """{"ok":true,"result":{"message_id":9999}}""",
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json")
+                    )
+                }
+
+            val config = NotificationConfig(botToken = "12345:TOKEN", chatId = "-100123", sendPhotos = true)
+            val adapter = TelegramPublisherAdapter(config, mockEngine)
+
+            // Silent binary card
+            val silentCard =
+                NotificationCard(
+                    title = "Silent Binary",
+                    artworkBytes = byteArrayOf(1, 2, 3),
+                    silent = true
+                )
+            val silentResult = adapter.sendCard(silentCard)
+            assertTrue(silentResult.isRight())
+            assertTrue(bodyContentCaptured?.contains("""name="disable_notification"""") == true)
+            assertTrue(bodyContentCaptured.contains("true"))
+
+            // Audible binary card
+            val audibleCard =
+                NotificationCard(
+                    title = "Audible Binary",
+                    artworkBytes = byteArrayOf(1, 2, 3),
+                    silent = false
+                )
+            val audibleResult = adapter.sendCard(audibleCard)
+            assertTrue(audibleResult.isRight())
+            assertTrue(bodyContentCaptured.contains("""name="disable_notification"""") == false)
         }
 }

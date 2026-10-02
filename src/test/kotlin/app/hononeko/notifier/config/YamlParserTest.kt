@@ -200,4 +200,47 @@ class YamlParserTest {
         assertEquals(true, stringBoolConfig.events["grab"]?.imageEmbed)
         assertEquals(false, stringBoolConfig.events["import"]?.imageEmbed)
     }
+
+    @Test
+    fun `parse event template silent flags and aliases`() {
+        val yaml =
+            """
+            events:
+              servarr:
+                grab:
+                  title: "Grab"
+                  silent: true
+                import:
+                  title: "Import"
+                  silent_send: false
+              download:
+                complete:
+                  title: "Complete"
+                  disable_notification: true
+                stalled:
+                  title: "Stalled"
+            """.trimIndent()
+
+        val config = YamlParser.parseTemplateConfig(yaml)
+        assertEquals(true, config.events["grab"]?.silent)
+        assertEquals(false, config.events["import"]?.silent)
+        assertEquals(true, config.events["complete"]?.silent)
+        assertNull(config.events["stalled"]?.silent)
+
+        val stringBoolYaml =
+            """
+            events:
+              servarr:
+                grab:
+                  silent: "true"
+                import:
+                  silent_send: "false"
+                health:
+                  disable_notification: "yes"
+            """.trimIndent()
+        val stringBoolConfig = YamlParser.parseTemplateConfig(stringBoolYaml)
+        assertEquals(true, stringBoolConfig.events["grab"]?.silent)
+        assertEquals(false, stringBoolConfig.events["import"]?.silent)
+        assertEquals(true, stringBoolConfig.events["health"]?.silent)
+    }
 }

@@ -1392,4 +1392,95 @@ class CardFormatterServiceTest {
         assertNotNull(stalledCard.customBody)
         assertTrue(stalledCard.customBody.contains("Stalled at: 953.7 MB"))
     }
+
+    @Test
+    fun `should set silent property according to event defaults and template overrides`() {
+        val grabPayload =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "hash123",
+                title = "Severance - S02E01",
+                seriesOrMovieTitle = "Severance",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1),
+                quality = "2160p",
+                releaseGroup = "NTb",
+                sizeBytes = 1000L
+            )
+        val progress =
+            TorrentProgress(
+                hash = "hash123",
+                name = "Severance",
+                progressPercent = 100.0,
+                progressRatio = 1.0,
+                downloadSpeedBytesPerSec = 0,
+                uploadSpeedBytesPerSec = 0,
+                etaSeconds = 0,
+                totalSizeBytes = 1000L,
+                downloadedBytes = 1000L,
+                state = TorrentState.COMPLETED
+            )
+
+        val grabCard = CardFormatterService.buildGrabInitialCard(grabPayload, null)
+        assertTrue(grabCard.silent)
+
+        val completionCard = CardFormatterService.buildCompletionCard(grabPayload, progress, null)
+        kotlin.test.assertFalse(completionCard.silent)
+
+        val stalledCard = CardFormatterService.buildStalledCard(grabPayload, progress, null)
+        kotlin.test.assertFalse(stalledCard.silent)
+
+        val importPayload =
+            MediaPayload.ArrDownload(
+                source = AppSource.SONARR,
+                title = "Severance - S02E01",
+                seriesOrMovieTitle = "Severance",
+                seasonNumber = 2,
+                episodeNumbers = listOf(1),
+                quality = "2160p",
+                sizeBytes = 1000L
+            )
+        val importCard = CardFormatterService.buildImportCard(importPayload)
+        assertTrue(importCard.silent)
+
+        val manualPayload =
+            MediaPayload.ServarrManualInteraction(
+                source = AppSource.SONARR,
+                title = "Severance - S02E01",
+                seriesOrMovieTitle = "Severance",
+                releaseTitle = "Severance.S02E01.2160p",
+                quality = "2160p",
+                sizeBytes = 1000L,
+                reason = "Unknown error"
+            )
+        val manualCard = CardFormatterService.buildManualInteractionCard(manualPayload)
+        kotlin.test.assertFalse(manualCard.silent)
+
+        val healthPayload =
+            MediaPayload.ServarrHealth(
+                source = AppSource.SONARR,
+                eventType = app.hononeko.notifier.domain.model.EventType.HEALTH_ISSUE,
+                level = "warning",
+                message = "Disk space low"
+            )
+        val healthCard = CardFormatterService.buildHealthCard(healthPayload)
+        kotlin.test.assertFalse(healthCard.silent)
+
+        // With template override: grab is audible, import is audible
+        val overrideEngine =
+            TemplateEngine(
+                TemplateConfig(
+                    events =
+                        mapOf(
+                            "grab" to EventTemplate(silent = false),
+                            "import" to EventTemplate(silent = false)
+                        )
+                )
+            )
+        val audibleGrabCard = CardFormatterService.buildGrabInitialCard(grabPayload, null, overrideEngine)
+        kotlin.test.assertFalse(audibleGrabCard.silent)
+
+        val audibleImportCard = CardFormatterService.buildImportCard(importPayload, engine = overrideEngine)
+        kotlin.test.assertFalse(audibleImportCard.silent)
+    }
 }

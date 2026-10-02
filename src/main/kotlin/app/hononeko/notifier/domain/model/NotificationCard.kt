@@ -11,7 +11,8 @@ data class NotificationCard(
     val artworkUrl: String? = null,
     val artworkBytes: ByteArray? = null,
     val actions: List<ActionLink> = emptyList(),
-    val eventType: String? = null
+    val eventType: String? = null,
+    val silent: Boolean = false
 ) {
     @Suppress("CyclomaticComplexMethod")
     override fun equals(other: Any?): Boolean {
@@ -33,6 +34,7 @@ data class NotificationCard(
         }
         if (actions != other.actions) return false
         if (eventType != other.eventType) return false
+        if (silent != other.silent) return false
         return true
     }
 
@@ -48,6 +50,7 @@ data class NotificationCard(
         result = 31 * result + (artworkBytes?.contentHashCode() ?: 0)
         result = 31 * result + actions.hashCode()
         result = 31 * result + (eventType?.hashCode() ?: 0)
+        result = 31 * result + silent.hashCode()
         return result
     }
 }
