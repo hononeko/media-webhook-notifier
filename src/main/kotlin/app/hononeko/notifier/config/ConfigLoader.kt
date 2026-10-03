@@ -12,6 +12,7 @@ object ConfigLoader {
             server = loadServerConfig(reader),
             mediaServer = loadMediaServerConfig(reader),
             qbittorrent = loadQBittorrentConfig(reader),
+            transmission = loadTransmissionConfig(reader),
             notifications = loadNotificationsConfig(reader),
             state = loadStateConfig(reader),
             templates = loadTemplatesConfig(reader)
@@ -179,6 +180,13 @@ object ConfigLoader {
                     "QBITTORRENT_TAG_PREFIX",
                     "qbittorrent.tagPrefix"
                 ) ?: "mwn_"
+        )
+
+    private fun loadTransmissionConfig(reader: EnvReader): TransmissionConfig =
+        TransmissionConfig(
+            url = reader.get("TRANSMISSION_URL", "transmission.url") ?: "http://localhost:9091",
+            username = reader.get("TRANSMISSION_USERNAME", "transmission.username") ?: "",
+            password = reader.getSecret("TRANSMISSION_PASSWORD", "transmission.password") ?: ""
         )
 
     private fun loadStateConfig(reader: EnvReader): StateConfig {
