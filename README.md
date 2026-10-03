@@ -142,6 +142,12 @@ Persistent state storage across restarts and rollouts, enabling multi-instance t
 
 * **Webhooks:** `POST /api/v1/webhook/{provider}` (Header, Query, or Path token auth)
 * **Template Sandbox:** `POST /api/v1/templates/preview` (when `ENABLE_PREVIEW=true`)
+* **Dead Letter Queue (admin):** inspect and replay payloads that failed processing. These endpoints require `SERVER_AUTH_TOKEN` (header or query token) and answer `403` when no token is configured:
+  * `GET /api/v1/dlq?limit=50&offset=0&status=pending|resolved` lists entries newest first (id, timestamp, provider, error, attempt count, status, payload preview)
+  * `GET /api/v1/dlq/{id}` returns the full payload JSON and diagnostic stack trace
+  * `POST /api/v1/dlq/{id}/replay` re-queues the payload on the event rail and marks the entry `resolved` (`409` if already replayed, `503` if the rail is full)
+  * `DELETE /api/v1/dlq` clears the buffer
+  * With the Valkey state store enabled, dead letters persist across restarts under `<STATE_KEY_PREFIX>dlq:snapshot`. Instances that share a key prefix also share one snapshot, so give each instance its own prefix.
 * **Kubernetes Probes:** `GET /livez`, `GET /readyz`, `GET /startupz`, `GET /health`
 * **Telemetry & Telemetry Metrics:** `GET /metrics` (JVM/native memory, uptime, active trackers, event queue state)
 * **Provider JSON Schemas:** `GET /schema/{provider}` (`sonarr`, `radarr`, `servarr`, `plex`, `jellyfin`, `seerr`)

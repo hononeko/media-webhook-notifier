@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.inbound.web
 
+import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterController
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProcessResult
@@ -54,6 +55,12 @@ fun Application.configureWebhookRouting(
                 }
             }
         }
+
+        registerDeadLetterRoutes(
+            controller = DeadLetterController(eventRail),
+            serverConfig = serverConfig,
+            rateLimiter = rateLimiter
+        )
 
         // Dynamic JSON schema retrieval: /schema/{provider}
         route("/schema") {
@@ -193,7 +200,7 @@ private fun Route.registerDynamicWebhookEndpoint(
     }
 }
 
-private suspend inline fun withAuthAndRateLimit(
+internal suspend inline fun withAuthAndRateLimit(
     call: ApplicationCall,
     expectedToken: String?,
     rateLimiter: InboundRateLimiter,

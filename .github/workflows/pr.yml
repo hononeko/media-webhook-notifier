@@ -3,13 +3,17 @@ name: PR Validation
 on:
   pull_request:
     branches: ["master", "main"]
+    # `edited` fires when GitHub retargets a stacked PR after its base merges; jobs skip other edits.
+    types: [opened, synchronize, reopened, edited]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # Title/body-only edits get a throwaway group so they never cancel an in-flight run.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}${{ github.event.action == 'edited' && !github.event.changes.base && format('-edit-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
   validate:
+    if: github.event.action != 'edited' || github.event.changes.base
     uses: ./.github/workflows/validate.yml
     permissions:
       contents: read
@@ -18,7 +22,7 @@ jobs:
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest
-    if: github.base_ref == 'main'
+    if: github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base)
     permissions:
       contents: read
       packages: read

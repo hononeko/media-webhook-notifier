@@ -1,10 +1,17 @@
 package app.hononeko.notifier.domain.model
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+
+@Serializable
 sealed interface MediaPayload {
     val source: AppSource
     val eventType: EventType
     val instanceName: String?
 
+    @Serializable
+    @SerialName("arr_grab")
     data class ArrGrab(
         override val source: AppSource,
         override val eventType: EventType = EventType.GRAB,
@@ -23,6 +30,8 @@ sealed interface MediaPayload {
         override val instanceName: String? = null
     ) : MediaPayload
 
+    @Serializable
+    @SerialName("arr_download")
     data class ArrDownload(
         override val source: AppSource,
         override val eventType: EventType = EventType.DOWNLOAD,
@@ -45,6 +54,8 @@ sealed interface MediaPayload {
         val webUrl: String? = null
     ) : MediaPayload
 
+    @Serializable
+    @SerialName("plex_library_new")
     data class PlexLibraryNew(
         override val source: AppSource = AppSource.PLEX,
         override val eventType: EventType = EventType.MEDIA_AVAILABLE,
@@ -65,6 +76,8 @@ sealed interface MediaPayload {
         val posterUrl: String? = null,
         val parentPosterUrl: String? = null,
         val grandparentPosterUrl: String? = null,
+        // Raw multipart thumbnails are too large to persist; replays fall back to the poster URLs.
+        @Transient
         val artworkBytes: ByteArray? = null,
         val ratingKey: String? = null,
         val ratingKeys: List<String> = if (!ratingKey.isNullOrBlank()) listOf(ratingKey) else emptyList(),
@@ -143,6 +156,8 @@ sealed interface MediaPayload {
         }
     }
 
+    @Serializable
+    @SerialName("jellyfin_item_added")
     data class JellyfinItemAdded(
         override val source: AppSource = AppSource.JELLYFIN,
         override val eventType: EventType = EventType.MEDIA_AVAILABLE,
@@ -164,6 +179,8 @@ sealed interface MediaPayload {
         override val instanceName: String? = null
     ) : MediaPayload
 
+    @Serializable
+    @SerialName("servarr_health")
     data class ServarrHealth(
         override val source: AppSource,
         override val eventType: EventType = EventType.HEALTH_ISSUE,
@@ -174,6 +191,8 @@ sealed interface MediaPayload {
         override val instanceName: String? = null
     ) : MediaPayload
 
+    @Serializable
+    @SerialName("servarr_manual_interaction")
     data class ServarrManualInteraction(
         override val source: AppSource,
         override val eventType: EventType = EventType.MANUAL_INTERACTION,
@@ -194,6 +213,8 @@ sealed interface MediaPayload {
         override val instanceName: String? = null
     ) : MediaPayload
 
+    @Serializable
+    @SerialName("seerr_event")
     data class SeerrEvent(
         override val source: AppSource = AppSource.SEERR,
         override val eventType: EventType,
