@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.inbound.web
 
+import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
 import arrow.core.Either
@@ -26,9 +27,15 @@ class EventRail(
         deadLetterCapacity = 100
     )
 
+    /** A queued payload plus how many times it has been attempted (replays of dead letters increment it). */
+    private data class RailEvent(
+        val payload: MediaPayload,
+        val attempt: Int
+    )
+
     private val logger = LoggerFactory.getLogger(EventRail::class.java)
-    private val standardChannel = Channel<MediaPayload>(standardCapacity)
-    private val urgentChannel = Channel<MediaPayload>(urgentCapacity)
+    private val standardChannel = Channel<RailEvent>(standardCapacity)
+    private val urgentChannel = Channel<RailEvent>(urgentCapacity)
     private val consumerJobs = CopyOnWriteArrayList<Job>()
 
     val deadLetterBuffer = DeadLetterRingBuffer(capacity = deadLetterCapacity)
@@ -46,9 +53,8 @@ class EventRail(
         payload is MediaPayload.ServarrHealth || payload is MediaPayload.ServarrManualInteraction
 
     fun publish(payload: MediaPayload): Boolean {
-        val targetChannel = if (isUrgent(payload)) urgentChannel else standardChannel
-        val result = targetChannel.trySend(payload)
-        if (result.isFailure) {
+        val published = enqueue(RailEvent(payload, attempt = 1))
+        if (!published) {
             val queueType = if (isUrgent(payload)) "urgent" else "standard"
             logger.warn(
                 "Event rail {} buffer full or closed, dropped event: {} ({})",
@@ -57,9 +63,37 @@ class EventRail(
                 payload.source
             )
             deadLetterBuffer.record(payload, "Buffer full or closed in $queueType channel")
-            return false
         }
-        return true
+        return published
+    }
+
+    /**
+     * Re-injects a pending dead letter and marks it resolved. A rail that is full or closed leaves the entry
+     * pending instead of recording a duplicate dead letter.
+     */
+    fun replayDeadLetter(id: String): DeadLetterReplayResult {
+        val result =
+            deadLetterBuffer.replay(id) { entry ->
+                enqueue(RailEvent(entry.payload, attempt = entry.attemptCount + 1))
+            }
+        when (result) {
+            is DeadLetterReplayResult.Replayed ->
+                logger.info(
+                    "Replayed dead letter {} ({} {}, attempt {})",
+                    id,
+                    result.entry.payload.source,
+                    result.entry.payload.eventType,
+                    result.entry.attemptCount + 1
+                )
+            is DeadLetterReplayResult.Rejected -> logger.warn("Event rail rejected replay of dead letter {}", id)
+            else -> Unit
+        }
+        return result
+    }
+
+    private fun enqueue(event: RailEvent): Boolean {
+        val targetChannel = if (isUrgent(event.payload)) urgentChannel else standardChannel
+        return targetChannel.trySend(event).isSuccess
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -86,31 +120,32 @@ class EventRail(
         return parentJob
     }
 
-    private fun hasOpenChannels(): Boolean = !urgentChannel.isClosedForReceive || !standardChannel.isClosedForReceive
+    private val hasOpenChannels: Boolean
+        get() = !urgentChannel.isClosedForReceive || !standardChannel.isClosedForReceive
 
     private suspend fun CoroutineScope.runWorker(
         workerId: Int,
         ingestService: IngestWebhookUseCase
     ) {
         logger.debug("EventRail worker #{} started", workerId)
-        while (isActive && hasOpenChannels()) {
-            val payload = receiveNextPayload()
-            if (payload != null) {
-                processPayload(payload, ingestService)
+        while (isActive && hasOpenChannels) {
+            val event = receiveNextEvent()
+            if (event != null) {
+                processEvent(event, ingestService)
             }
         }
         logger.debug("EventRail worker #{} stopped", workerId)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private suspend fun receiveNextPayload(): MediaPayload? {
+    private suspend fun receiveNextEvent(): RailEvent? {
         val hasUrgent = !urgentChannel.isClosedForReceive
         val hasStandard = !standardChannel.isClosedForReceive
         if (!hasUrgent && !hasStandard) {
             return null
         }
         return try {
-            select<MediaPayload?> {
+            select<RailEvent?> {
                 if (hasUrgent) {
                     urgentChannel.onReceiveCatching { it.getOrNull() }
                 }
@@ -124,10 +159,11 @@ class EventRail(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun processPayload(
-        payload: MediaPayload,
+    private suspend fun processEvent(
+        event: RailEvent,
         ingestService: IngestWebhookUseCase
     ) {
+        val payload = event.payload
         try {
             val result = ingestService.execute(payload)
             if (result is Either.Left) {
@@ -137,13 +173,23 @@ class EventRail(
                     payload.source,
                     result.value
                 )
-                deadLetterBuffer.record(payload, result.value.toString())
+                deadLetterBuffer.record(
+                    payload = payload,
+                    errorMessage = result.value.toString(),
+                    attemptCount = event.attempt,
+                    stackTrace = result.value.causeOrNull()?.stackTraceToString()
+                )
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.error("Error processing payload from event rail: ${e.message}", e)
-            deadLetterBuffer.record(payload, e.message ?: "Unexpected exception")
+            deadLetterBuffer.record(
+                payload = payload,
+                errorMessage = e.message ?: "Unexpected exception",
+                attemptCount = event.attempt,
+                stackTrace = e.stackTraceToString()
+            )
         }
     }
 
@@ -156,3 +202,11 @@ class EventRail(
         consumerJobs.forEach { it.join() }
     }
 }
+
+private fun DomainError.causeOrNull(): Throwable? =
+    when (this) {
+        is DomainError.TorrentClientError.ConnectionFailed -> cause
+        is DomainError.NotificationError.DeliveryFailed -> cause
+        is DomainError.NotificationError.ImageFetchFailed -> cause
+        else -> null
+    }

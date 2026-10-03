@@ -196,3 +196,12 @@ Rather than introducing heavy external brokers (Kafka, RabbitMQ, Redis), the app
 1. **Sub-2ms Ingest Response (`202 Accepted`):** Webhook callers receive immediate HTTP responses without waiting for external API latency (Telegram Bot API, qBit WebUI).
 2. **Backpressure & Burst Absorption:** If Telegram returns a `429 RateLimited` response or outbound network I/O lags, the channel safely buffers incoming events without dropping payloads or tying up HTTP server threads.
 3. **Graceful Shutdown Drain:** On `SIGTERM` / `SIGINT`, the inbound channel closes, pending events are drained and dispatched, active trackers terminate safely, and the process exits within 5 seconds.
+
+### 4.3 Dead Letter Queue & Replay
+Payloads the rail cannot process land in a bounded `DeadLetterRingBuffer` (default 100 entries, oldest evicted first):
+* **Rail rejections:** the urgent or standard channel is full or closed when `publish` is called.
+* **Ingest failures:** `IngestWebhookService` returns a `DomainError` (e.g. Telegram unreachable) or throws. The error message is stored with a stack trace from the exception or the domain error's `cause`, capped at 8 KiB.
+
+Each entry has a stable id, an `attemptCount` and a `pending` / `resolved` status. `EventRail.replayDeadLetter(id)` re-queues the stored `MediaPayload` with `attemptCount + 1` and marks the entry `resolved` atomically, so concurrent replays dispatch once. If the rail is full the entry stays `pending`. A replay that fails again is captured as a new entry with the incremented attempt count.
+
+When the Valkey state store is enabled, `DeadLetterPersistence` mirrors the buffer into a single snapshot key (`<STATE_KEY_PREFIX>dlq:snapshot`) from a conflated background writer and restores it on startup, so dead letters survive restarts. Raw Plex multipart thumbnails (`artworkBytes`) are not persisted; replays fall back to poster URLs. The admin HTTP API is described in the README (`/api/v1/dlq`).

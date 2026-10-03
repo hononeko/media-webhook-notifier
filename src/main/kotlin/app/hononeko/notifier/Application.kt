@@ -1,8 +1,13 @@
 package app.hononeko.notifier
 
+import app.hononeko.notifier.adapter.inbound.web.DeadLetterPersistence
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.InboundRateLimiter
 import app.hononeko.notifier.adapter.inbound.web.configureWebhookRouting
+import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterClearDto
+import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterDetailDto
+import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterListDto
+import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterReplayDto
 import app.hononeko.notifier.adapter.inbound.web.controller.EventRailMetricsDto
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthStatusDto
@@ -88,13 +93,15 @@ data class AppDependencies(
     val rateLimiter: InboundRateLimiter,
     val providerRegistry: WebhookProviderRegistry,
     val healthController: HealthController,
-    val stateStore: StateStorePort = InMemoryStateStore()
+    val stateStore: StateStorePort = InMemoryStateStore(),
+    val deadLetterPersistence: DeadLetterPersistence? = null
 ) {
     fun close() {
         logger.info("Closing application dependencies and draining queues...")
         eventRail.close()
         runBlocking {
             seasonDebouncer.flushAll()
+            deadLetterPersistence?.flush()
         }
         downloadTracker.stopAll()
         stateStore.close()
@@ -216,6 +223,10 @@ fun buildDependencies(
         )
 
     val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)
+    val deadLetterPersistence =
+        (stateStore as? ValkeyStateStore)?.let { valkey ->
+            DeadLetterPersistence(buffer = eventRail.deadLetterBuffer, stateStore = valkey).also { it.start(scope) }
+        }
     eventRail.start(scope, ingestWebhookService, workerCount = config.server.eventRailWorkers)
 
     val rateLimiter = InboundRateLimiter(limitPerMinute = config.server.rateLimitPerMinute)
@@ -248,7 +259,8 @@ fun buildDependencies(
         rateLimiter = rateLimiter,
         providerRegistry = providerRegistry,
         healthController = healthController,
-        stateStore = stateStore
+        stateStore = stateStore,
+        deadLetterPersistence = deadLetterPersistence
     )
 }
 
@@ -283,6 +295,10 @@ fun Application.module(dependencies: AppDependencies) {
                         contextual(EventRailMetricsDto::class, EventRailMetricsDto.serializer())
                         contextual(ReconciliationMetricsDto::class, ReconciliationMetricsDto.serializer())
                         contextual(MemoryMetricsDto::class, MemoryMetricsDto.serializer())
+                        contextual(DeadLetterListDto::class, DeadLetterListDto.serializer())
+                        contextual(DeadLetterDetailDto::class, DeadLetterDetailDto.serializer())
+                        contextual(DeadLetterReplayDto::class, DeadLetterReplayDto.serializer())
+                        contextual(DeadLetterClearDto::class, DeadLetterClearDto.serializer())
                         contextual(
                             app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto::class,
                             app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto
