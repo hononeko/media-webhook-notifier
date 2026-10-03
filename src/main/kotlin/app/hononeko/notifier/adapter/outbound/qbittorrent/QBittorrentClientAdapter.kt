@@ -2,10 +2,11 @@ package app.hononeko.notifier.adapter.outbound.qbittorrent
 
 import app.hononeko.notifier.config.QBittorrentConfig
 import app.hononeko.notifier.domain.error.DomainError
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
-import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
-import app.hononeko.notifier.domain.service.TorrentProgressAggregator
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
+import app.hononeko.notifier.domain.model.SwarmStats
+import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
+import app.hononeko.notifier.domain.service.DownloadProgressAggregator
 import arrow.core.Either
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -35,7 +36,7 @@ import java.util.concurrent.atomic.AtomicReference
 class QBittorrentClientAdapter(
     private val config: QBittorrentConfig,
     engine: HttpClientEngine? = null
-) : TorrentClientPort {
+) : DownloadClientPort {
     companion object {
         private val TORRENT_HASH_REGEX = Regex("^[a-zA-Z0-9_-]+(\\|[a-zA-Z0-9_-]+)*$")
 
@@ -73,10 +74,12 @@ class QBittorrentClientAdapter(
             }
         }
 
-    override suspend fun getTorrentProgress(hash: String): Either<DomainError.TorrentClientError, TorrentProgress?> {
-        val normalizedHash = hash.trim().lowercase()
+    override suspend fun getProgress(
+        downloadId: String
+    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> {
+        val normalizedHash = downloadId.trim().lowercase()
         if (!isValidHash(normalizedHash)) {
-            logger.debug("Skipping getTorrentProgress for invalid or blank torrent hash: '{}'", hash)
+            logger.debug("Skipping getProgress for invalid or blank torrent hash: '{}'", downloadId)
             return Either.Right(null)
         }
 
@@ -98,13 +101,13 @@ class QBittorrentClientAdapter(
             }
         } catch (e: IOException) {
             logger.debug("Failed to fetch torrent progress for hash {}: {}", normalizedHash, e.message)
-            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
+            Either.Left(DomainError.DownloadClientError.ConnectionFailed(config.url, e))
         }
     }
 
-    override suspend fun getActiveTorrents(
+    override suspend fun getActiveDownloads(
         filter: String
-    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
         try {
             ensureAuthenticated()
 
@@ -127,7 +130,7 @@ class QBittorrentClientAdapter(
                     .startsWith("2")
             ) {
                 Either.Left(
-                    DomainError.TorrentClientError.InvalidResponse(
+                    DomainError.DownloadClientError.InvalidResponse(
                         "HTTP ${finalResponse.status.value}: ${finalResponse.status.description}"
                     )
                 )
@@ -138,29 +141,34 @@ class QBittorrentClientAdapter(
                         jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
                     } catch (e: SerializationException) {
                         logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
-                        return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
+                        return Either.Left(DomainError.DownloadClientError.InvalidResponse(e.message ?: "Invalid JSON"))
                     }
 
-                Either.Right(torrentList.map { it.toTorrentProgress() })
+                Either.Right(torrentList.map { it.toDownloadItemProgress() })
             }
         } catch (e: IOException) {
             logger.debug("Failed to fetch active torrents: {}", e.message)
-            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
+            Either.Left(DomainError.DownloadClientError.ConnectionFailed(config.url, e))
         }
 
-    override suspend fun addTorrentTags(
-        hash: String,
+    override suspend fun addTags(
+        downloadId: String,
         tags: List<String>
-    ): Either<DomainError.TorrentClientError, Unit> =
-        mutateTorrentTags(endpointPath = "/api/v2/torrents/addTags", hash = hash, tags = tags, action = "add")
+    ): Either<DomainError.DownloadClientError, Unit> =
+        mutateTorrentTags(endpointPath = "/api/v2/torrents/addTags", hash = downloadId, tags = tags, action = "add")
 
-    override suspend fun removeTorrentTags(
-        hash: String,
+    override suspend fun removeTags(
+        downloadId: String,
         tags: List<String>
-    ): Either<DomainError.TorrentClientError, Unit> =
-        mutateTorrentTags(endpointPath = "/api/v2/torrents/removeTags", hash = hash, tags = tags, action = "remove")
+    ): Either<DomainError.DownloadClientError, Unit> =
+        mutateTorrentTags(
+            endpointPath = "/api/v2/torrents/removeTags",
+            hash = downloadId,
+            tags = tags,
+            action = "remove"
+        )
 
-    override suspend fun deleteTags(tags: List<String>): Either<DomainError.TorrentClientError, Unit> =
+    override suspend fun deleteTags(tags: List<String>): Either<DomainError.DownloadClientError, Unit> =
         mutateTorrentTags(endpointPath = "/api/v2/torrents/deleteTags", hash = null, tags = tags, action = "delete")
 
     private suspend fun mutateTorrentTags(
@@ -168,7 +176,7 @@ class QBittorrentClientAdapter(
         hash: String?,
         tags: List<String>,
         action: String
-    ): Either<DomainError.TorrentClientError, Unit> {
+    ): Either<DomainError.DownloadClientError, Unit> {
         val normalizedHash = hash?.trim()?.lowercase() ?: ""
         val tagString =
             tags
@@ -199,7 +207,7 @@ class QBittorrentClientAdapter(
             Either.Right(Unit)
         } catch (e: IOException) {
             logger.debug("Failed to {} tags {}: {}", action, tagString, e.message)
-            Either.Left(DomainError.TorrentClientError.ConnectionFailed(config.url, e))
+            Either.Left(DomainError.DownloadClientError.ConnectionFailed(config.url, e))
         }
     }
 
@@ -228,13 +236,13 @@ class QBittorrentClientAdapter(
     private suspend fun parseTorrentResponse(
         response: HttpResponse,
         hash: String
-    ): Either<DomainError.TorrentClientError, TorrentProgress?> {
+    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> {
         if (!response.status.value
                 .toString()
                 .startsWith("2")
         ) {
             return Either.Left(
-                DomainError.TorrentClientError.InvalidResponse(
+                DomainError.DownloadClientError.InvalidResponse(
                     "HTTP ${response.status.value}: ${response.status.description}"
                 )
             )
@@ -246,7 +254,7 @@ class QBittorrentClientAdapter(
                 jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
             } catch (e: SerializationException) {
                 logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
-                return Either.Left(DomainError.TorrentClientError.InvalidResponse(e.message ?: "Invalid JSON"))
+                return Either.Left(DomainError.DownloadClientError.InvalidResponse(e.message ?: "Invalid JSON"))
             }
 
         if (torrentList.isEmpty()) {
@@ -254,10 +262,10 @@ class QBittorrentClientAdapter(
         }
 
         if (torrentList.size == 1 && !hash.contains("|")) {
-            return Either.Right(torrentList.first().toTorrentProgress())
+            return Either.Right(torrentList.first().toDownloadItemProgress())
         }
 
-        return Either.Right(TorrentProgressAggregator.aggregate(hash, torrentList.map { it.toTorrentProgress() }))
+        return Either.Right(DownloadProgressAggregator.aggregate(hash, torrentList.map { it.toDownloadItemProgress() }))
     }
 
     private suspend fun ensureAuthenticated(force: Boolean = false) {
@@ -342,15 +350,15 @@ private data class QBitTorrentDto(
     val numIncomplete: Int = 0
 )
 
-private fun QBitTorrentDto.toTorrentProgress(): TorrentProgress {
+private fun QBitTorrentDto.toDownloadItemProgress(): DownloadItemProgress {
     val progressPercent = (progress * 100.0).coerceIn(0.0, 100.0)
     val parsedTags =
         tags
             ?.split(",")
             ?.map { it.trim() }
             ?.filter { it.isNotBlank() } ?: emptyList()
-    return TorrentProgress(
-        hash = hash,
+    return DownloadItemProgress(
+        id = hash,
         name = name ?: "Unknown",
         progressPercent = progressPercent,
         progressRatio = progress,
@@ -359,23 +367,26 @@ private fun QBitTorrentDto.toTorrentProgress(): TorrentProgress {
         etaSeconds = eta,
         totalSizeBytes = totalSize,
         downloadedBytes = completed,
-        seedsCount = numSeeds,
-        seedsTotal = numComplete,
-        peersCount = numLeechs,
-        peersTotal = numIncomplete,
+        swarm =
+            SwarmStats(
+                seedsCount = numSeeds,
+                seedsTotal = numComplete,
+                peersCount = numLeechs,
+                peersTotal = numIncomplete
+            ),
         state = mapState(state),
         tags = parsedTags
     )
 }
 
-private fun mapState(state: String): TorrentState =
+private fun mapState(state: String): DownloadState =
     when (state.lowercase()) {
-        "downloading", "forceddl" -> TorrentState.DOWNLOADING
-        "metadl", "forcedmetadl" -> TorrentState.ALLOCATING_METADATA
-        "stalleddl" -> TorrentState.STALLED
-        "uploading", "forcedup", "stalledup", "pausedup", "queuedup", "checkingup" -> TorrentState.COMPLETED
-        "pauseddl" -> TorrentState.PAUSED
-        "queueddl" -> TorrentState.QUEUED
-        "checkingdl", "checkingresumedata" -> TorrentState.CHECKING
-        else -> TorrentState.UNKNOWN
+        "downloading", "forceddl" -> DownloadState.DOWNLOADING
+        "metadl", "forcedmetadl" -> DownloadState.ALLOCATING_METADATA
+        "stalleddl" -> DownloadState.STALLED
+        "uploading", "forcedup", "stalledup", "pausedup", "queuedup", "checkingup" -> DownloadState.COMPLETED
+        "pauseddl" -> DownloadState.PAUSED
+        "queueddl" -> DownloadState.QUEUED
+        "checkingdl", "checkingresumedata" -> DownloadState.CHECKING
+        else -> DownloadState.UNKNOWN
     }

@@ -2,14 +2,14 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.ActiveTrackerSession
+import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationHandle
-import app.hononeko.notifier.domain.model.TorrentProgress
 import app.hononeko.notifier.domain.model.TrackerSnapshot
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
+import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +35,7 @@ data class DownloadTrackerConfig(
 )
 
 class DownloadTrackerEngine(
-    private val torrentClient: TorrentClientPort,
+    private val downloadClient: DownloadClientPort,
     private val notificationPublisher: NotificationPublisherPort,
     private val activeTrackerStore: ActiveTrackerStore,
     private val config: DownloadTrackerConfig = DownloadTrackerConfig(),
@@ -90,7 +90,7 @@ class DownloadTrackerEngine(
                         add("${tagPrefix}chat:${handle.channelOrChatId}")
                     }
                 }
-            torrentClient.addTorrentTags(normalizedHash, tags)
+            downloadClient.addTags(normalizedHash, tags)
 
             lateinit var trackingJob: Job
             trackingJob =
@@ -167,7 +167,7 @@ class DownloadTrackerEngine(
         var missingCount: Int = 0,
         var stalledDurationSeconds: Long = 0L,
         var lastDownloadedBytes: Long = 0L,
-        var lastKnownProgress: TorrentProgress? = null
+        var lastKnownProgress: DownloadItemProgress? = null
     )
 
     @Suppress("TooGenericExceptionCaught")
@@ -224,7 +224,7 @@ class DownloadTrackerEngine(
         handle: NotificationHandle,
         state: TrackingLoopState
     ): Boolean {
-        val progress = fetchTorrentProgress(hash)
+        val progress = fetchProgress(hash)
         if (progress == null) {
             state.missingCount++
             val shouldHalt = handleMissingTorrent(hash, payload, handle, state.lastKnownProgress, state.missingCount)
@@ -246,8 +246,8 @@ class DownloadTrackerEngine(
         return !isTerminal
     }
 
-    private suspend fun fetchTorrentProgress(hash: String): TorrentProgress? =
-        when (val result = torrentClient.getTorrentProgress(hash)) {
+    private suspend fun fetchProgress(hash: String): DownloadItemProgress? =
+        when (val result = downloadClient.getProgress(hash)) {
             is Either.Right -> result.value
             is Either.Left -> {
                 logger.debug("Fetch error for {}: {}", hash, result.value)
@@ -259,7 +259,7 @@ class DownloadTrackerEngine(
         hash: String,
         payload: MediaPayload.ArrGrab,
         handle: NotificationHandle,
-        lastKnownProgress: TorrentProgress?,
+        lastKnownProgress: DownloadItemProgress?,
         missingCount: Int
     ): Boolean {
         if (missingCount < missingGraceAttempts) {
@@ -278,7 +278,7 @@ class DownloadTrackerEngine(
         hash: String,
         payload: MediaPayload.ArrGrab,
         handle: NotificationHandle,
-        progress: TorrentProgress,
+        progress: DownloadItemProgress,
         state: TrackingLoopState
     ): Boolean {
         if (progress.progressPercent >= 100 || progress.state.isComplete) {
@@ -319,7 +319,7 @@ class DownloadTrackerEngine(
         hash: String,
         payload: MediaPayload.ArrGrab,
         handle: NotificationHandle,
-        progress: TorrentProgress
+        progress: DownloadItemProgress
     ) {
         val update = CardFormatterService.buildProgressUpdate(payload, progress, webuiPublicUrl)
         val updateResult = notificationPublisher.updateProgress(handle, update)
@@ -332,7 +332,7 @@ class DownloadTrackerEngine(
         hash: String,
         handle: NotificationHandle
     ) {
-        val currentProgress = torrentClient.getTorrentProgress(hash)
+        val currentProgress = downloadClient.getProgress(hash)
         val currentTags =
             when (currentProgress) {
                 is Either.Right -> currentProgress.value?.tags ?: emptyList()
@@ -353,7 +353,7 @@ class DownloadTrackerEngine(
                 }
             }.toList()
 
-        torrentClient.removeTorrentTags(hash, tagsToRemove)
+        downloadClient.removeTags(hash, tagsToRemove)
 
         val tagsToDelete =
             buildSet {
@@ -364,7 +364,7 @@ class DownloadTrackerEngine(
             }.toList()
 
         if (tagsToDelete.isNotEmpty()) {
-            torrentClient.deleteTags(tagsToDelete)
+            downloadClient.deleteTags(tagsToDelete)
         }
     }
 

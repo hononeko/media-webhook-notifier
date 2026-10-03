@@ -2,12 +2,13 @@ package app.hononeko.notifier.adapter.inbound.web.controller
 
 import app.hononeko.notifier.config.YamlParser
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
+import app.hononeko.notifier.domain.model.SwarmStats
 import app.hononeko.notifier.domain.service.CardFormatterService
 import app.hononeko.notifier.domain.service.TemplateEngine
 import io.ktor.http.HttpStatusCode
@@ -299,7 +300,7 @@ class TemplatePreviewController {
                 renderMockCompleteEvent(multiTrack, engine)
             "download_stalled" -> {
                 val grab = mockGrab()
-                val progress = mockProgress(42.0, TorrentState.STALLED)
+                val progress = mockProgress(42.0, DownloadState.STALLED)
                 val card = CardFormatterService.buildStalledCard(grab, progress, MOCK_QBIT_URL, engine)
                 Triple(card, null, STALLED_TAGS)
             }
@@ -348,7 +349,7 @@ private fun renderMockProgressEvent(
 ): Triple<NotificationCard?, ProgressUpdate?, List<String>> {
     val isMulti = multiTrack || eventType == "download_progress_multi"
     val grab = if (isMulti) mockMultiGrab() else mockGrab()
-    val progress = if (isMulti) mockMultiProgress() else mockProgress(68.5, TorrentState.DOWNLOADING)
+    val progress = if (isMulti) mockMultiProgress() else mockProgress(68.5, DownloadState.DOWNLOADING)
     val update =
         CardFormatterService.buildProgressUpdate(
             grab,
@@ -366,9 +367,9 @@ private fun renderMockCompleteEvent(
     val grab = if (multiTrack) mockMultiGrab() else mockGrab()
     val progress =
         if (multiTrack) {
-            mockMultiProgress().copy(state = TorrentState.COMPLETED)
+            mockMultiProgress().copy(state = DownloadState.COMPLETED)
         } else {
-            mockProgress(100.0, TorrentState.COMPLETED)
+            mockProgress(100.0, DownloadState.COMPLETED)
         }
     val card =
         CardFormatterService.buildCompletionCard(
@@ -397,10 +398,10 @@ private fun mockMultiGrab() =
         instanceName = "Sonarr-TV"
     )
 
-private fun mockMultiProgress(): TorrentProgress {
+private fun mockMultiProgress(): DownloadItemProgress {
     val ep1 =
-        TorrentProgress(
-            hash = "hash_lib_01",
+        DownloadItemProgress(
+            id = "hash_lib_01",
             name = "Love.Is.Blind.UK.S03E01.1080p.WEB.H264-DEFENESTRATE",
             progressPercent = 100.0,
             progressRatio = 1.0,
@@ -409,11 +410,11 @@ private fun mockMultiProgress(): TorrentProgress {
             etaSeconds = 0L,
             totalSizeBytes = 2834677760L,
             downloadedBytes = 2834677760L,
-            state = TorrentState.COMPLETED
+            state = DownloadState.COMPLETED
         )
     val ep2 =
-        TorrentProgress(
-            hash = "hash_lib_02",
+        DownloadItemProgress(
+            id = "hash_lib_02",
             name = "Love.Is.Blind.UK.S03E02.1080p.WEB.H264-DEFENESTRATE",
             progressPercent = 82.5,
             progressRatio = 0.825,
@@ -422,11 +423,11 @@ private fun mockMultiProgress(): TorrentProgress {
             etaSeconds = 4L,
             totalSizeBytes = 2834677760L,
             downloadedBytes = 2338609152L,
-            state = TorrentState.DOWNLOADING
+            state = DownloadState.DOWNLOADING
         )
     val ep3 =
-        TorrentProgress(
-            hash = "hash_lib_03",
+        DownloadItemProgress(
+            id = "hash_lib_03",
             name = "Love.Is.Blind.UK.S03E03.1080p.WEB.H264-DEFENESTRATE",
             progressPercent = 45.0,
             progressRatio = 0.45,
@@ -435,11 +436,11 @@ private fun mockMultiProgress(): TorrentProgress {
             etaSeconds = 22L,
             totalSizeBytes = 2834677760L,
             downloadedBytes = 1275605000L,
-            state = TorrentState.DOWNLOADING
+            state = DownloadState.DOWNLOADING
         )
     val ep4 =
-        TorrentProgress(
-            hash = "hash_lib_04",
+        DownloadItemProgress(
+            id = "hash_lib_04",
             name = "Love.Is.Blind.UK.S03E04.1080p.WEB.H264-DEFENESTRATE",
             progressPercent = 21.0,
             progressRatio = 0.21,
@@ -448,11 +449,11 @@ private fun mockMultiProgress(): TorrentProgress {
             etaSeconds = 75L,
             totalSizeBytes = 2834677760L,
             downloadedBytes = 595282330L,
-            state = TorrentState.DOWNLOADING
+            state = DownloadState.DOWNLOADING
         )
     val ep5 =
-        TorrentProgress(
-            hash = "hash_lib_05",
+        DownloadItemProgress(
+            id = "hash_lib_05",
             name = "Love.Is.Blind.UK.S03E05.1080p.WEB.H264-DEFENESTRATE",
             progressPercent = 0.0,
             progressRatio = 0.0,
@@ -461,11 +462,11 @@ private fun mockMultiProgress(): TorrentProgress {
             etaSeconds = 0L,
             totalSizeBytes = 2834677760L,
             downloadedBytes = 0L,
-            state = TorrentState.QUEUED
+            state = DownloadState.QUEUED
         )
 
-    return TorrentProgress(
-        hash = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
+    return DownloadItemProgress(
+        id = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
         name = MOCK_MULTI_EPISODE_RELEASE_NAME,
         progressPercent = 49.70,
         progressRatio = 0.4970,
@@ -474,11 +475,8 @@ private fun mockMultiProgress(): TorrentProgress {
         etaSeconds = 48L,
         totalSizeBytes = 14173388800L,
         downloadedBytes = 7044174242L,
-        seedsCount = 18,
-        seedsTotal = 45,
-        peersCount = 10,
-        peersTotal = 25,
-        state = TorrentState.DOWNLOADING,
+        swarm = SwarmStats(seedsCount = 18, seedsTotal = 45, peersCount = 10, peersTotal = 25),
+        state = DownloadState.DOWNLOADING,
         items = listOf(ep1, ep2, ep3, ep4, ep5)
     )
 }
@@ -502,9 +500,9 @@ private fun mockGrab() =
 
 private fun mockProgress(
     percent: Double,
-    state: TorrentState
-) = TorrentProgress(
-    hash = "mock-hash-123456",
+    state: DownloadState
+) = DownloadItemProgress(
+    id = "mock-hash-123456",
     name = "Breaking Bad - S01E01 - Pilot",
     progressPercent = percent,
     progressRatio = percent / 100.0,
@@ -513,10 +511,7 @@ private fun mockProgress(
     downloadedBytes = (2147483648L * (percent / 100.0)).toLong(),
     totalSizeBytes = 2147483648L,
     etaSeconds = 45L,
-    seedsCount = 42,
-    seedsTotal = 120,
-    peersCount = 8,
-    peersTotal = 25,
+    swarm = SwarmStats(seedsCount = 42, seedsTotal = 120, peersCount = 8, peersTotal = 25),
     state = state
 )
 

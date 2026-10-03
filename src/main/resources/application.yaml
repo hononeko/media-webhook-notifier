@@ -8,17 +8,23 @@ mediaServer:
   url: ""
   publicUrl: ""
 
-qbittorrent:
-  url: "http://localhost:8080"
-  username: ""
-  password: ""
+downloadClient:
+  type: "qbittorrent"
+  url: ""
   pollIntervalSeconds: 5
   maxPollingMinutes: 30
   stalledTimeoutMinutes: 15
   missingGraceAttempts: 6
   debounceSeconds: 5
   webuiPublicUrl: ""
+  reconciliationEnabled: true
+  reconciliationIntervalMinutes: 5
   tagPrefix: "mwn_"
+
+qbittorrent:
+  url: "http://localhost:8080"
+  username: ""
+  password: ""
 
 transmission:
   url: "http://localhost:9091"

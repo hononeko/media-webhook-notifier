@@ -9,14 +9,14 @@ import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.MediaServerConfig
 import app.hononeko.notifier.config.ServerConfig
 import app.hononeko.notifier.domain.error.DomainError
+import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.model.TorrentProgress
+import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import app.hononeko.notifier.domain.service.AlertUseCases
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
@@ -91,10 +91,9 @@ class EndToEndIntegrationTest {
         ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
     }
 
-    private class MockTorrentClient : TorrentClientPort {
-        override suspend fun getTorrentProgress(
-            hash: String
-        ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+    private class MockTorrentClient : DownloadClientPort {
+        override suspend fun getProgress(hash: String): Either<DomainError.DownloadClientError, DownloadItemProgress?> =
+            Either.Right(null)
     }
 
     private class MockMediaServer : MediaServerPort {
@@ -117,7 +116,7 @@ class EndToEndIntegrationTest {
 
             val downloadTracker =
                 DownloadTrackerEngine(
-                    torrentClient = mockTorrentClient,
+                    downloadClient = mockTorrentClient,
                     notificationPublisher = mockPublisher,
                     activeTrackerStore = InMemoryActiveTrackerStore(),
                     config =
@@ -177,7 +176,7 @@ class EndToEndIntegrationTest {
                 AppDependencies(
                     config = config,
                     scope = testScope,
-                    torrentClient = mockTorrentClient,
+                    downloadClient = mockTorrentClient,
                     notificationPublisher = mockPublisher,
                     mediaServerPort = mockMediaServer,
                     downloadTracker = downloadTracker,

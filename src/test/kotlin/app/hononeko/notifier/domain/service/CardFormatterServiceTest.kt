@@ -1,15 +1,19 @@
 package app.hononeko.notifier.domain.service
 
+import app.hononeko.notifier.config.ConfigLoader
 import app.hononeko.notifier.config.YamlParser
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.EventTemplate
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationLevel
+import app.hononeko.notifier.domain.model.SwarmStats
 import app.hononeko.notifier.domain.model.TemplateConfig
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
+import app.hononeko.notifier.domain.model.UsenetStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -140,8 +144,8 @@ class CardFormatterServiceTest {
             )
 
         val progress =
-            TorrentProgress(
-                hash = "hash123",
+            DownloadItemProgress(
+                id = "hash123",
                 name = "Severance.S02E01",
                 progressPercent = 65.0,
                 progressRatio = 0.65,
@@ -150,11 +154,8 @@ class CardFormatterServiceTest {
                 etaSeconds = 120,
                 totalSizeBytes = 5368709120L,
                 downloadedBytes = 3489660928L,
-                seedsCount = 25,
-                seedsTotal = 50,
-                peersCount = 8,
-                peersTotal = 20,
-                state = TorrentState.DOWNLOADING
+                swarm = SwarmStats(seedsCount = 25, seedsTotal = 50, peersCount = 8, peersTotal = 20),
+                state = DownloadState.DOWNLOADING
             )
 
         val update = CardFormatterService.buildProgressUpdate(payload, progress, "https://qbit.example.com")
@@ -165,6 +166,40 @@ class CardFormatterServiceTest {
         assertEquals("10.0 MB/s", update.speedFormatted)
         assertEquals("2m 0s", update.etaFormatted)
         assertEquals("Downloading", update.stateText)
+    }
+
+    @Test
+    fun `should report peers only for swarm-based downloads`() {
+        val engine = TemplateEngine(ConfigLoader.load(emptyMap()).templates)
+        val payload =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = "nzo_abc",
+                title = "Severance - S02E01 - Hello",
+                seriesOrMovieTitle = "Severance"
+            )
+        val torrent =
+            DownloadItemProgress(
+                id = "hash123",
+                name = "Severance.S02E01",
+                progressPercent = 40.0,
+                progressRatio = 0.4,
+                downloadSpeedBytesPerSec = 1024,
+                uploadSpeedBytesPerSec = 0,
+                etaSeconds = 60,
+                totalSizeBytes = 1000,
+                downloadedBytes = 400,
+                swarm = SwarmStats(seedsCount = 45, seedsTotal = 120, peersCount = 5, peersTotal = 12)
+            )
+        val usenet = torrent.copy(id = "nzo_abc", swarm = null, usenet = UsenetStats(stage = "Repairing"))
+
+        val torrentUpdate = CardFormatterService.buildProgressUpdate(payload, torrent, null, engine)
+        assertEquals("45 (120) seeds • 5 (12) peers", torrentUpdate.peersInfo)
+        assertTrue(torrentUpdate.customBody.orEmpty().contains("Peers:"))
+
+        val usenetUpdate = CardFormatterService.buildProgressUpdate(payload, usenet, null, engine)
+        assertEquals("", usenetUpdate.peersInfo)
+        assertFalse(usenetUpdate.customBody.orEmpty().contains("Peers:"))
     }
 
     @Test
@@ -179,8 +214,8 @@ class CardFormatterServiceTest {
             )
 
         val progress =
-            TorrentProgress(
-                hash = "hash456",
+            DownloadItemProgress(
+                id = "hash456",
                 name = "Dune.Part.Two.2024",
                 progressPercent = 100.0,
                 progressRatio = 1.0,
@@ -189,7 +224,7 @@ class CardFormatterServiceTest {
                 etaSeconds = 0,
                 totalSizeBytes = 26843545600L,
                 downloadedBytes = 26843545600L,
-                state = TorrentState.COMPLETED
+                state = DownloadState.COMPLETED
             )
 
         val completionCard = CardFormatterService.buildCompletionCard(payload, progress, "https://qbit.example.com")
@@ -199,7 +234,7 @@ class CardFormatterServiceTest {
         val stalledCard =
             CardFormatterService.buildStalledCard(
                 payload,
-                progress.copy(state = TorrentState.STALLED),
+                progress.copy(state = DownloadState.STALLED),
                 "https://qbit.example.com"
             )
         assertEquals("⚠️ Download Stalled: Dune: Part Two (2024)", stalledCard.title)
@@ -818,8 +853,8 @@ class CardFormatterServiceTest {
         assertEquals("Custom Grab Body", grabCard.customBody)
 
         val progress =
-            TorrentProgress(
-                hash = "hash123",
+            DownloadItemProgress(
+                id = "hash123",
                 name = "Show.S01E01",
                 progressPercent = 100.0,
                 progressRatio = 1.0,
@@ -828,11 +863,8 @@ class CardFormatterServiceTest {
                 etaSeconds = 0,
                 totalSizeBytes = 1000L,
                 downloadedBytes = 1000L,
-                seedsCount = 0,
-                seedsTotal = 0,
-                peersCount = 0,
-                peersTotal = 0,
-                state = TorrentState.COMPLETED
+                swarm = SwarmStats(seedsCount = 0, seedsTotal = 0, peersCount = 0, peersTotal = 0),
+                state = DownloadState.COMPLETED
             )
         val completeCard =
             CardFormatterService.buildCompletionCard(
@@ -899,7 +931,7 @@ class CardFormatterServiceTest {
         val stalledCard =
             CardFormatterService.buildStalledCard(
                 grab,
-                progress.copy(state = TorrentState.STALLED),
+                progress.copy(state = DownloadState.STALLED),
                 "https://qbit.example.com",
                 engine = customEngine
             )
@@ -990,18 +1022,18 @@ class CardFormatterServiceTest {
 
         val states =
             listOf(
-                TorrentState.CHECKING,
-                TorrentState.PAUSED,
-                TorrentState.QUEUED,
-                TorrentState.STALLED,
-                TorrentState.ALLOCATING_METADATA,
-                TorrentState.UNKNOWN
+                DownloadState.CHECKING,
+                DownloadState.PAUSED,
+                DownloadState.QUEUED,
+                DownloadState.STALLED,
+                DownloadState.ALLOCATING_METADATA,
+                DownloadState.UNKNOWN
             )
 
         for (state in states) {
             val progress =
-                TorrentProgress(
-                    hash = "hash",
+                DownloadItemProgress(
+                    id = "hash",
                     name = "Show",
                     progressPercent = 50.0,
                     progressRatio = 0.5,
@@ -1010,10 +1042,7 @@ class CardFormatterServiceTest {
                     etaSeconds = 300,
                     totalSizeBytes = 2000000000L,
                     downloadedBytes = 1000000000L,
-                    seedsCount = 10,
-                    seedsTotal = 20,
-                    peersCount = 5,
-                    peersTotal = 10,
+                    swarm = SwarmStats(seedsCount = 10, seedsTotal = 20, peersCount = 5, peersTotal = 10),
                     state = state
                 )
             val update = CardFormatterService.buildProgressUpdate(grab, progress, null)
@@ -1047,8 +1076,8 @@ class CardFormatterServiceTest {
             )
 
         val progress =
-            TorrentProgress(
-                hash = "single_hash",
+            DownloadItemProgress(
+                id = "single_hash",
                 name = "Severance.S02E01.1080p.WEB",
                 progressPercent = 65.5,
                 progressRatio = 0.655,
@@ -1057,11 +1086,8 @@ class CardFormatterServiceTest {
                 etaSeconds = 45L,
                 totalSizeBytes = 3221225472L,
                 downloadedBytes = 2109865984L,
-                seedsCount = 25,
-                seedsTotal = 50,
-                peersCount = 10,
-                peersTotal = 15,
-                state = TorrentState.DOWNLOADING,
+                swarm = SwarmStats(seedsCount = 25, seedsTotal = 50, peersCount = 10, peersTotal = 15),
+                state = DownloadState.DOWNLOADING,
                 items = emptyList() // Single-track
             )
 
@@ -1087,8 +1113,8 @@ class CardFormatterServiceTest {
             )
 
         val ep1 =
-            TorrentProgress(
-                hash = "hash1",
+            DownloadItemProgress(
+                id = "hash1",
                 name = "Love.Is.Blind.UK.S03E01.1080p.WEB",
                 progressPercent = 100.0,
                 progressRatio = 1.0,
@@ -1097,11 +1123,11 @@ class CardFormatterServiceTest {
                 etaSeconds = 0L,
                 totalSizeBytes = 2834677760L,
                 downloadedBytes = 2834677760L,
-                state = TorrentState.COMPLETED
+                state = DownloadState.COMPLETED
             )
         val ep2 =
-            TorrentProgress(
-                hash = "hash2",
+            DownloadItemProgress(
+                id = "hash2",
                 name = "Love.Is.Blind.UK.S03E02.1080p.WEB",
                 progressPercent = 82.5,
                 progressRatio = 0.825,
@@ -1110,11 +1136,11 @@ class CardFormatterServiceTest {
                 etaSeconds = 4L,
                 totalSizeBytes = 2834677760L,
                 downloadedBytes = 2338609152L,
-                state = TorrentState.DOWNLOADING
+                state = DownloadState.DOWNLOADING
             )
         val ep3 =
-            TorrentProgress(
-                hash = "hash3",
+            DownloadItemProgress(
+                id = "hash3",
                 name = "Love.Is.Blind.UK.S03E03.1080p.WEB",
                 progressPercent = 45.0,
                 progressRatio = 0.45,
@@ -1123,12 +1149,12 @@ class CardFormatterServiceTest {
                 etaSeconds = 22L,
                 totalSizeBytes = 2866937856L,
                 downloadedBytes = 1290122035L,
-                state = TorrentState.DOWNLOADING
+                state = DownloadState.DOWNLOADING
             )
 
         val multiProgress =
-            TorrentProgress(
-                hash = "hash1|hash2|hash3",
+            DownloadItemProgress(
+                id = "hash1|hash2|hash3",
                 name = "Love.Is.Blind.UK.S03.1080p",
                 progressPercent = 75.83,
                 progressRatio = 0.7583,
@@ -1137,7 +1163,7 @@ class CardFormatterServiceTest {
                 etaSeconds = 22L,
                 totalSizeBytes = 8536293376L,
                 downloadedBytes = 6463408947L,
-                state = TorrentState.DOWNLOADING,
+                state = DownloadState.DOWNLOADING,
                 items = listOf(ep1, ep2, ep3)
             )
 
@@ -1171,7 +1197,7 @@ class CardFormatterServiceTest {
         val completionCard =
             CardFormatterService.buildCompletionCard(
                 grab,
-                multiProgress.copy(state = TorrentState.COMPLETED),
+                multiProgress.copy(state = DownloadState.COMPLETED),
                 null
             )
         val episodesField = completionCard.fields.firstOrNull { it.name == "Episodes" }
@@ -1182,8 +1208,8 @@ class CardFormatterServiceTest {
     @Test
     fun `should sort out-of-order episode tracks ascending by episode number`() {
         val ep1 =
-            TorrentProgress(
-                hash = "hash1",
+            DownloadItemProgress(
+                id = "hash1",
                 name = "Show.S01E01.1080p",
                 progressPercent = 100.0,
                 progressRatio = 1.0,
@@ -1192,11 +1218,11 @@ class CardFormatterServiceTest {
                 etaSeconds = 0L,
                 totalSizeBytes = 1000L,
                 downloadedBytes = 1000L,
-                state = TorrentState.COMPLETED
+                state = DownloadState.COMPLETED
             )
         val ep2 =
-            TorrentProgress(
-                hash = "hash2",
+            DownloadItemProgress(
+                id = "hash2",
                 name = "Show.S01E02.1080p",
                 progressPercent = 50.0,
                 progressRatio = 0.5,
@@ -1205,11 +1231,11 @@ class CardFormatterServiceTest {
                 etaSeconds = 10L,
                 totalSizeBytes = 1000L,
                 downloadedBytes = 500L,
-                state = TorrentState.DOWNLOADING
+                state = DownloadState.DOWNLOADING
             )
         val ep7 =
-            TorrentProgress(
-                hash = "hash7",
+            DownloadItemProgress(
+                id = "hash7",
                 name = "Show.S01E07.1080p",
                 progressPercent = 30.0,
                 progressRatio = 0.3,
@@ -1218,7 +1244,7 @@ class CardFormatterServiceTest {
                 etaSeconds = 30L,
                 totalSizeBytes = 1000L,
                 downloadedBytes = 300L,
-                state = TorrentState.DOWNLOADING
+                state = DownloadState.DOWNLOADING
             )
 
         // Pass out of order: E02, E07, E01
@@ -1235,8 +1261,8 @@ class CardFormatterServiceTest {
     fun `should collapse excess episode rows when more than 8 episodes in multi-track download`() {
         val childItems =
             (1..12).map { epNum ->
-                TorrentProgress(
-                    hash = "hash_$epNum",
+                DownloadItemProgress(
+                    id = "hash_$epNum",
                     name = "Futurama.S01E%02d.1080p".format(epNum),
                     progressPercent = if (epNum <= 6) 100.0 else 20.0,
                     progressRatio = if (epNum <= 6) 1.0 else 0.2,
@@ -1245,7 +1271,7 @@ class CardFormatterServiceTest {
                     etaSeconds = 60L,
                     totalSizeBytes = 1000000000L,
                     downloadedBytes = if (epNum <= 6) 1000000000L else 200000000L,
-                    state = if (epNum <= 6) TorrentState.COMPLETED else TorrentState.DOWNLOADING
+                    state = if (epNum <= 6) DownloadState.COMPLETED else DownloadState.DOWNLOADING
                 )
             }
 
@@ -1258,11 +1284,11 @@ class CardFormatterServiceTest {
     }
 
     @Test
-    fun `should format episode tracks with various TorrentState statuses`() {
+    fun `should format episode tracks with various DownloadState statuses`() {
         val items =
             listOf(
-                TorrentProgress(
-                    hash = "h1",
+                DownloadItemProgress(
+                    id = "h1",
                     name = "Show.S01E01",
                     progressPercent = 0.0,
                     progressRatio = 0.0,
@@ -1271,10 +1297,10 @@ class CardFormatterServiceTest {
                     etaSeconds = 0L,
                     totalSizeBytes = 1000000L,
                     downloadedBytes = 0L,
-                    state = TorrentState.STALLED
+                    state = DownloadState.STALLED
                 ),
-                TorrentProgress(
-                    hash = "h2",
+                DownloadItemProgress(
+                    id = "h2",
                     name = "Show.S01E02",
                     progressPercent = 0.0,
                     progressRatio = 0.0,
@@ -1283,10 +1309,10 @@ class CardFormatterServiceTest {
                     etaSeconds = 0L,
                     totalSizeBytes = 1000000L,
                     downloadedBytes = 0L,
-                    state = TorrentState.QUEUED
+                    state = DownloadState.QUEUED
                 ),
-                TorrentProgress(
-                    hash = "h3",
+                DownloadItemProgress(
+                    id = "h3",
                     name = "Show.S01E03",
                     progressPercent = 10.0,
                     progressRatio = 0.1,
@@ -1295,10 +1321,10 @@ class CardFormatterServiceTest {
                     etaSeconds = 0L,
                     totalSizeBytes = 1000000L,
                     downloadedBytes = 100000L,
-                    state = TorrentState.PAUSED
+                    state = DownloadState.PAUSED
                 ),
-                TorrentProgress(
-                    hash = "h4",
+                DownloadItemProgress(
+                    id = "h4",
                     name = "Show.S01E04",
                     progressPercent = 5.0,
                     progressRatio = 0.05,
@@ -1307,10 +1333,10 @@ class CardFormatterServiceTest {
                     etaSeconds = 0L,
                     totalSizeBytes = 1000000L,
                     downloadedBytes = 50000L,
-                    state = TorrentState.ALLOCATING_METADATA
+                    state = DownloadState.ALLOCATING_METADATA
                 ),
-                TorrentProgress(
-                    hash = "h5",
+                DownloadItemProgress(
+                    id = "h5",
                     name = "Show.S01E05",
                     progressPercent = 50.0,
                     progressRatio = 0.5,
@@ -1319,10 +1345,10 @@ class CardFormatterServiceTest {
                     etaSeconds = 0L,
                     totalSizeBytes = 1000000L,
                     downloadedBytes = 500000L,
-                    state = TorrentState.CHECKING
+                    state = DownloadState.CHECKING
                 ),
-                TorrentProgress(
-                    hash = "h6",
+                DownloadItemProgress(
+                    id = "h6",
                     name = "Show.S01E06",
                     progressPercent = 30.0,
                     progressRatio = 0.3,
@@ -1331,7 +1357,7 @@ class CardFormatterServiceTest {
                     etaSeconds = 0L,
                     totalSizeBytes = 1000000L,
                     downloadedBytes = 300000L,
-                    state = TorrentState.DOWNLOADING
+                    state = DownloadState.DOWNLOADING
                 )
             )
 
@@ -1367,8 +1393,8 @@ class CardFormatterServiceTest {
                 seriesOrMovieTitle = "Severance"
             )
         val progress =
-            TorrentProgress(
-                hash = "hash_sz",
+            DownloadItemProgress(
+                id = "hash_sz",
                 name = "Severance.S02E01",
                 progressPercent = 50.0,
                 progressRatio = 0.5,
@@ -1377,7 +1403,7 @@ class CardFormatterServiceTest {
                 etaSeconds = 60,
                 totalSizeBytes = 1000000000L,
                 downloadedBytes = 500000000L,
-                state = TorrentState.DOWNLOADING
+                state = DownloadState.DOWNLOADING
             )
 
         val update = CardFormatterService.buildProgressUpdate(grab, progress, null, engine = customEngine)
@@ -1408,8 +1434,8 @@ class CardFormatterServiceTest {
                 sizeBytes = 1000L
             )
         val progress =
-            TorrentProgress(
-                hash = "hash123",
+            DownloadItemProgress(
+                id = "hash123",
                 name = "Severance",
                 progressPercent = 100.0,
                 progressRatio = 1.0,
@@ -1418,7 +1444,7 @@ class CardFormatterServiceTest {
                 etaSeconds = 0,
                 totalSizeBytes = 1000L,
                 downloadedBytes = 1000L,
-                state = TorrentState.COMPLETED
+                state = DownloadState.COMPLETED
             )
 
         val grabCard = CardFormatterService.buildGrabInitialCard(grabPayload, null)

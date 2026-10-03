@@ -3,15 +3,15 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
+import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class TorrentReconciliationServiceTest {
+class DownloadReconciliationServiceTest {
     private class FakeNotificationPublisher : NotificationPublisherPort {
         override val providerId: String = "telegram"
         override val defaultChannelOrChatId: String = "chat123"
@@ -87,8 +87,8 @@ class TorrentReconciliationServiceTest {
                 }
 
             val torrentWithTags =
-                TorrentProgress(
-                    hash = "hash_with_tag",
+                DownloadItemProgress(
+                    id = "hash_with_tag",
                     name = "Severance.S02E01",
                     progressPercent = 60.0,
                     progressRatio = 0.6,
@@ -97,25 +97,25 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 60L,
                     totalSizeBytes = 1000000000L,
                     downloadedBytes = 600000000L,
-                    state = TorrentState.DOWNLOADING,
+                    state = DownloadState.DOWNLOADING,
                     tags = listOf("tv-sonarr", "mwn_msg:48201", "mwn_photo:1")
                 )
 
-            val torrentClient =
-                object : TorrentClientPort {
-                    override suspend fun getTorrentProgress(
+            val downloadClient =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
                         hash: String
-                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(torrentWithTags)
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(torrentWithTags)
 
-                    override suspend fun getActiveTorrents(
+                    override suspend fun getActiveDownloads(
                         filter: String
-                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                         Either.Right(listOf(torrentWithTags))
                 }
 
             val reconciliationService =
-                TorrentReconciliationService(
-                    torrentClient = torrentClient,
+                DownloadReconciliationService(
+                    downloadClient = downloadClient,
                     trackDownloadUseCase = trackUseCase,
                     activeTrackerStore = store,
                     notificationPublisher = publisher
@@ -159,8 +159,8 @@ class TorrentReconciliationServiceTest {
                 }
 
             val torrentWithChatTag =
-                TorrentProgress(
-                    hash = "hash_custom_chat",
+                DownloadItemProgress(
+                    id = "hash_custom_chat",
                     name = "Custom.Movie",
                     progressPercent = 50.0,
                     progressRatio = 0.5,
@@ -169,25 +169,25 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 60L,
                     totalSizeBytes = 1000000000L,
                     downloadedBytes = 500000000L,
-                    state = TorrentState.DOWNLOADING,
+                    state = DownloadState.DOWNLOADING,
                     tags = listOf("mwn_msg:9999", "mwn_photo:0", "mwn_chat:-100123456789")
                 )
 
-            val torrentClient =
-                object : TorrentClientPort {
-                    override suspend fun getTorrentProgress(
+            val downloadClient =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
                         hash: String
-                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(torrentWithChatTag)
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(torrentWithChatTag)
 
-                    override suspend fun getActiveTorrents(
+                    override suspend fun getActiveDownloads(
                         filter: String
-                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                         Either.Right(listOf(torrentWithChatTag))
                 }
 
             val service =
-                TorrentReconciliationService(
-                    torrentClient = torrentClient,
+                DownloadReconciliationService(
+                    downloadClient = downloadClient,
                     trackDownloadUseCase = trackUseCase,
                     activeTrackerStore = store,
                     notificationPublisher = publisher
@@ -219,8 +219,8 @@ class TorrentReconciliationServiceTest {
                 }
 
             val untrackedTorrent =
-                TorrentProgress(
-                    hash = "hash_untracked",
+                DownloadItemProgress(
+                    id = "hash_untracked",
                     name = "New.Movie.2026",
                     progressPercent = 10.0,
                     progressRatio = 0.1,
@@ -229,25 +229,25 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 300L,
                     totalSizeBytes = 2000000000L,
                     downloadedBytes = 200000000L,
-                    state = TorrentState.DOWNLOADING,
+                    state = DownloadState.DOWNLOADING,
                     tags = listOf("radarr")
                 )
 
-            val torrentClient =
-                object : TorrentClientPort {
-                    override suspend fun getTorrentProgress(
+            val downloadClient =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
                         hash: String
-                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(untrackedTorrent)
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(untrackedTorrent)
 
-                    override suspend fun getActiveTorrents(
+                    override suspend fun getActiveDownloads(
                         filter: String
-                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                         Either.Right(listOf(untrackedTorrent))
                 }
 
             val reconciliationService =
-                TorrentReconciliationService(
-                    torrentClient = torrentClient,
+                DownloadReconciliationService(
+                    downloadClient = downloadClient,
                     trackDownloadUseCase = trackUseCase,
                     activeTrackerStore = store,
                     notificationPublisher = publisher
@@ -278,8 +278,8 @@ class TorrentReconciliationServiceTest {
                 }
 
             val torrent =
-                TorrentProgress(
-                    hash = "already_tracked",
+                DownloadItemProgress(
+                    id = "already_tracked",
                     name = "Show",
                     progressPercent = 50.0,
                     progressRatio = 0.5,
@@ -288,11 +288,11 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 10L,
                     totalSizeBytes = 1000L,
                     downloadedBytes = 500L,
-                    state = TorrentState.DOWNLOADING
+                    state = DownloadState.DOWNLOADING
                 )
             val blankTorrent =
-                TorrentProgress(
-                    hash = "   ",
+                DownloadItemProgress(
+                    id = "   ",
                     name = "Blank",
                     progressPercent = 0.0,
                     progressRatio = 0.0,
@@ -301,7 +301,7 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 0L,
                     totalSizeBytes = 0L,
                     downloadedBytes = 0L,
-                    state = TorrentState.DOWNLOADING
+                    state = DownloadState.DOWNLOADING
                 )
 
             // Register in store beforehand
@@ -321,21 +321,21 @@ class TorrentReconciliationServiceTest {
                 )
             store.register(session)
 
-            val torrentClient =
-                object : TorrentClientPort {
-                    override suspend fun getTorrentProgress(
+            val downloadClient =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
                         hash: String
-                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(torrent)
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(torrent)
 
-                    override suspend fun getActiveTorrents(
+                    override suspend fun getActiveDownloads(
                         filter: String
-                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                         Either.Right(listOf(torrent, blankTorrent))
                 }
 
             val reconciliationService =
-                TorrentReconciliationService(
-                    torrentClient = torrentClient,
+                DownloadReconciliationService(
+                    downloadClient = downloadClient,
                     trackDownloadUseCase = trackUseCase,
                     activeTrackerStore = store,
                     notificationPublisher = publisher
@@ -354,16 +354,17 @@ class TorrentReconciliationServiceTest {
 
             // 1. Disabled state
             val disabledService =
-                TorrentReconciliationService(
-                    torrentClient =
-                        object : TorrentClientPort {
-                            override suspend fun getTorrentProgress(
+                DownloadReconciliationService(
+                    downloadClient =
+                        object : DownloadClientPort {
+                            override suspend fun getProgress(
                                 hash: String
-                            ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+                            ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(null)
 
-                            override suspend fun getActiveTorrents(
+                            override suspend fun getActiveDownloads(
                                 filter: String
-                            ): Either<DomainError.TorrentClientError, List<TorrentProgress>> = Either.Right(emptyList())
+                            ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
+                                Either.Right(emptyList())
                         },
                     trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
                     activeTrackerStore = store,
@@ -375,18 +376,18 @@ class TorrentReconciliationServiceTest {
 
             // 2. Client query error
             val failingClientService =
-                TorrentReconciliationService(
-                    torrentClient =
-                        object : TorrentClientPort {
-                            override suspend fun getTorrentProgress(
+                DownloadReconciliationService(
+                    downloadClient =
+                        object : DownloadClientPort {
+                            override suspend fun getProgress(
                                 hash: String
-                            ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+                            ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(null)
 
-                            override suspend fun getActiveTorrents(
+                            override suspend fun getActiveDownloads(
                                 filter: String
-                            ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                            ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                                 Either.Left(
-                                    DomainError.TorrentClientError.ConnectionFailed(
+                                    DomainError.DownloadClientError.ConnectionFailed(
                                         "http://fail",
                                         RuntimeException("Boom")
                                     )
@@ -400,20 +401,20 @@ class TorrentReconciliationServiceTest {
 
             // 3. Track use case failure
             val failingTrackService =
-                TorrentReconciliationService(
-                    torrentClient =
-                        object : TorrentClientPort {
-                            override suspend fun getTorrentProgress(
+                DownloadReconciliationService(
+                    downloadClient =
+                        object : DownloadClientPort {
+                            override suspend fun getProgress(
                                 hash: String
-                            ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+                            ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(null)
 
-                            override suspend fun getActiveTorrents(
+                            override suspend fun getActiveDownloads(
                                 filter: String
-                            ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                            ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                                 Either.Right(
                                     listOf(
-                                        TorrentProgress(
-                                            hash = "hash_fail",
+                                        DownloadItemProgress(
+                                            id = "hash_fail",
                                             name = "Fail",
                                             progressPercent = 10.0,
                                             progressRatio = 0.1,
@@ -422,7 +423,7 @@ class TorrentReconciliationServiceTest {
                                             etaSeconds = 0L,
                                             totalSizeBytes = 100L,
                                             downloadedBytes = 10L,
-                                            state = TorrentState.DOWNLOADING
+                                            state = DownloadState.DOWNLOADING
                                         )
                                     )
                                 )
@@ -446,8 +447,8 @@ class TorrentReconciliationServiceTest {
             val publisher = FakeNotificationPublisher()
 
             val torrent =
-                TorrentProgress(
-                    hash = "hash_periodic",
+                DownloadItemProgress(
+                    id = "hash_periodic",
                     name = "Show",
                     progressPercent = 20.0,
                     progressRatio = 0.2,
@@ -456,23 +457,24 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 100L,
                     totalSizeBytes = 10000L,
                     downloadedBytes = 2000L,
-                    state = TorrentState.DOWNLOADING
+                    state = DownloadState.DOWNLOADING
                 )
 
-            val torrentClient =
-                object : TorrentClientPort {
-                    override suspend fun getTorrentProgress(
+            val downloadClient =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
                         hash: String
-                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(torrent)
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(torrent)
 
-                    override suspend fun getActiveTorrents(
+                    override suspend fun getActiveDownloads(
                         filter: String
-                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> = Either.Right(listOf(torrent))
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
+                        Either.Right(listOf(torrent))
                 }
 
             val reconciliationService =
-                TorrentReconciliationService(
-                    torrentClient = torrentClient,
+                DownloadReconciliationService(
+                    downloadClient = downloadClient,
                     trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher,
@@ -519,8 +521,8 @@ class TorrentReconciliationServiceTest {
                 }
 
             val torrent1 =
-                TorrentProgress(
-                    hash = "hash_ep01",
+                DownloadItemProgress(
+                    id = "hash_ep01",
                     name = "Severance.S02E01.1080p",
                     progressPercent = 40.0,
                     progressRatio = 0.4,
@@ -529,12 +531,12 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 100L,
                     totalSizeBytes = 1000L,
                     downloadedBytes = 400L,
-                    state = TorrentState.DOWNLOADING,
+                    state = DownloadState.DOWNLOADING,
                     tags = listOf("mwn_msg:5555", "mwn_photo:1", "mwn_chat:chat123")
                 )
             val torrent2 =
-                TorrentProgress(
-                    hash = "hash_ep02",
+                DownloadItemProgress(
+                    id = "hash_ep02",
                     name = "Severance.S02E02.1080p",
                     progressPercent = 60.0,
                     progressRatio = 0.6,
@@ -543,25 +545,25 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 100L,
                     totalSizeBytes = 2000L,
                     downloadedBytes = 1200L,
-                    state = TorrentState.DOWNLOADING,
+                    state = DownloadState.DOWNLOADING,
                     tags = listOf("mwn_msg:5555", "mwn_photo:1", "mwn_chat:chat123")
                 )
 
-            val torrentClient =
-                object : TorrentClientPort {
-                    override suspend fun getTorrentProgress(
+            val downloadClient =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
                         hash: String
-                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(null)
 
-                    override suspend fun getActiveTorrents(
+                    override suspend fun getActiveDownloads(
                         filter: String
-                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> =
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                         Either.Right(listOf(torrent1, torrent2))
                 }
 
             val reconciliationService =
-                TorrentReconciliationService(
-                    torrentClient = torrentClient,
+                DownloadReconciliationService(
+                    downloadClient = downloadClient,
                     trackDownloadUseCase = trackUseCase,
                     activeTrackerStore = store,
                     notificationPublisher = publisher
@@ -621,8 +623,8 @@ class TorrentReconciliationServiceTest {
             store.register(session)
 
             val torrent1 =
-                TorrentProgress(
-                    hash = "hash_ep01",
+                DownloadItemProgress(
+                    id = "hash_ep01",
                     name = "Severance.S02E01.1080p",
                     progressPercent = 40.0,
                     progressRatio = 0.4,
@@ -631,24 +633,25 @@ class TorrentReconciliationServiceTest {
                     etaSeconds = 100L,
                     totalSizeBytes = 1000L,
                     downloadedBytes = 400L,
-                    state = TorrentState.DOWNLOADING,
+                    state = DownloadState.DOWNLOADING,
                     tags = listOf("mwn_msg:5555", "mwn_photo:0")
                 )
 
-            val torrentClient =
-                object : TorrentClientPort {
-                    override suspend fun getTorrentProgress(
+            val downloadClient =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
                         hash: String
-                    ): Either<DomainError.TorrentClientError, TorrentProgress?> = Either.Right(null)
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(null)
 
-                    override suspend fun getActiveTorrents(
+                    override suspend fun getActiveDownloads(
                         filter: String
-                    ): Either<DomainError.TorrentClientError, List<TorrentProgress>> = Either.Right(listOf(torrent1))
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
+                        Either.Right(listOf(torrent1))
                 }
 
             val reconciliationService =
-                TorrentReconciliationService(
-                    torrentClient = torrentClient,
+                DownloadReconciliationService(
+                    downloadClient = downloadClient,
                     trackDownloadUseCase = trackUseCase,
                     activeTrackerStore = store,
                     notificationPublisher = publisher

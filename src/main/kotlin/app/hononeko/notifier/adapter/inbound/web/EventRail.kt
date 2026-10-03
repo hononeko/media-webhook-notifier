@@ -205,7 +205,7 @@ class EventRail(
 
 private fun DomainError.causeOrNull(): Throwable? =
     when (this) {
-        is DomainError.TorrentClientError.ConnectionFailed -> cause
+        is DomainError.DownloadClientError.ConnectionFailed -> cause
         is DomainError.NotificationError.DeliveryFailed -> cause
         is DomainError.NotificationError.ImageFetchFailed -> cause
         else -> null

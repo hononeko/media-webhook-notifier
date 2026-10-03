@@ -2,10 +2,10 @@ package app.hononeko.notifier.adapter.outbound.tracker
 
 import app.hononeko.notifier.domain.model.ActiveTrackerSession
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationHandle
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
 import app.hononeko.notifier.domain.model.TrackerStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.runTest
@@ -71,8 +71,8 @@ class InMemoryActiveTrackerStoreTest {
             store.register(session)
 
             val progress =
-                TorrentProgress(
-                    hash = "hash_prog",
+                DownloadItemProgress(
+                    id = "hash_prog",
                     name = "Prog Show",
                     progressPercent = 45.0,
                     progressRatio = 0.45,
@@ -81,7 +81,7 @@ class InMemoryActiveTrackerStoreTest {
                     etaSeconds = 120L,
                     totalSizeBytes = 10000000L,
                     downloadedBytes = 4500000L,
-                    state = TorrentState.DOWNLOADING
+                    state = DownloadState.DOWNLOADING
                 )
 
             store.updateProgress("hash_prog", progress, stalledSeconds = 0L)

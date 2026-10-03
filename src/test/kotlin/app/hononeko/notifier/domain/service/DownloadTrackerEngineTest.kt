@@ -3,15 +3,16 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
+import app.hononeko.notifier.domain.model.SwarmStats
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
+import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,13 +32,13 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadTrackerEngineTest {
     private fun createEngine(
-        torrentClient: TorrentClientPort,
+        downloadClient: DownloadClientPort,
         notificationPublisher: NotificationPublisherPort,
         activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
         config: DownloadTrackerConfig = DownloadTrackerConfig(),
         scope: CoroutineScope
     ) = DownloadTrackerEngine(
-        torrentClient = torrentClient,
+        downloadClient = downloadClient,
         notificationPublisher = notificationPublisher,
         activeTrackerStore = activeTrackerStore,
         config = config,
@@ -97,35 +98,34 @@ class DownloadTrackerEngineTest {
     }
 
     private class FakeTorrentClient(
-        private val progressProvider: (String) -> Either<DomainError.TorrentClientError, TorrentProgress?> = {
+        private val progressProvider: (String) -> Either<DomainError.DownloadClientError, DownloadItemProgress?> = {
             Either.Right(null)
         }
-    ) : TorrentClientPort {
+    ) : DownloadClientPort {
         val addedTags = Collections.synchronizedList(mutableListOf<Pair<String, List<String>>>())
         val removedTags = Collections.synchronizedList(mutableListOf<Pair<String, List<String>>>())
         val deletedTags = Collections.synchronizedList(mutableListOf<List<String>>())
 
-        override suspend fun getTorrentProgress(
-            hash: String
-        ): Either<DomainError.TorrentClientError, TorrentProgress?> = progressProvider(hash)
+        override suspend fun getProgress(hash: String): Either<DomainError.DownloadClientError, DownloadItemProgress?> =
+            progressProvider(hash)
 
-        override suspend fun addTorrentTags(
+        override suspend fun addTags(
             hash: String,
             tags: List<String>
-        ): Either<DomainError.TorrentClientError, Unit> {
+        ): Either<DomainError.DownloadClientError, Unit> {
             addedTags.add(hash to tags)
             return Either.Right(Unit)
         }
 
-        override suspend fun removeTorrentTags(
+        override suspend fun removeTags(
             hash: String,
             tags: List<String>
-        ): Either<DomainError.TorrentClientError, Unit> {
+        ): Either<DomainError.DownloadClientError, Unit> {
             removedTags.add(hash to tags)
             return Either.Right(Unit)
         }
 
-        override suspend fun deleteTags(tags: List<String>): Either<DomainError.TorrentClientError, Unit> {
+        override suspend fun deleteTags(tags: List<String>): Either<DomainError.DownloadClientError, Unit> {
             deletedTags.add(tags)
             return Either.Right(Unit)
         }
@@ -138,11 +138,11 @@ class DownloadTrackerEngineTest {
             val testScope = TestScope(testDispatcher)
 
             val publisher = FakeNotificationPublisher()
-            val torrentClient = TorrentClientPort { Either.Right(null) }
+            val downloadClient = DownloadClientPort { Either.Right(null) }
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     scope = testScope
                 )
@@ -169,14 +169,14 @@ class DownloadTrackerEngineTest {
             val publisher = FakeNotificationPublisher()
             val callCount = AtomicInteger(0)
 
-            val torrentClient =
-                TorrentClientPort { hash ->
+            val downloadClient =
+                DownloadClientPort { hash ->
                     val count = callCount.incrementAndGet()
                     when (count) {
                         1 ->
                             Either.Right(
-                                TorrentProgress(
-                                    hash = hash,
+                                DownloadItemProgress(
+                                    id = hash,
                                     name = "Test",
                                     progressPercent = 50.0,
                                     progressRatio = 0.5,
@@ -185,13 +185,13 @@ class DownloadTrackerEngineTest {
                                     etaSeconds = 60,
                                     totalSizeBytes = 1000000000L,
                                     downloadedBytes = 500000000L,
-                                    state = TorrentState.DOWNLOADING
+                                    state = DownloadState.DOWNLOADING
                                 )
                             )
                         else ->
                             Either.Right(
-                                TorrentProgress(
-                                    hash = hash,
+                                DownloadItemProgress(
+                                    id = hash,
                                     name = "Test",
                                     progressPercent = 100.0,
                                     progressRatio = 1.0,
@@ -200,7 +200,7 @@ class DownloadTrackerEngineTest {
                                     etaSeconds = 0,
                                     totalSizeBytes = 1000000000L,
                                     downloadedBytes = 1000000000L,
-                                    state = TorrentState.COMPLETED
+                                    state = DownloadState.COMPLETED
                                 )
                             )
                     }
@@ -208,7 +208,7 @@ class DownloadTrackerEngineTest {
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 2),
                     scope = testScope
@@ -249,14 +249,14 @@ class DownloadTrackerEngineTest {
             val testScope = TestScope(testDispatcher)
 
             val publisher = FakeNotificationPublisher()
-            val torrentClient =
-                TorrentClientPort {
+            val downloadClient =
+                DownloadClientPort {
                     Either.Right(null)
                 }
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 1, missingGraceAttempts = 3),
                     scope = testScope
@@ -287,11 +287,11 @@ class DownloadTrackerEngineTest {
             val testScope = TestScope(testDispatcher)
 
             val failingPublisher = FakeNotificationPublisher(shouldFailStart = true)
-            val torrentClient = TorrentClientPort { Either.Right(null) }
+            val downloadClient = DownloadClientPort { Either.Right(null) }
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = failingPublisher,
                     scope = testScope
                 )
@@ -316,11 +316,11 @@ class DownloadTrackerEngineTest {
             val testScope = TestScope(testDispatcher)
 
             val publisher = FakeNotificationPublisher()
-            val torrentClient = TorrentClientPort { Either.Right(null) }
+            val downloadClient = DownloadClientPort { Either.Right(null) }
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 10),
                     scope = testScope
@@ -350,8 +350,8 @@ class DownloadTrackerEngineTest {
 
             val publisher = FakeNotificationPublisher()
             val progress =
-                TorrentProgress(
-                    hash = "hashMaxPoll",
+                DownloadItemProgress(
+                    id = "hashMaxPoll",
                     name = "Show",
                     progressPercent = 10.0,
                     progressRatio = 0.1,
@@ -360,17 +360,14 @@ class DownloadTrackerEngineTest {
                     etaSeconds = 600,
                     totalSizeBytes = 1000000L,
                     downloadedBytes = 100000L,
-                    seedsCount = 1,
-                    seedsTotal = 2,
-                    peersCount = 1,
-                    peersTotal = 2,
-                    state = TorrentState.DOWNLOADING
+                    swarm = SwarmStats(seedsCount = 1, seedsTotal = 2, peersCount = 1, peersTotal = 2),
+                    state = DownloadState.DOWNLOADING
                 )
-            val torrentClient = TorrentClientPort { Either.Right(progress) }
+            val downloadClient = DownloadClientPort { Either.Right(progress) }
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     config =
                         DownloadTrackerConfig(
@@ -406,8 +403,8 @@ class DownloadTrackerEngineTest {
 
             val publisher = FakeNotificationPublisher()
             val stalledProgress =
-                TorrentProgress(
-                    hash = "hashStalled",
+                DownloadItemProgress(
+                    id = "hashStalled",
                     name = "Stalled Show",
                     progressPercent = 15.0,
                     progressRatio = 0.15,
@@ -416,17 +413,14 @@ class DownloadTrackerEngineTest {
                     etaSeconds = -1,
                     totalSizeBytes = 2000000L,
                     downloadedBytes = 300000L,
-                    seedsCount = 0,
-                    seedsTotal = 0,
-                    peersCount = 0,
-                    peersTotal = 0,
-                    state = TorrentState.STALLED
+                    swarm = SwarmStats(seedsCount = 0, seedsTotal = 0, peersCount = 0, peersTotal = 0),
+                    state = DownloadState.STALLED
                 )
-            val torrentClient = TorrentClientPort { Either.Right(stalledProgress) }
+            val downloadClient = DownloadClientPort { Either.Right(stalledProgress) }
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     config =
                         DownloadTrackerConfig(
@@ -460,14 +454,14 @@ class DownloadTrackerEngineTest {
             val testScope = TestScope(testDispatcher)
 
             val publisher = FakeNotificationPublisher()
-            val torrentClient =
-                TorrentClientPort {
-                    Either.Left(DomainError.TorrentClientError.ConnectionFailed("http://localhost:8080"))
+            val downloadClient =
+                DownloadClientPort {
+                    Either.Left(DomainError.DownloadClientError.ConnectionFailed("http://localhost:8080"))
                 }
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
@@ -499,14 +493,14 @@ class DownloadTrackerEngineTest {
 
             val publisher = FakeNotificationPublisher()
             var callCount = 0
-            val torrentClient =
-                TorrentClientPort {
+            val downloadClient =
+                DownloadClientPort {
                     callCount++
                     val progressPercent = if (callCount == 1) 50.0 else 100.0
-                    val state = if (callCount == 1) TorrentState.DOWNLOADING else TorrentState.COMPLETED
+                    val state = if (callCount == 1) DownloadState.DOWNLOADING else DownloadState.COMPLETED
                     Either.Right(
-                        TorrentProgress(
-                            hash = "hash_exist",
+                        DownloadItemProgress(
+                            id = "hash_exist",
                             name = "Severance.S02E01",
                             progressPercent = progressPercent,
                             progressRatio = progressPercent / 100.0,
@@ -522,7 +516,7 @@ class DownloadTrackerEngineTest {
 
             val engine =
                 createEngine(
-                    torrentClient = torrentClient,
+                    downloadClient = downloadClient,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
@@ -575,7 +569,7 @@ class DownloadTrackerEngineTest {
 
             val engine =
                 createEngine(
-                    torrentClient = client,
+                    downloadClient = client,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
@@ -616,8 +610,8 @@ class DownloadTrackerEngineTest {
             val client =
                 FakeTorrentClient { hash ->
                     Either.Right(
-                        TorrentProgress(
-                            hash = hash,
+                        DownloadItemProgress(
+                            id = hash,
                             name = "Full Metal Jacket",
                             progressPercent = 100.0,
                             progressRatio = 1.0,
@@ -626,7 +620,7 @@ class DownloadTrackerEngineTest {
                             etaSeconds = 0,
                             totalSizeBytes = 1000000L,
                             downloadedBytes = 1000000L,
-                            state = TorrentState.COMPLETED,
+                            state = DownloadState.COMPLETED,
                             tags = listOf("mwn_msg:9065", "mwn_photo:0", "mwn_chat:chat123", "non_mwn_tag")
                         )
                     )
@@ -634,7 +628,7 @@ class DownloadTrackerEngineTest {
 
             val engine =
                 createEngine(
-                    torrentClient = client,
+                    downloadClient = client,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope
@@ -653,7 +647,7 @@ class DownloadTrackerEngineTest {
             // Trigger completion tick
             testScope.advanceTimeBy(1100L)
 
-            // 1. removeTorrentTags should have been called with all mwn_* tags found on torrent + session tags
+            // 1. removeTags should have been called with all mwn_* tags found on torrent + session tags
             val allRemoved = client.removedTags.flatMap { it.second }.toSet()
             assertTrue(allRemoved.contains("mwn_msg:msg_live"))
             assertTrue(allRemoved.contains("mwn_msg:9065"))
@@ -682,8 +676,8 @@ class DownloadTrackerEngineTest {
             val client =
                 FakeTorrentClient {
                     Either.Right(
-                        TorrentProgress(
-                            hash = "hash_stop",
+                        DownloadItemProgress(
+                            id = "hash_stop",
                             name = "Stopping Show",
                             progressPercent = 10.0,
                             progressRatio = 0.1,
@@ -692,7 +686,7 @@ class DownloadTrackerEngineTest {
                             etaSeconds = 500L,
                             totalSizeBytes = 1000000L,
                             downloadedBytes = 100000L,
-                            state = TorrentState.DOWNLOADING,
+                            state = DownloadState.DOWNLOADING,
                             tags = listOf("mwn_msg:msg_live", "mwn_photo:1")
                         )
                     )
@@ -700,7 +694,7 @@ class DownloadTrackerEngineTest {
 
             val engine =
                 createEngine(
-                    torrentClient = client,
+                    downloadClient = client,
                     notificationPublisher = publisher,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 1),
                     scope = testScope

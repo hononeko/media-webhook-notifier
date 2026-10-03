@@ -1,7 +1,7 @@
 package app.hononeko.notifier.adapter.outbound.qbittorrent
 
 import app.hononeko.notifier.config.QBittorrentConfig
-import app.hononeko.notifier.domain.model.TorrentState
+import app.hononeko.notifier.domain.model.DownloadState
 import arrow.core.Either
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -76,19 +76,19 @@ class QBittorrentClientAdapterTest {
                 )
             val adapter = QBittorrentClientAdapter(config, mockEngine)
 
-            val result = adapter.getTorrentProgress(hash)
+            val result = adapter.getProgress(hash)
             assertTrue(result.isRight())
 
             val progress = (result as Either.Right).value
             assertNotNull(progress)
-            assertEquals(hash, progress.hash)
+            assertEquals(hash, progress.id)
             assertEquals("Severance.S02E01.1080p.WEB-DL", progress.name)
             assertEquals(45.2, progress.progressPercent, 0.001)
             assertEquals(15728640L, progress.downloadSpeedBytesPerSec)
             assertEquals(120L, progress.etaSeconds)
-            assertEquals(TorrentState.DOWNLOADING, progress.state)
-            assertEquals(45, progress.seedsCount)
-            assertEquals(120, progress.seedsTotal)
+            assertEquals(DownloadState.DOWNLOADING, progress.state)
+            assertEquals(45, progress.swarm?.seedsCount)
+            assertEquals(120, progress.swarm?.seedsTotal)
         }
 
     @Test
@@ -147,26 +147,26 @@ class QBittorrentClientAdapterTest {
             val config = QBittorrentConfig(url = "http://localhost:8080")
             val adapter = QBittorrentClientAdapter(config, mockEngine)
 
-            val result = adapter.getTorrentProgress(combinedHash)
+            val result = adapter.getProgress(combinedHash)
             assertTrue(result.isRight())
 
             val progress = (result as Either.Right).value
             assertNotNull(progress)
-            assertEquals(combinedHash, progress.hash)
+            assertEquals(combinedHash, progress.id)
             assertEquals(5280000000L, progress.totalSizeBytes)
             assertEquals(3960000000L, progress.downloadedBytes)
             assertEquals(75.0, progress.progressPercent, 0.001)
             assertEquals(10000000L, progress.downloadSpeedBytesPerSec)
             assertEquals(600000L, progress.uploadSpeedBytesPerSec)
             assertEquals(132L, progress.etaSeconds)
-            assertEquals(TorrentState.DOWNLOADING, progress.state)
+            assertEquals(DownloadState.DOWNLOADING, progress.state)
             assertEquals(2, progress.items.size)
-            assertEquals("hash1", progress.items[0].hash)
+            assertEquals("hash1", progress.items[0].id)
             assertEquals(100.0, progress.items[0].progressPercent, 0.001)
-            assertEquals(TorrentState.COMPLETED, progress.items[0].state)
-            assertEquals("hash2", progress.items[1].hash)
+            assertEquals(DownloadState.COMPLETED, progress.items[0].state)
+            assertEquals("hash2", progress.items[1].id)
             assertEquals(50.0, progress.items[1].progressPercent, 0.001)
-            assertEquals(TorrentState.DOWNLOADING, progress.items[1].state)
+            assertEquals(DownloadState.DOWNLOADING, progress.items[1].state)
         }
 
     @Test
@@ -228,17 +228,17 @@ class QBittorrentClientAdapterTest {
             val config = QBittorrentConfig(url = "http://localhost:8080")
             val adapter = QBittorrentClientAdapter(config, mockEngine)
 
-            val result = adapter.getTorrentProgress(combinedHash)
+            val result = adapter.getProgress(combinedHash)
             assertTrue(result.isRight())
 
             val progress = (result as Either.Right).value
             assertNotNull(progress)
             assertEquals(3, progress.items.size)
-            assertEquals("hash1", progress.items[0].hash)
+            assertEquals("hash1", progress.items[0].id)
             assertEquals("Severance.S02E01.1080p", progress.items[0].name)
-            assertEquals("hash2", progress.items[1].hash)
+            assertEquals("hash2", progress.items[1].id)
             assertEquals("Severance.S02E02.1080p", progress.items[1].name)
-            assertEquals("hash3", progress.items[2].hash)
+            assertEquals("hash3", progress.items[2].id)
             assertEquals("Severance.S02E03.1080p", progress.items[2].name)
         }
 
@@ -279,14 +279,14 @@ class QBittorrentClientAdapterTest {
             val config = QBittorrentConfig(url = "http://localhost:8080")
             val adapter = QBittorrentClientAdapter(config, mockEngine)
 
-            val result = adapter.getTorrentProgress(combinedHash)
+            val result = adapter.getProgress(combinedHash)
             assertTrue(result.isRight())
 
             val progress = (result as Either.Right).value
             assertNotNull(progress)
-            assertEquals(combinedHash, progress.hash)
+            assertEquals(combinedHash, progress.id)
             assertEquals(1, progress.items.size)
-            assertEquals("hash1", progress.items[0].hash)
+            assertEquals("hash1", progress.items[0].id)
         }
 
     @Test
@@ -333,11 +333,11 @@ class QBittorrentClientAdapterTest {
                 )
             val adapter = QBittorrentClientAdapter(config, mockEngine)
 
-            val result = adapter.getTorrentProgress(hash)
+            val result = adapter.getProgress(hash)
             assertTrue(result.isRight())
             val progress = (result as Either.Right).value
             assertNotNull(progress)
-            assertEquals(TorrentState.COMPLETED, progress.state)
+            assertEquals(DownloadState.COMPLETED, progress.state)
         }
 
     @Test
@@ -345,12 +345,12 @@ class QBittorrentClientAdapterTest {
         runTest {
             val states =
                 mapOf(
-                    "stalledDL" to TorrentState.STALLED,
-                    "metaDL" to TorrentState.ALLOCATING_METADATA,
-                    "pausedDL" to TorrentState.PAUSED,
-                    "queuedDL" to TorrentState.QUEUED,
-                    "checkingDL" to TorrentState.CHECKING,
-                    "someOther" to TorrentState.UNKNOWN
+                    "stalledDL" to DownloadState.STALLED,
+                    "metaDL" to DownloadState.ALLOCATING_METADATA,
+                    "pausedDL" to DownloadState.PAUSED,
+                    "queuedDL" to DownloadState.QUEUED,
+                    "checkingDL" to DownloadState.CHECKING,
+                    "someOther" to DownloadState.UNKNOWN
                 )
 
             for ((stateStr, expectedState) in states) {
@@ -367,7 +367,7 @@ class QBittorrentClientAdapterTest {
                     }
 
                 val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
-                val result = adapter.getTorrentProgress("test_hash")
+                val result = adapter.getProgress("test_hash")
                 assertTrue(result.isRight())
                 assertEquals(expectedState, (result as Either.Right).value?.state)
             }
@@ -377,7 +377,7 @@ class QBittorrentClientAdapterTest {
     fun `should return null when torrent hash is blank`() =
         runTest {
             val adapter = QBittorrentClientAdapter(QBittorrentConfig())
-            val result = adapter.getTorrentProgress("   ")
+            val result = adapter.getProgress("   ")
             assertTrue(result.isRight())
             assertNull((result as Either.Right).value)
         }
@@ -397,7 +397,7 @@ class QBittorrentClientAdapterTest {
             val config = QBittorrentConfig(url = "http://localhost:8080")
             val adapter = QBittorrentClientAdapter(config, mockEngine)
 
-            val result = adapter.getTorrentProgress("nonexistent")
+            val result = adapter.getProgress("nonexistent")
             assertTrue(result.isRight())
             assertNull((result as Either.Right).value)
         }
@@ -411,7 +411,7 @@ class QBittorrentClientAdapterTest {
                 }
 
             val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
-            val result = adapter.getTorrentProgress("hash123")
+            val result = adapter.getProgress("hash123")
             assertTrue(result.isLeft())
         }
 
@@ -426,7 +426,7 @@ class QBittorrentClientAdapterTest {
             val config = QBittorrentConfig(url = "http://localhost:8080")
             val adapter = QBittorrentClientAdapter(config, mockEngine)
 
-            val result = adapter.getTorrentProgress("hash123")
+            val result = adapter.getProgress("hash123")
             assertTrue(result.isLeft())
         }
 
@@ -449,7 +449,7 @@ class QBittorrentClientAdapterTest {
                     password = "wrongpassword"
                 )
             val adapter = QBittorrentClientAdapter(config, mockEngine)
-            val result = adapter.getTorrentProgress("hash123")
+            val result = adapter.getProgress("hash123")
             assertTrue(result.isLeft())
         }
 
@@ -463,10 +463,10 @@ class QBittorrentClientAdapterTest {
 
             val config = QBittorrentConfig(url = "http://localhost:8080", username = "admin", password = "secret")
             val adapter = QBittorrentClientAdapter(config, mockEngine)
-            val result = adapter.getTorrentProgress("hash123")
+            val result = adapter.getProgress("hash123")
             assertTrue(result.isLeft())
-            assertTrue(adapter.getActiveTorrents().isLeft())
-            assertTrue(adapter.addTorrentTags("hash123", listOf("tag")).isLeft())
+            assertTrue(adapter.getActiveDownloads().isLeft())
+            assertTrue(adapter.addTags("hash123", listOf("tag")).isLeft())
         }
 
     @Test
@@ -474,13 +474,13 @@ class QBittorrentClientAdapterTest {
         runTest {
             val statePairs =
                 listOf(
-                    listOf("metaDL", "downloading") to TorrentState.DOWNLOADING,
-                    listOf("metaDL", "metaDL") to TorrentState.ALLOCATING_METADATA,
-                    listOf("checkingDL", "checkingDL") to TorrentState.CHECKING,
-                    listOf("stalledDL", "stalledDL") to TorrentState.STALLED,
-                    listOf("pausedDL", "pausedDL") to TorrentState.PAUSED,
-                    listOf("queuedDL", "queuedDL") to TorrentState.QUEUED,
-                    listOf("unknown1", "unknown2") to TorrentState.DOWNLOADING
+                    listOf("metaDL", "downloading") to DownloadState.DOWNLOADING,
+                    listOf("metaDL", "metaDL") to DownloadState.ALLOCATING_METADATA,
+                    listOf("checkingDL", "checkingDL") to DownloadState.CHECKING,
+                    listOf("stalledDL", "stalledDL") to DownloadState.STALLED,
+                    listOf("pausedDL", "pausedDL") to DownloadState.PAUSED,
+                    listOf("queuedDL", "queuedDL") to DownloadState.QUEUED,
+                    listOf("unknown1", "unknown2") to DownloadState.DOWNLOADING
                 )
 
             for ((mockStates, expectedAggState) in statePairs) {
@@ -501,7 +501,7 @@ class QBittorrentClientAdapterTest {
                     }
 
                 val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
-                val result = adapter.getTorrentProgress("h0|h1")
+                val result = adapter.getProgress("h0|h1")
                 assertTrue(result.isRight())
                 val progress = (result as Either.Right).value
                 assertNotNull(progress)
@@ -542,11 +542,11 @@ class QBittorrentClientAdapterTest {
                 }
 
             val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
-            val result = adapter.getActiveTorrents("downloading")
+            val result = adapter.getActiveDownloads("downloading")
             assertTrue(result.isRight())
             val list = (result as Either.Right).value
             assertEquals(1, list.size)
-            assertEquals("hash_dl_1", list.first().hash)
+            assertEquals("hash_dl_1", list.first().id)
             assertEquals(listOf("tv-sonarr", "mwn_msg:123", "mwn_photo:1"), list.first().tags)
         }
 
@@ -578,19 +578,19 @@ class QBittorrentClientAdapterTest {
 
             val adapter = QBittorrentClientAdapter(QBittorrentConfig(), mockEngine)
 
-            val addResult = adapter.addTorrentTags("hash1", listOf("mwn_msg:100", "mwn_photo:1"))
+            val addResult = adapter.addTags("hash1", listOf("mwn_msg:100", "mwn_photo:1"))
             assertTrue(addResult.isRight())
 
-            val removeResult = adapter.removeTorrentTags("hash1", listOf("mwn_msg:100", "mwn_photo:1"))
+            val removeResult = adapter.removeTags("hash1", listOf("mwn_msg:100", "mwn_photo:1"))
             assertTrue(removeResult.isRight())
 
             val deleteResult = adapter.deleteTags(listOf("mwn_msg:100"))
             assertTrue(deleteResult.isRight())
 
             // Blank hash / empty tags fast return
-            val blankAdd = adapter.addTorrentTags("   ", listOf("tag"))
+            val blankAdd = adapter.addTags("   ", listOf("tag"))
             assertTrue(blankAdd.isRight())
-            val emptyTagsAdd = adapter.addTorrentTags("hash1", emptyList())
+            val emptyTagsAdd = adapter.addTags("hash1", emptyList())
             assertTrue(emptyTagsAdd.isRight())
             val emptyTagsDelete = adapter.deleteTags(emptyList())
             assertTrue(emptyTagsDelete.isRight())
@@ -607,7 +607,7 @@ class QBittorrentClientAdapterTest {
                 }
             val adapter = QBittorrentClientAdapter(QBittorrentConfig(), failingEngine)
 
-            val activeResult = adapter.getActiveTorrents("downloading")
+            val activeResult = adapter.getActiveDownloads("downloading")
             assertTrue(activeResult.isLeft())
 
             val invalidJsonEngine =
@@ -619,7 +619,7 @@ class QBittorrentClientAdapterTest {
                     )
                 }
             val invalidJsonAdapter = QBittorrentClientAdapter(QBittorrentConfig(), invalidJsonEngine)
-            val invalidResult = invalidJsonAdapter.getActiveTorrents("downloading")
+            val invalidResult = invalidJsonAdapter.getActiveDownloads("downloading")
             assertTrue(invalidResult.isLeft())
 
             val exceptionEngine =
@@ -627,7 +627,7 @@ class QBittorrentClientAdapterTest {
                     throw java.io.IOException("Network crash")
                 }
             val exceptionAdapter = QBittorrentClientAdapter(QBittorrentConfig(), exceptionEngine)
-            val tagResult = exceptionAdapter.addTorrentTags("hash1", listOf("tag1"))
+            val tagResult = exceptionAdapter.addTags("hash1", listOf("tag1"))
             assertTrue(tagResult.isLeft())
         }
 
@@ -657,7 +657,7 @@ class QBittorrentClientAdapterTest {
                     respond("Should not be called", HttpStatusCode.InternalServerError)
                 }
             val adapter = QBittorrentClientAdapter(QBittorrentConfig(), failingEngine)
-            val result = adapter.getTorrentProgress("&filter=all")
+            val result = adapter.getProgress("&filter=all")
             assertTrue(result.isRight())
             assertNull((result as Either.Right).value)
         }
@@ -670,10 +670,10 @@ class QBittorrentClientAdapterTest {
                     respond("Should not be called", HttpStatusCode.InternalServerError)
                 }
             val adapter = QBittorrentClientAdapter(QBittorrentConfig(), failingEngine)
-            val addResult = adapter.addTorrentTags("invalid hash with space", listOf("mwn_test"))
+            val addResult = adapter.addTags("invalid hash with space", listOf("mwn_test"))
             assertTrue(addResult.isRight())
 
-            val removeResult = adapter.removeTorrentTags("&hashes=all", listOf("mwn_test"))
+            val removeResult = adapter.removeTags("&hashes=all", listOf("mwn_test"))
             assertTrue(removeResult.isRight())
         }
 }

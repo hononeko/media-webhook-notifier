@@ -5,8 +5,8 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
+import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import arrow.core.Either
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -23,8 +23,8 @@ data class ReconciliationConfig(
     val tagPrefix: String = "mwn_"
 )
 
-class TorrentReconciliationService(
-    private val torrentClient: TorrentClientPort,
+class DownloadReconciliationService(
+    private val downloadClient: DownloadClientPort,
     private val trackDownloadUseCase: TrackDownloadUseCase,
     private val activeTrackerStore: ActiveTrackerStore,
     private val notificationPublisher: NotificationPublisherPort,
@@ -33,7 +33,7 @@ class TorrentReconciliationService(
     val enabled: Boolean get() = config.enabled
     val tagPrefix: String get() = config.tagPrefix
     private val intervalMinutes: Long get() = config.intervalMinutes
-    private val logger = LoggerFactory.getLogger(TorrentReconciliationService::class.java)
+    private val logger = LoggerFactory.getLogger(DownloadReconciliationService::class.java)
     private val totalRuns = AtomicLong(0)
     private val totalResumed = AtomicLong(0)
 
@@ -53,7 +53,7 @@ class TorrentReconciliationService(
         logger.debug("Starting torrent reconciliation sweep...")
 
         val activeTorrents =
-            when (val activeResult = torrentClient.getActiveTorrents("downloading")) {
+            when (val activeResult = downloadClient.getActiveDownloads("downloading")) {
                 is Either.Right -> activeResult.value
                 is Either.Left -> {
                     logger.debug("Torrent reconciliation failed to query active torrents: {}", activeResult.value)
@@ -64,7 +64,7 @@ class TorrentReconciliationService(
         var resumedThisRun = 0
         val untrackedTorrents =
             activeTorrents.filter { torrent ->
-                val normalizedHash = torrent.hash.trim().lowercase()
+                val normalizedHash = torrent.id.trim().lowercase()
                 normalizedHash.isNotBlank() && !activeTrackerStore.isTracking(normalizedHash)
             }
 
@@ -86,9 +86,9 @@ class TorrentReconciliationService(
 
         for ((key, torrentGroup) in groupedTaggedTorrents) {
             val (channelOrChatId, messageId) = key
-            val distinctTorrents = torrentGroup.distinctBy { it.hash.trim().lowercase() }
-            val combinedHash = distinctTorrents.joinToString("|") { it.hash.trim().lowercase() }
-            val downloadIds = distinctTorrents.map { it.hash.trim().lowercase() }
+            val distinctTorrents = torrentGroup.distinctBy { it.id.trim().lowercase() }
+            val combinedHash = distinctTorrents.joinToString("|") { it.id.trim().lowercase() }
+            val downloadIds = distinctTorrents.map { it.id.trim().lowercase() }
             val isPhoto =
                 distinctTorrents.any { torrent ->
                     torrent.tags
@@ -154,7 +154,7 @@ class TorrentReconciliationService(
         }
 
         for (torrent in untaggedTorrents) {
-            val normalizedHash = torrent.hash.trim().lowercase()
+            val normalizedHash = torrent.id.trim().lowercase()
             val synthesizedGrab =
                 MediaPayload.ArrGrab(
                     source = AppSource.SONARR,

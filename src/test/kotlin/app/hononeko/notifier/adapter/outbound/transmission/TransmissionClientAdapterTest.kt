@@ -2,7 +2,7 @@ package app.hononeko.notifier.adapter.outbound.transmission
 
 import app.hononeko.notifier.config.TransmissionConfig
 import app.hononeko.notifier.domain.error.DomainError
-import app.hononeko.notifier.domain.model.TorrentState
+import app.hononeko.notifier.domain.model.DownloadState
 import arrow.core.Either
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -104,8 +104,8 @@ class TransmissionClientAdapterTest {
 
             val adapter = TransmissionClientAdapter(TransmissionConfig(url = "http://localhost:9091"), mockEngine)
 
-            assertTrue(adapter.getTorrentProgress(hashA).isRight())
-            assertTrue(adapter.getTorrentProgress(hashA).isRight())
+            assertTrue(adapter.getProgress(hashA).isRight())
+            assertTrue(adapter.getProgress(hashA).isRight())
 
             assertEquals(listOf(null, "session-abc", "session-abc"), sessionHeaders)
         }
@@ -131,9 +131,9 @@ class TransmissionClientAdapterTest {
                 }
 
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
-            adapter.getTorrentProgress(hashA)
+            adapter.getProgress(hashA)
             currentSession = "session-2"
-            adapter.getTorrentProgress(hashA)
+            adapter.getProgress(hashA)
 
             assertEquals(listOf(null, "session-1", "session-1", "session-2"), sessionHeaders)
         }
@@ -149,9 +149,9 @@ class TransmissionClientAdapterTest {
                 }
 
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
-            val result = adapter.getTorrentProgress(hashA)
+            val result = adapter.getProgress(hashA)
 
-            assertIs<DomainError.TorrentClientError.InvalidResponse>(result.leftOrNull())
+            assertIs<DomainError.DownloadClientError.InvalidResponse>(result.leftOrNull())
             assertEquals(1, requests)
         }
 
@@ -167,7 +167,7 @@ class TransmissionClientAdapterTest {
 
             val config = TransmissionConfig(url = "http://seedbox:9091/", username = "admin", password = "secret")
             val adapter = TransmissionClientAdapter(config, mockEngine)
-            adapter.getTorrentProgress(hashA.uppercase())
+            adapter.getProgress(hashA.uppercase())
 
             val request = assertNotNull(captured)
             assertEquals(HttpMethod.Post, request.method)
@@ -203,7 +203,7 @@ class TransmissionClientAdapterTest {
                     respondRpc(torrentsJson())
                 }
 
-            TransmissionClientAdapter(TransmissionConfig(), mockEngine).getTorrentProgress(hashA)
+            TransmissionClientAdapter(TransmissionConfig(), mockEngine).getProgress(hashA)
 
             assertNull(assertNotNull(captured).headers[HttpHeaders.Authorization])
         }
@@ -241,9 +241,9 @@ class TransmissionClientAdapterTest {
                 }
 
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
-            val progress = assertNotNull(adapter.getTorrentProgress(hashA).getOrNull())
+            val progress = assertNotNull(adapter.getProgress(hashA).getOrNull())
 
-            assertEquals(hashA, progress.hash)
+            assertEquals(hashA, progress.id)
             assertEquals("Severance.S02E01.1080p.WEB-DL", progress.name)
             assertEquals(45.2, progress.progressPercent, 0.001)
             assertEquals(0.452, progress.progressRatio, 0.001)
@@ -252,11 +252,11 @@ class TransmissionClientAdapterTest {
             assertEquals(120L, progress.etaSeconds)
             assertEquals(1_500_000_000L, progress.totalSizeBytes)
             assertEquals(678_000_000L, progress.downloadedBytes)
-            assertEquals(45, progress.seedsCount)
-            assertEquals(120, progress.seedsTotal)
-            assertEquals(5, progress.peersCount)
-            assertEquals(12, progress.peersTotal)
-            assertEquals(TorrentState.DOWNLOADING, progress.state)
+            assertEquals(45, progress.swarm?.seedsCount)
+            assertEquals(120, progress.swarm?.seedsTotal)
+            assertEquals(5, progress.swarm?.peersCount)
+            assertEquals(12, progress.swarm?.peersTotal)
+            assertEquals(DownloadState.DOWNLOADING, progress.state)
             assertEquals(listOf("tv-sonarr", "mwn_msg:123"), progress.tags)
             assertTrue(progress.items.isEmpty())
         }
@@ -268,22 +268,22 @@ class TransmissionClientAdapterTest {
                 val status: Int,
                 val percentDone: Double,
                 val extra: String,
-                val expected: TorrentState
+                val expected: DownloadState
             )
 
             val cases =
                 listOf(
-                    Case(0, 0.5, "", TorrentState.PAUSED),
-                    Case(0, 1.0, "", TorrentState.COMPLETED),
-                    Case(1, 0.5, "", TorrentState.CHECKING),
-                    Case(2, 0.5, "", TorrentState.CHECKING),
-                    Case(3, 0.0, "", TorrentState.QUEUED),
-                    Case(4, 0.5, "", TorrentState.DOWNLOADING),
-                    Case(4, 0.5, """, "isStalled": true""", TorrentState.STALLED),
-                    Case(4, 0.0, """, "metadataPercentComplete": 0.3""", TorrentState.ALLOCATING_METADATA),
-                    Case(5, 1.0, "", TorrentState.COMPLETED),
-                    Case(6, 1.0, "", TorrentState.COMPLETED),
-                    Case(42, 0.5, "", TorrentState.UNKNOWN)
+                    Case(0, 0.5, "", DownloadState.PAUSED),
+                    Case(0, 1.0, "", DownloadState.COMPLETED),
+                    Case(1, 0.5, "", DownloadState.CHECKING),
+                    Case(2, 0.5, "", DownloadState.CHECKING),
+                    Case(3, 0.0, "", DownloadState.QUEUED),
+                    Case(4, 0.5, "", DownloadState.DOWNLOADING),
+                    Case(4, 0.5, """, "isStalled": true""", DownloadState.STALLED),
+                    Case(4, 0.0, """, "metadataPercentComplete": 0.3""", DownloadState.ALLOCATING_METADATA),
+                    Case(5, 1.0, "", DownloadState.COMPLETED),
+                    Case(6, 1.0, "", DownloadState.COMPLETED),
+                    Case(42, 0.5, "", DownloadState.UNKNOWN)
                 )
 
             for (case in cases) {
@@ -301,7 +301,7 @@ class TransmissionClientAdapterTest {
                         )
                     }
                 val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
-                val progress = assertNotNull(adapter.getTorrentProgress(hashA).getOrNull())
+                val progress = assertNotNull(adapter.getProgress(hashA).getOrNull())
                 assertEquals(case.expected, progress.state, "status=${case.status} extra='${case.extra}'")
             }
         }
@@ -337,14 +337,14 @@ class TransmissionClientAdapterTest {
                 }
 
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
-            val progress = assertNotNull(adapter.getTorrentProgress("$hashA|$hashB").getOrNull())
+            val progress = assertNotNull(adapter.getProgress("$hashA|$hashB").getOrNull())
 
             assertEquals(listOf(hashA, hashB), requestedIds)
-            assertEquals("$hashA|$hashB", progress.hash)
+            assertEquals("$hashA|$hashB", progress.id)
             assertEquals(75.0, progress.progressPercent, 0.001)
             assertEquals(2000L, progress.totalSizeBytes)
             assertEquals(1500L, progress.downloadedBytes)
-            assertEquals(TorrentState.DOWNLOADING, progress.state)
+            assertEquals(DownloadState.DOWNLOADING, progress.state)
             assertEquals(listOf("Show.S01E01.1080p", "Show.S01E02.1080p"), progress.items.map { it.name })
             assertEquals(listOf("mwn_msg:1", "tv"), progress.tags)
         }
@@ -355,7 +355,7 @@ class TransmissionClientAdapterTest {
             val mockEngine = MockEngine { respondRpc(torrentsJson()) }
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
-            val result = adapter.getTorrentProgress(hashA)
+            val result = adapter.getProgress(hashA)
             assertTrue(result.isRight())
             assertNull(result.getOrNull())
         }
@@ -372,7 +372,7 @@ class TransmissionClientAdapterTest {
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
             listOf("", "   ", "|", "hash123", "a".repeat(39), "g".repeat(40), "$hashA|bogus").forEach { invalid ->
-                val result = adapter.getTorrentProgress(invalid)
+                val result = adapter.getProgress(invalid)
                 assertEquals(Either.Right(null), result, "Expected no lookup for '$invalid'")
             }
             assertEquals(0, requests)
@@ -387,27 +387,27 @@ class TransmissionClientAdapterTest {
         runTest {
             suspend fun errorFor(handler: MockRequestHandleScope.() -> HttpResponseData): DomainError? =
                 TransmissionClientAdapter(TransmissionConfig(), MockEngine { handler() })
-                    .getTorrentProgress(hashA)
+                    .getProgress(hashA)
                     .leftOrNull()
 
-            assertIs<DomainError.TorrentClientError.AuthenticationFailed>(
+            assertIs<DomainError.DownloadClientError.AuthenticationFailed>(
                 errorFor { respond("Unauthorized", HttpStatusCode.Unauthorized) }
             )
-            assertIs<DomainError.TorrentClientError.AuthenticationFailed>(
+            assertIs<DomainError.DownloadClientError.AuthenticationFailed>(
                 errorFor { respond("Forbidden", HttpStatusCode.Forbidden) }
             )
-            assertIs<DomainError.TorrentClientError.InvalidResponse>(
+            assertIs<DomainError.DownloadClientError.InvalidResponse>(
                 errorFor { respond("boom", HttpStatusCode.InternalServerError) }
             )
-            assertIs<DomainError.TorrentClientError.InvalidResponse>(
+            assertIs<DomainError.DownloadClientError.InvalidResponse>(
                 errorFor { respond("{ not json", HttpStatusCode.OK) }
             )
-            assertIs<DomainError.TorrentClientError.InvalidResponse>(
+            assertIs<DomainError.DownloadClientError.InvalidResponse>(
                 errorFor { respondRpc(arguments = """{"torrents": "nope"}""") }
             )
 
             val rpcFailure = errorFor { respondRpc(result = "invalid or corrupt torrent file") }
-            assertIs<DomainError.TorrentClientError.InvalidResponse>(rpcFailure)
+            assertIs<DomainError.DownloadClientError.InvalidResponse>(rpcFailure)
             assertTrue(rpcFailure.details.contains("invalid or corrupt torrent file"))
         }
 
@@ -417,11 +417,11 @@ class TransmissionClientAdapterTest {
             val mockEngine = MockEngine { throw java.io.IOException("Network down") }
             val adapter = TransmissionClientAdapter(TransmissionConfig(url = "http://nas:9091"), mockEngine)
 
-            val error = adapter.getTorrentProgress(hashA).leftOrNull()
-            assertIs<DomainError.TorrentClientError.ConnectionFailed>(error)
+            val error = adapter.getProgress(hashA).leftOrNull()
+            assertIs<DomainError.DownloadClientError.ConnectionFailed>(error)
             assertEquals("http://nas:9091", error.url)
-            assertTrue(adapter.getActiveTorrents().isLeft())
-            assertTrue(adapter.addTorrentTags(hashA, listOf("tag")).isLeft())
+            assertTrue(adapter.getActiveDownloads().isLeft())
+            assertTrue(adapter.addTags(hashA, listOf("tag")).isLeft())
             assertTrue(adapter.stopTorrents(hashA).isLeft())
         }
 
@@ -441,16 +441,16 @@ class TransmissionClientAdapterTest {
                 }
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
-            val downloading = assertNotNull(adapter.getActiveTorrents("downloading").getOrNull())
-            assertEquals(listOf(hashA), downloading.map { it.hash })
+            val downloading = assertNotNull(adapter.getActiveDownloads("downloading").getOrNull())
+            assertEquals(listOf(hashA), downloading.map { it.id })
             assertEquals(listOf("mwn_msg:5"), downloading.single().tags)
 
             val captured = assertNotNull(arguments)
             assertFalse(captured.containsKey("ids"))
             assertFalse("trackerStats" in captured.stringList("fields"))
 
-            assertEquals(listOf(hashB), adapter.getActiveTorrents("completed").getOrNull()?.map { it.hash })
-            assertEquals(2, adapter.getActiveTorrents("all").getOrNull()?.size)
+            assertEquals(listOf(hashB), adapter.getActiveDownloads("completed").getOrNull()?.map { it.id })
+            assertEquals(2, adapter.getActiveDownloads("all").getOrNull()?.size)
         }
 
     @Test
@@ -473,15 +473,15 @@ class TransmissionClientAdapterTest {
                 }
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
-            assertTrue(adapter.addTorrentTags(hashA.uppercase(), listOf(" mwn_msg:100 ", "mwn_photo:1", "")).isRight())
+            assertTrue(adapter.addTags(hashA.uppercase(), listOf(" mwn_msg:100 ", "mwn_photo:1", "")).isRight())
             assertEquals(listOf("tv-sonarr", "mwn_msg:100", "mwn_photo:1"), labels)
             assertEquals(listOf(hashA), setRequests.single().stringList("ids"))
 
             // Re-adding existing labels must not issue another torrent-set
-            assertTrue(adapter.addTorrentTags(hashA, listOf("mwn_msg:100")).isRight())
+            assertTrue(adapter.addTags(hashA, listOf("mwn_msg:100")).isRight())
             assertEquals(1, setRequests.size)
 
-            assertTrue(adapter.removeTorrentTags(hashA, listOf("mwn_msg:100", "mwn_photo:1", "absent")).isRight())
+            assertTrue(adapter.removeTags(hashA, listOf("mwn_msg:100", "mwn_photo:1", "absent")).isRight())
             assertEquals(listOf("tv-sonarr"), labels)
             assertEquals(2, setRequests.size)
 
@@ -512,7 +512,7 @@ class TransmissionClientAdapterTest {
                 }
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
-            assertTrue(adapter.addTorrentTags("$hashA|$hashB", listOf("mwn_msg:9")).isRight())
+            assertTrue(adapter.addTags("$hashA|$hashB", listOf("mwn_msg:9")).isRight())
 
             val update = setRequests.single()
             assertEquals(listOf(hashA), update.stringList("ids"))
@@ -530,10 +530,10 @@ class TransmissionClientAdapterTest {
                 }
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
-            assertTrue(adapter.addTorrentTags("   ", listOf("tag")).isRight())
-            assertTrue(adapter.addTorrentTags("not-a-hash", listOf("tag")).isRight())
-            assertTrue(adapter.addTorrentTags(hashA, emptyList()).isRight())
-            assertTrue(adapter.removeTorrentTags(hashA, listOf("  ")).isRight())
+            assertTrue(adapter.addTags("   ", listOf("tag")).isRight())
+            assertTrue(adapter.addTags("not-a-hash", listOf("tag")).isRight())
+            assertTrue(adapter.addTags(hashA, emptyList()).isRight())
+            assertTrue(adapter.removeTags(hashA, listOf("  ")).isRight())
             assertEquals(0, requests)
         }
 
@@ -549,8 +549,8 @@ class TransmissionClientAdapterTest {
                 }
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
-            val error = adapter.addTorrentTags(hashA, listOf("a,b")).leftOrNull()
-            assertIs<DomainError.TorrentClientError.InvalidResponse>(error)
+            val error = adapter.addTags(hashA, listOf("a,b")).leftOrNull()
+            assertIs<DomainError.DownloadClientError.InvalidResponse>(error)
         }
 
     @Test
@@ -600,9 +600,9 @@ class TransmissionClientAdapterTest {
                 }
             val adapter = TransmissionClientAdapter(TransmissionConfig(), mockEngine)
 
-            assertIs<DomainError.TorrentClientError.TorrentNotFound>(adapter.startTorrents("").leftOrNull())
-            assertIs<DomainError.TorrentClientError.TorrentNotFound>(adapter.stopTorrents("|").leftOrNull())
-            assertIs<DomainError.TorrentClientError.TorrentNotFound>(adapter.removeTorrents("bogus").leftOrNull())
+            assertIs<DomainError.DownloadClientError.DownloadNotFound>(adapter.startTorrents("").leftOrNull())
+            assertIs<DomainError.DownloadClientError.DownloadNotFound>(adapter.stopTorrents("|").leftOrNull())
+            assertIs<DomainError.DownloadClientError.DownloadNotFound>(adapter.removeTorrents("bogus").leftOrNull())
             assertEquals(0, requests)
         }
 }

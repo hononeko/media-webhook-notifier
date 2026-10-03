@@ -33,7 +33,7 @@ class ActiveTrackerSession(
 ) {
     @Volatile var status: TrackerStatus = TrackerStatus.TRACKING
 
-    @Volatile var lastProgress: TorrentProgress? = null
+    @Volatile var lastProgress: DownloadItemProgress? = null
 
     @Volatile var stalledDurationSeconds: Long = 0L
 

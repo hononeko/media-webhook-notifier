@@ -8,11 +8,13 @@ import java.io.File
 object ConfigLoader {
     fun load(env: Map<String, String> = System.getenv()): AppConfig {
         val reader = EnvReader(env)
+        val downloadClients = DownloadClientConfigLoader.load(reader)
         return AppConfig(
             server = loadServerConfig(reader),
             mediaServer = loadMediaServerConfig(reader),
-            qbittorrent = loadQBittorrentConfig(reader),
-            transmission = loadTransmissionConfig(reader),
+            downloadClient = downloadClients.downloadClient,
+            qbittorrent = downloadClients.qbittorrent,
+            transmission = downloadClients.transmission,
             notifications = loadNotificationsConfig(reader),
             state = loadStateConfig(reader),
             templates = loadTemplatesConfig(reader)
@@ -121,72 +123,6 @@ object ConfigLoader {
                     "mediaServer.maxAvailableAgeSeconds",
                     "mediaServer.maxAgeSeconds"
                 )
-        )
-
-    private fun loadQBittorrentConfig(reader: EnvReader): QBittorrentConfig =
-        QBittorrentConfig(
-            url = reader.get("QBITTORRENT_URL", "qbittorrent.url") ?: "http://localhost:8080",
-            username = reader.get("QBITTORRENT_USERNAME", "qbittorrent.username") ?: "",
-            password = reader.getSecret("QBITTORRENT_PASSWORD", "qbittorrent.password") ?: "",
-            pollIntervalSeconds =
-                reader.getLong(
-                    5L,
-                    "QBITTORRENT_POLL_INTERVAL_SECONDS",
-                    "qbittorrent.pollIntervalSeconds"
-                ),
-            maxPollingMinutes =
-                reader.getLong(
-                    30L,
-                    "QBITTORRENT_MAX_POLLING_MINUTES",
-                    "qbittorrent.maxPollingMinutes"
-                ),
-            stalledTimeoutMinutes =
-                reader.getLong(
-                    15L,
-                    "QBITTORRENT_STALLED_TIMEOUT_MINUTES",
-                    "qbittorrent.stalledTimeoutMinutes"
-                ),
-            missingGraceAttempts =
-                reader.getInt(
-                    6,
-                    "QBITTORRENT_MISSING_GRACE_ATTEMPTS",
-                    "qbittorrent.missingGraceAttempts"
-                ),
-            debounceSeconds =
-                reader.getLong(
-                    5L,
-                    "QBITTORRENT_DEBOUNCE_SECONDS",
-                    "qbittorrent.debounceSeconds"
-                ),
-            webuiPublicUrl =
-                reader.get(
-                    "QBITTORRENT_WEBUI_PUBLIC_URL",
-                    "qbittorrent.webuiPublicUrl"
-                ) ?: "",
-            reconciliationEnabled =
-                reader.getBoolean(
-                    true,
-                    "QBITTORRENT_RECONCILIATION_ENABLED",
-                    "qbittorrent.reconciliationEnabled"
-                ),
-            reconciliationIntervalMinutes =
-                reader.getLong(
-                    5L,
-                    "QBITTORRENT_RECONCILIATION_INTERVAL_MINUTES",
-                    "qbittorrent.reconciliationIntervalMinutes"
-                ),
-            tagPrefix =
-                reader.get(
-                    "QBITTORRENT_TAG_PREFIX",
-                    "qbittorrent.tagPrefix"
-                ) ?: "mwn_"
-        )
-
-    private fun loadTransmissionConfig(reader: EnvReader): TransmissionConfig =
-        TransmissionConfig(
-            url = reader.get("TRANSMISSION_URL", "transmission.url") ?: "http://localhost:9091",
-            username = reader.get("TRANSMISSION_USERNAME", "transmission.username") ?: "",
-            password = reader.getSecret("TRANSMISSION_PASSWORD", "transmission.password") ?: ""
         )
 
     private fun loadStateConfig(reader: EnvReader): StateConfig {
