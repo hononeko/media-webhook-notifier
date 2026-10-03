@@ -211,6 +211,14 @@ class TransmissionClientAdapterTest {
     @Test
     fun `should resolve rpc endpoint from base url or explicit rpc path`() {
         assertEquals("http://nas:9091/transmission/rpc", TransmissionRpcClient.resolveEndpoint("http://nas:9091"))
+        assertEquals(
+            "http://nas:9091/transmission/rpc",
+            TransmissionRpcClient.resolveEndpoint("http://nas:9091/transmission")
+        )
+        assertEquals(
+            "http://nas:9091/transmission/rpc",
+            TransmissionRpcClient.resolveEndpoint("http://nas:9091/transmission/web/")
+        )
         assertEquals("http://nas:9091/transmission/rpc", TransmissionRpcClient.resolveEndpoint(" http://nas:9091/ "))
         assertEquals(
             "https://box.example.com/custom/rpc",

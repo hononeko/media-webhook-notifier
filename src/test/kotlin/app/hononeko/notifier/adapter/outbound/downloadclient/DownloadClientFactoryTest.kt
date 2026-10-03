@@ -31,7 +31,22 @@ class DownloadClientFactoryTest {
     }
 
     @Test
-    fun `should create and route to qbittorrent by default`() =
+    fun `should create and route to qbittorrent when nothing selects a client`() =
+        runTest {
+            val requests = mutableListOf<HttpRequestData>()
+
+            val client = DownloadClientFactory.create(ConfigLoader.load(emptyMap()), recordingEngine(requests, "[]"))
+
+            assertIs<QBittorrentClientAdapter>(client)
+            assertTrue(client.getProgress(infoHash).isRight())
+            val request = requests.single()
+            assertEquals("localhost", request.url.host)
+            assertEquals(8080, request.url.port)
+            assertEquals("/api/v2/torrents/info", request.url.encodedPath)
+        }
+
+    @Test
+    fun `should route to qbittorrent through a DOWNLOAD_CLIENT_URL scheme`() =
         runTest {
             val requests = mutableListOf<HttpRequestData>()
             val config = ConfigLoader.load(mapOf("DOWNLOAD_CLIENT_URL" to "qbittorrents://qbit.example.com/qbit"))
@@ -74,6 +89,43 @@ class DownloadClientFactoryTest {
             assertEquals("/transmission/rpc", request.url.encodedPath)
             assertNotNull(request.headers[HttpHeaders.Authorization])
         }
+
+    @Test
+    fun `should route to transmission through a DOWNLOAD_CLIENT_URL scheme with url credentials`() =
+        runTest {
+            val requests = mutableListOf<HttpRequestData>()
+            val config =
+                ConfigLoader.load(
+                    mapOf(
+                        "DOWNLOAD_CLIENT_URL" to "transmissions://rpc:pw@seedbox_1/transmission"
+                    )
+                )
+
+            val client =
+                DownloadClientFactory.create(
+                    config,
+                    recordingEngine(requests, """{"result": "success", "arguments": {"torrents": []}}""")
+                )
+
+            assertIs<TransmissionClientAdapter>(client)
+            assertTrue(client.getProgress(infoHash).isRight())
+            val request = requests.single()
+            assertEquals("https", request.url.protocol.name)
+            assertEquals("seedbox_1", request.url.host)
+            assertEquals("/transmission/rpc", request.url.encodedPath)
+            val expectedAuth =
+                "Basic " +
+                    java.util.Base64
+                        .getEncoder()
+                        .encodeToString("rpc:pw".toByteArray())
+            assertEquals(expectedAuth, request.headers[HttpHeaders.Authorization])
+        }
+
+    @Test
+    fun `should redact credentials from logged client urls`() {
+        assertEquals("http://qbit:8080/x", DownloadClientFactory.redactUserInfo("http://admin:s3cr@t@qbit:8080/x"))
+        assertEquals("http://nas:9091", DownloadClientFactory.redactUserInfo("http://nas:9091"))
+    }
 
     @Test
     fun `should fail fast for clients without an adapter yet`() {

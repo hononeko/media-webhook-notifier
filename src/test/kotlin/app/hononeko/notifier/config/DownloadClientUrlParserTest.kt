@@ -46,6 +46,46 @@ class DownloadClientUrlParserTest {
     }
 
     @Test
+    fun `should keep IPv6 literals bracketed`() {
+        assertEquals("http://[::1]:8080", DownloadClientUrlParser.parse("qbittorrent://[::1]:8080").baseUrl)
+        assertEquals(
+            "https://[fd00::1]/transmission/rpc",
+            DownloadClientUrlParser.parse("transmissions://rpc:pw@[fd00::1]/transmission/rpc").baseUrl
+        )
+    }
+
+    @Test
+    fun `should accept container hostnames with underscores including credentials and port`() {
+        val endpoint = DownloadClientUrlParser.parse("qbittorrent://admin:p%40ss@qbit_vpn:8080/qbit")
+
+        assertEquals("http://qbit_vpn:8080/qbit", endpoint.baseUrl)
+        assertEquals("admin", endpoint.username)
+        assertEquals("p@ss", endpoint.password)
+        assertEquals(
+            "http://transmission_daemon",
+            DownloadClientUrlParser.parse("transmission://transmission_daemon").baseUrl
+        )
+    }
+
+    @Test
+    fun `should never echo credentials when rejecting a url`() {
+        val malformed =
+            assertFailsWith<IllegalArgumentException> {
+                DownloadClientUrlParser.parse("qbittorrent://admin:hunter2@bad host:8080")
+            }
+        assertTrue(!malformed.message!!.contains("hunter2"))
+        assertNull(malformed.cause)
+
+        val badPort =
+            assertFailsWith<IllegalArgumentException> {
+                DownloadClientUrlParser.parse(
+                    "qbittorrent://admin:hunter2@qbit:99999"
+                )
+            }
+        assertTrue(!badPort.message!!.contains("hunter2"))
+    }
+
+    @Test
     fun `should read sabnzbd api key from user info or query`() {
         val fromUserInfo = DownloadClientUrlParser.parse("sabnzbd://abc123@sab:8080")
         assertEquals("abc123", fromUserInfo.apiKey)

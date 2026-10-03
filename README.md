@@ -120,7 +120,7 @@ Every `DOWNLOAD_CLIENT_*` tracking variable above still accepts its previous `QB
 
 | Variable | Default | Description |
 |---|---|---|
-| `TRANSMISSION_URL` | `http://localhost:9091` | Base URL (`/transmission/rpc` is appended) or the full RPC endpoint |
+| `TRANSMISSION_URL` | `http://localhost:9091` | Base URL, Transmission's `/transmission` or `/transmission/web` path, or the full RPC endpoint ending in `/rpc` (e.g. behind a reverse proxy) |
 | `TRANSMISSION_USERNAME` | `""` | RPC username when `rpc-authentication-required` is enabled |
 | `TRANSMISSION_PASSWORD` | `""` | RPC password. Supports `TRANSMISSION_PASSWORD_FILE` |
 

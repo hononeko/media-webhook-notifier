@@ -27,29 +27,40 @@ internal data class DownloadClientEndpoint(
  */
 internal object DownloadClientUrlParser {
     private const val SECURE_SUFFIX = "s"
+    private const val MAX_PORT = 65_535
 
+    /** Host and port of the URL authority; [host] keeps IPv6 brackets. */
+    private data class Authority(
+        val userInfo: String?,
+        val host: String,
+        val port: Int?
+    )
+
+    // The URISyntaxException message echoes the whole input, credentials included, so it is neither
+    // quoted nor chained as the cause of the boot failure.
+    @Suppress("SwallowedException")
     fun parse(raw: String): DownloadClientEndpoint {
         val uri =
             try {
                 URI(raw.trim())
             } catch (e: URISyntaxException) {
-                throw IllegalArgumentException("Invalid DOWNLOAD_CLIENT_URL: ${e.reason}", e)
+                throw IllegalArgumentException("Invalid DOWNLOAD_CLIENT_URL: ${e.reason} at index ${e.index}")
             }
         val scheme =
             requireNotNull(uri.scheme?.lowercase()) {
                 "DOWNLOAD_CLIENT_URL must start with a scheme, e.g. qbittorrent:// or transmission://"
             }
-        require(!uri.host.isNullOrBlank()) { "DOWNLOAD_CLIENT_URL must include a host" }
 
         val (type, httpScheme) = resolveScheme(scheme)
-        val (username, password) = parseUserInfo(uri.rawUserInfo)
+        val authority = parseAuthority(uri.rawAuthority)
+        val (username, password) = parseUserInfo(authority.userInfo)
         val queryApiKey = queryParameter(uri.rawQuery, "apikey")
 
-        val port = if (uri.port == -1) "" else ":${uri.port}"
+        val port = authority.port?.let { ":$it" }.orEmpty()
         val path = uri.rawPath.orEmpty().trimEnd('/')
         return DownloadClientEndpoint(
             type = type,
-            baseUrl = "$httpScheme://${uri.host}$port$path",
+            baseUrl = "$httpScheme://${authority.host}$port$path",
             username = username.takeUnless { type == DownloadClientType.SABNZBD },
             password = password,
             apiKey = queryApiKey ?: username.takeIf { type == DownloadClientType.SABNZBD }
@@ -68,6 +79,28 @@ internal object DownloadClientUrlParser {
                     DownloadClientType.supportedKeys.joinToString { "$it://" } + " (append 's' for HTTPS) or http(s)://"
             )
         }
+    }
+
+    /**
+     * Parsed by hand because [URI] treats hosts that are not RFC 2396 hostnames (e.g. Docker container
+     * names with underscores such as `qbit_vpn`) as registry-based and reports no host, port or user-info.
+     */
+    private fun parseAuthority(rawAuthority: String?): Authority {
+        require(!rawAuthority.isNullOrBlank()) { "DOWNLOAD_CLIENT_URL must include a host" }
+        val at = rawAuthority.lastIndexOf('@')
+        val userInfo = if (at == -1) null else rawAuthority.substring(0, at)
+        val hostPort = rawAuthority.substring(at + 1)
+        val portSeparator = if (hostPort.startsWith("[")) hostPort.indexOf("]:") + 1 else hostPort.lastIndexOf(':')
+        val host = if (portSeparator > 0) hostPort.substring(0, portSeparator) else hostPort
+        val rawPort = if (portSeparator > 0) hostPort.substring(portSeparator + 1) else ""
+        require(host.isNotBlank() && host != "[]") { "DOWNLOAD_CLIENT_URL must include a host" }
+        val port =
+            rawPort.ifEmpty { null }?.let {
+                requireNotNull(it.toIntOrNull()?.takeIf { p -> p in 1..MAX_PORT }) {
+                    "DOWNLOAD_CLIENT_URL has an invalid port '$it'"
+                }
+            }
+        return Authority(userInfo, host, port)
     }
 
     private fun parseUserInfo(rawUserInfo: String?): Pair<String?, String?> {

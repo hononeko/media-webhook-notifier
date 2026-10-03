@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory
 /** Instantiates the [DownloadClientPort] adapter selected by `DOWNLOAD_CLIENT_TYPE` / `DOWNLOAD_CLIENT_URL`. */
 object DownloadClientFactory {
     private val logger = LoggerFactory.getLogger(DownloadClientFactory::class.java)
+    private val USER_INFO = Regex("://[^/?#]*@")
 
     /** Fails fast at boot when the selected client has no adapter yet. */
     fun create(
@@ -30,7 +31,10 @@ object DownloadClientFactory {
                             "use one of: ${DownloadClientType.QBITTORRENT.key}, ${DownloadClientType.TRANSMISSION.key}"
                     )
             }
-        logger.info("Using {} download client at {}", type.key, url)
+        logger.info("Using {} download client at {}", type.key, redactUserInfo(url))
         return client
     }
+
+    /** `<CLIENT>_URL` values may embed credentials (`http://user:pass@host`); never log them. */
+    internal fun redactUserInfo(url: String): String = url.replace(USER_INFO, "://")
 }

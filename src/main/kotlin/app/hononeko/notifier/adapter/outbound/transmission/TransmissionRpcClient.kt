@@ -44,14 +44,24 @@ internal class TransmissionRpcClient(
 ) {
     companion object {
         const val SESSION_ID_HEADER = "X-Transmission-Session-Id"
+        private const val BASE_PATH = "/transmission"
+        private const val WEB_PATH = "/transmission/web"
         private const val RPC_PATH = "/transmission/rpc"
         private const val TIMEOUT_MILLIS = 5_000L
         private const val RESULT_SUCCESS = "success"
 
-        /** Accepts either a base URL (`http://host:9091`) or a full RPC endpoint (`.../transmission/rpc`). */
+        /**
+         * Accepts a base URL (`http://host:9091`), Transmission's own `/transmission` or `/transmission/web`
+         * paths as copied from the browser, or a full RPC endpoint (`.../rpc`, e.g. behind a reverse proxy).
+         */
         fun resolveEndpoint(url: String): String {
             val trimmed = url.trim().trimEnd('/')
-            return if (trimmed.endsWith("/rpc")) trimmed else "$trimmed$RPC_PATH"
+            return when {
+                trimmed.endsWith("/rpc") -> trimmed
+                trimmed.endsWith(WEB_PATH) -> trimmed.removeSuffix(WEB_PATH) + RPC_PATH
+                trimmed.endsWith(BASE_PATH) -> trimmed.removeSuffix(BASE_PATH) + RPC_PATH
+                else -> "$trimmed$RPC_PATH"
+            }
         }
     }
 
