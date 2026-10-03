@@ -20,6 +20,11 @@ qbittorrent:
   webuiPublicUrl: ""
   tagPrefix: "mwn_"
 
+transmission:
+  url: "http://localhost:9091"
+  username: ""
+  password: ""
+
 state:
   type: "memory"
   url: ""

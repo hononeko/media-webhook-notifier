@@ -140,6 +140,35 @@ class ConfigLoaderTest {
     }
 
     @Test
+    fun `should load transmission configuration with defaults, env overrides and password file`() {
+        val defaults = ConfigLoader.load(emptyMap()).transmission
+        assertEquals("http://localhost:9091", defaults.url)
+        assertEquals("", defaults.username)
+        assertEquals("", defaults.password)
+
+        val passwordFile = java.io.File.createTempFile("transmission_password_", ".txt")
+        passwordFile.writeText("rpc-secret-from-file\n")
+        passwordFile.deleteOnExit()
+
+        val config =
+            ConfigLoader
+                .load(
+                    mapOf(
+                        "TRANSMISSION_URL" to "http://seedbox:9091/transmission/rpc",
+                        "TRANSMISSION_USERNAME" to "rpc-user",
+                        "TRANSMISSION_PASSWORD" to "ignored-when-file-present",
+                        "TRANSMISSION_PASSWORD_FILE" to passwordFile.absolutePath
+                    )
+                ).transmission
+        assertEquals("http://seedbox:9091/transmission/rpc", config.url)
+        assertEquals("rpc-user", config.username)
+        assertEquals("rpc-secret-from-file", config.password)
+
+        val plainPassword = ConfigLoader.load(mapOf("TRANSMISSION_PASSWORD" to "plain-secret")).transmission
+        assertEquals("plain-secret", plainPassword.password)
+    }
+
+    @Test
     fun `should load prepopulated default templates when environment is empty`() {
         val config = ConfigLoader.load(emptyMap())
         assertNotNull(config.templates)

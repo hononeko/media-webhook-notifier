@@ -6,6 +6,7 @@ data class AppConfig(
     val server: ServerConfig = ServerConfig(),
     val mediaServer: MediaServerConfig = MediaServerConfig(),
     val qbittorrent: QBittorrentConfig = QBittorrentConfig(),
+    val transmission: TransmissionConfig = TransmissionConfig(),
     val notifications: NotificationConfig = NotificationConfig(),
     val state: StateConfig = StateConfig(),
     val templates: TemplateConfig = TemplateConfig()
@@ -39,6 +40,12 @@ data class QBittorrentConfig(
     val reconciliationEnabled: Boolean = true,
     val reconciliationIntervalMinutes: Long = 5,
     val tagPrefix: String = "mwn_"
+)
+
+data class TransmissionConfig(
+    val url: String = "http://localhost:9091",
+    val username: String = "",
+    val password: String = ""
 )
 
 data class StateConfig(

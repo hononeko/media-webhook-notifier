@@ -5,7 +5,7 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.TorrentProgress
 import app.hononeko.notifier.domain.model.TorrentState
 import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
-import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.TorrentProgressAggregator
 import arrow.core.Either
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -257,7 +257,7 @@ class QBittorrentClientAdapter(
             return Either.Right(torrentList.first().toTorrentProgress())
         }
 
-        return Either.Right(aggregateMultiTorrent(torrentList, hash))
+        return Either.Right(TorrentProgressAggregator.aggregate(hash, torrentList.map { it.toTorrentProgress() }))
     }
 
     private suspend fun ensureAuthenticated(force: Boolean = false) {
@@ -379,81 +379,3 @@ private fun mapState(state: String): TorrentState =
         "checkingdl", "checkingresumedata" -> TorrentState.CHECKING
         else -> TorrentState.UNKNOWN
     }
-
-private fun resolveAggregateState(states: List<TorrentState>): TorrentState =
-    when {
-        states.all { it == TorrentState.COMPLETED } -> TorrentState.COMPLETED
-        states.any { it == TorrentState.DOWNLOADING } -> TorrentState.DOWNLOADING
-        states.any { it == TorrentState.ALLOCATING_METADATA } -> TorrentState.ALLOCATING_METADATA
-        states.any { it == TorrentState.CHECKING } -> TorrentState.CHECKING
-        states.all { it == TorrentState.STALLED } -> TorrentState.STALLED
-        states.all { it == TorrentState.PAUSED } -> TorrentState.PAUSED
-        states.all { it == TorrentState.QUEUED } -> TorrentState.QUEUED
-        else -> TorrentState.DOWNLOADING
-    }
-
-private fun aggregateMultiTorrent(
-    torrentList: List<QBitTorrentDto>,
-    hash: String
-): TorrentProgress {
-    val totalSize = torrentList.sumOf { it.totalSize }
-    val totalCompleted = torrentList.sumOf { it.completed }
-    val totalDlSpeed = torrentList.sumOf { it.dlspeed }
-    val totalUpSpeed = torrentList.sumOf { it.upspeed }
-    val maxEta = torrentList.maxOfOrNull { it.eta } ?: 0L
-    val maxSeeds = torrentList.maxOfOrNull { it.numSeeds } ?: 0
-    val maxSeedsTotal = torrentList.maxOfOrNull { it.numComplete } ?: 0
-    val maxPeers = torrentList.maxOfOrNull { it.numLeechs } ?: 0
-    val maxPeersTotal = torrentList.maxOfOrNull { it.numIncomplete } ?: 0
-
-    val aggregateRatio =
-        if (totalSize > 0) {
-            (totalCompleted.toDouble() / totalSize.toDouble()).coerceIn(0.0, 1.0)
-        } else {
-            (torrentList.map { it.progress }.average()).coerceIn(0.0, 1.0)
-        }
-    val aggregatePercent = (aggregateRatio * 100.0).coerceIn(0.0, 100.0)
-
-    val states = torrentList.map { mapState(it.state) }
-    val aggregateState = resolveAggregateState(states)
-
-    val allTags =
-        torrentList
-            .flatMap { it.tags?.split(",") ?: emptyList() }
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-
-    val childItems =
-        if (torrentList.size > 1 || hash.contains("|")) {
-            torrentList
-                .map { it.toTorrentProgress() }
-                .sortedWith(
-                    compareBy(
-                        { CardFormatterService.extractEpisodeNumber(it.name) ?: Int.MAX_VALUE },
-                        { it.name }
-                    )
-                )
-        } else {
-            emptyList()
-        }
-
-    return TorrentProgress(
-        hash = hash,
-        name = childItems.firstOrNull()?.name ?: torrentList.firstOrNull()?.name ?: "Multi-torrent Download",
-        progressPercent = aggregatePercent,
-        progressRatio = aggregateRatio,
-        downloadSpeedBytesPerSec = totalDlSpeed,
-        uploadSpeedBytesPerSec = totalUpSpeed,
-        etaSeconds = maxEta,
-        totalSizeBytes = totalSize,
-        downloadedBytes = totalCompleted,
-        seedsCount = maxSeeds,
-        seedsTotal = maxSeedsTotal,
-        peersCount = maxPeers,
-        peersTotal = maxPeersTotal,
-        state = aggregateState,
-        items = childItems,
-        tags = allTags
-    )
-}
