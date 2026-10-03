@@ -24,22 +24,22 @@ class DomainErrorTest {
     }
 
     @Test
-    fun `test all TorrentClientError variants`() {
+    fun `test all DownloadClientError variants`() {
         val cause = RuntimeException("Connection refused")
-        val connFailed = DomainError.TorrentClientError.ConnectionFailed("http://localhost:8080", cause)
+        val connFailed = DomainError.DownloadClientError.ConnectionFailed("http://localhost:8080", cause)
         assertEquals("http://localhost:8080", connFailed.url)
         assertEquals(cause, connFailed.cause)
 
-        val connFailedNoCause = DomainError.TorrentClientError.ConnectionFailed("http://localhost:8080")
+        val connFailedNoCause = DomainError.DownloadClientError.ConnectionFailed("http://localhost:8080")
         assertNull(connFailedNoCause.cause)
 
-        val notFound = DomainError.TorrentClientError.TorrentNotFound("hash123")
-        assertEquals("hash123", notFound.hash)
+        val notFound = DomainError.DownloadClientError.DownloadNotFound("hash123")
+        assertEquals("hash123", notFound.downloadId)
 
-        val authFailed = DomainError.TorrentClientError.AuthenticationFailed("Invalid credentials")
+        val authFailed = DomainError.DownloadClientError.AuthenticationFailed("Invalid credentials")
         assertEquals("Invalid credentials", authFailed.reason)
 
-        val invalidResp = DomainError.TorrentClientError.InvalidResponse("Empty payload")
+        val invalidResp = DomainError.DownloadClientError.InvalidResponse("Empty payload")
         assertEquals("Empty payload", invalidResp.details)
     }
 

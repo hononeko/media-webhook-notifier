@@ -96,6 +96,10 @@ class TelegramHtmlFormatterTest {
         val withoutEta = withEta.copy(subtitle = null, etaFormatted = "")
         val htmlWithoutEta = TelegramHtmlFormatter.buildProgressHtml(withoutEta)
         assertTrue(!htmlWithoutEta.contains("(ETA:"))
+
+        assertTrue(htmlWithEta.contains("<b>Peers:</b> 20 seeds • 5 peers"))
+        val withoutPeers = withEta.copy(peersInfo = "")
+        assertTrue(!TelegramHtmlFormatter.buildProgressHtml(withoutPeers).contains("Peers:"))
     }
 
     @Test

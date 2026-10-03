@@ -17,8 +17,8 @@ import app.hononeko.notifier.adapter.inbound.web.controller.ProbeStatusDto
 import app.hononeko.notifier.adapter.inbound.web.controller.ReconciliationMetricsDto
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
+import app.hononeko.notifier.adapter.outbound.downloadclient.DownloadClientFactory
 import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerAdapter
-import app.hononeko.notifier.adapter.outbound.qbittorrent.QBittorrentClientAdapter
 import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
 import app.hononeko.notifier.adapter.outbound.state.ValkeyStateStore
 import app.hononeko.notifier.adapter.outbound.telegram.TelegramPublisherAdapter
@@ -27,12 +27,13 @@ import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.ConfigLoader
 import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
+import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
-import app.hononeko.notifier.domain.port.outbound.TorrentClientPort
 import app.hononeko.notifier.domain.service.AlertUseCases
 import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
 import app.hononeko.notifier.domain.service.IngestWebhookService
@@ -45,7 +46,6 @@ import app.hononeko.notifier.domain.service.ReconciliationConfig
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
 import app.hononeko.notifier.domain.service.TemplateEngine
-import app.hononeko.notifier.domain.service.TorrentReconciliationService
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -76,12 +76,12 @@ private val logger = LoggerFactory.getLogger("app.hononeko.notifier.Application"
 data class AppDependencies(
     val config: AppConfig,
     val scope: CoroutineScope,
-    val torrentClient: TorrentClientPort,
+    val downloadClient: DownloadClientPort,
     val notificationPublisher: NotificationPublisherPort,
     val mediaServerPort: MediaServerPort,
     val activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
     val downloadTracker: DownloadTrackerEngine,
-    val reconciliationService: TorrentReconciliationService? = null,
+    val reconciliationService: DownloadReconciliationService? = null,
     val seasonDebouncer: SeasonDebouncer,
     val mediaImportedService: MediaImportedService,
     val mediaAvailableService: MediaAvailableService,
@@ -116,7 +116,7 @@ fun buildDependencies(
 ): AppDependencies {
     CardFormatterService.templateEngine = TemplateEngine(config.templates)
 
-    val torrentClient = QBittorrentClientAdapter(config = config.qbittorrent)
+    val downloadClient = DownloadClientFactory.create(config)
     val notificationPublisher = TelegramPublisherAdapter(config = config.notifications)
     val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
     val activeTrackerStore = InMemoryActiveTrackerStore()
@@ -129,31 +129,32 @@ fun buildDependencies(
 
     val downloadTracker =
         DownloadTrackerEngine(
-            torrentClient = torrentClient,
+            downloadClient = downloadClient,
             notificationPublisher = notificationPublisher,
             activeTrackerStore = activeTrackerStore,
             config =
                 DownloadTrackerConfig(
-                    pollIntervalSeconds = config.qbittorrent.pollIntervalSeconds,
-                    maxPollingMinutes = config.qbittorrent.maxPollingMinutes,
-                    stalledTimeoutMinutes = config.qbittorrent.stalledTimeoutMinutes,
-                    webuiPublicUrl = config.qbittorrent.webuiPublicUrl,
-                    tagPrefix = config.qbittorrent.tagPrefix
+                    pollIntervalSeconds = config.downloadClient.pollIntervalSeconds,
+                    maxPollingMinutes = config.downloadClient.maxPollingMinutes,
+                    stalledTimeoutMinutes = config.downloadClient.stalledTimeoutMinutes,
+                    missingGraceAttempts = config.downloadClient.missingGraceAttempts,
+                    webuiPublicUrl = config.downloadClient.webuiPublicUrl,
+                    tagPrefix = config.downloadClient.tagPrefix
                 ),
             scope = scope
         )
 
     val reconciliationService =
-        TorrentReconciliationService(
-            torrentClient = torrentClient,
+        DownloadReconciliationService(
+            downloadClient = downloadClient,
             trackDownloadUseCase = downloadTracker,
             activeTrackerStore = activeTrackerStore,
             notificationPublisher = notificationPublisher,
             config =
                 ReconciliationConfig(
-                    intervalMinutes = config.qbittorrent.reconciliationIntervalMinutes,
-                    enabled = config.qbittorrent.reconciliationEnabled,
-                    tagPrefix = config.qbittorrent.tagPrefix
+                    intervalMinutes = config.downloadClient.reconciliationIntervalMinutes,
+                    enabled = config.downloadClient.reconciliationEnabled,
+                    tagPrefix = config.downloadClient.tagPrefix
                 )
         )
     reconciliationService.start(scope)
@@ -179,7 +180,7 @@ fun buildDependencies(
 
     val seasonDebouncer =
         SeasonDebouncer(
-            debounceMillis = config.qbittorrent.debounceSeconds * 1000L,
+            debounceMillis = config.downloadClient.debounceSeconds * 1000L,
             scope = scope,
             deduplicator = mediaAvailableDeduplicator,
             onDebouncedGrab = { grab ->
@@ -242,7 +243,7 @@ fun buildDependencies(
     return AppDependencies(
         config = config,
         scope = scope,
-        torrentClient = torrentClient,
+        downloadClient = downloadClient,
         notificationPublisher = notificationPublisher,
         mediaServerPort = mediaServerPort,
         activeTrackerStore = activeTrackerStore,

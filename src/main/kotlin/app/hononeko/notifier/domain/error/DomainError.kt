@@ -17,23 +17,23 @@ sealed interface DomainError {
         data object MissingTorrentHash : WebhookError
     }
 
-    sealed interface TorrentClientError : DomainError {
+    sealed interface DownloadClientError : DomainError {
         data class ConnectionFailed(
             val url: String,
             val cause: Throwable? = null
-        ) : TorrentClientError
+        ) : DownloadClientError
 
-        data class TorrentNotFound(
-            val hash: String
-        ) : TorrentClientError
+        data class DownloadNotFound(
+            val downloadId: String
+        ) : DownloadClientError
 
         data class AuthenticationFailed(
             val reason: String
-        ) : TorrentClientError
+        ) : DownloadClientError
 
         data class InvalidResponse(
             val details: String
-        ) : TorrentClientError
+        ) : DownloadClientError
     }
 
     sealed interface NotificationError : DomainError {

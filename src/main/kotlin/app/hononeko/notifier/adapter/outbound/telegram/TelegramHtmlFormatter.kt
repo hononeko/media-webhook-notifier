@@ -110,7 +110,9 @@ object TelegramHtmlFormatter {
             }
             sb.append("\n")
             sb.append("▪ <b>Transferred:</b> ").append(escapeHtml(update.sizeFormatted)).append("\n")
-            sb.append("▪ <b>Peers:</b> ").append(escapeHtml(update.peersInfo)).append("\n")
+            if (update.peersInfo.isNotBlank()) {
+                sb.append("▪ <b>Peers:</b> ").append(escapeHtml(update.peersInfo)).append("\n")
+            }
             sb.append("▪ <b>Status:</b> ").append(escapeHtml(update.stateText))
         }
 

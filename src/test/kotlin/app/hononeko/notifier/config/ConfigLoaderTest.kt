@@ -27,13 +27,13 @@ class ConfigLoaderTest {
         assertEquals("http://localhost:8080", config.qbittorrent.url)
         assertEquals("", config.qbittorrent.username)
         assertEquals("", config.qbittorrent.password)
-        assertEquals(5, config.qbittorrent.pollIntervalSeconds)
-        assertEquals(30, config.qbittorrent.maxPollingMinutes)
-        assertEquals(15, config.qbittorrent.stalledTimeoutMinutes)
-        assertEquals(6, config.qbittorrent.missingGraceAttempts)
-        assertEquals(5, config.qbittorrent.debounceSeconds)
-        assertEquals("", config.qbittorrent.webuiPublicUrl)
-        assertEquals("mwn_", config.qbittorrent.tagPrefix)
+        assertEquals(5, config.downloadClient.pollIntervalSeconds)
+        assertEquals(30, config.downloadClient.maxPollingMinutes)
+        assertEquals(15, config.downloadClient.stalledTimeoutMinutes)
+        assertEquals(6, config.downloadClient.missingGraceAttempts)
+        assertEquals(5, config.downloadClient.debounceSeconds)
+        assertEquals("", config.downloadClient.webuiPublicUrl)
+        assertEquals("mwn_", config.downloadClient.tagPrefix)
 
         // State
         assertEquals("memory", config.state.type)
@@ -104,7 +104,7 @@ class ConfigLoaderTest {
         assertEquals("mwn:tg:", config.state.keyPrefix)
         assertEquals(3500L, config.state.timeoutMillis)
         assertEquals(32, config.state.maxPoolSize)
-        assertEquals("mwn_tg_", config.qbittorrent.tagPrefix)
+        assertEquals("mwn_tg_", config.downloadClient.tagPrefix)
     }
 
     @Test

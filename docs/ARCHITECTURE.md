@@ -31,7 +31,8 @@ This guarantees that business rules (media tracking, card generation, notificati
                                                     ▼
                                ┌─────────────────────────────────────────┐
                                │              Domain Core                │
-                               │  - Models: MediaPayload, TorrentProgress│
+                               │  - Models: MediaPayload,                │
+                               │    DownloadItemProgress,                │
                                │    NotificationCard, ActionLink         │
                                │  - Use Cases & Domain Services:         │
                                │    * DownloadTrackerEngine              │
@@ -44,7 +45,7 @@ This guarantees that business rules (media tracking, card generation, notificati
                                                     ▼
                                ┌─────────────────────────────────────────┐
                                │             Outbound Ports              │
-                               │  - TorrentClientPort                    │
+                               │  - DownloadClientPort                   │
                                │  - NotificationPublisherPort            │
                                │  - MediaServerPort                      │
                                └────────────────────┬────────────────────┘
@@ -52,7 +53,9 @@ This guarantees that business rules (media tracking, card generation, notificati
                                                     ▼
                                ┌─────────────────────────────────────────┐
                                │            Driven Adapters              │
+                               │  - DownloadClientFactory (selects one)  │
                                │  - QBittorrentClientAdapter (Ktor HTTP) │
+                               │  - TransmissionClientAdapter (Ktor RPC) │
                                │  - TelegramPublisherAdapter (Bot API)   │
                                │  - DiscordPublisherAdapter              │
                                │  - PlexMetadataAdapter                  │
@@ -86,7 +89,7 @@ media-webhook-notifier/
     │   │       ├── domain/                       # Core Domain (Zero framework dependencies)
     │   │       │   ├── model/
     │   │       │   │   ├── MediaPayload.kt       # Unified media representation
-    │   │       │   │   ├── TorrentProgress.kt    # Hash, percent, ETA, speed, state
+    │   │       │   │   ├── DownloadItemProgress.kt # Id, percent, ETA, speed, state, swarm/usenet stats
     │   │       │   │   ├── NotificationCard.kt   # Header, body, artwork, buttons
     │   │       │   │   └── AppSource.kt          # Sonarr, Radarr, Plex, Jellyfin
     │   │       │   ├── error/
@@ -98,7 +101,7 @@ media-webhook-notifier/
     │   │       │   │   │   ├── AnnounceMediaImportedUseCase.kt
     │   │       │   │   │   └── AnnounceMediaAvailableUseCase.kt
     │   │       │   │   └── outbound/             # Secondary / Driven Ports
-    │   │       │   │       ├── TorrentClientPort.kt
+    │   │       │   │       ├── DownloadClientPort.kt
     │   │       │   │       ├── NotificationPublisherPort.kt
     │   │       │   │       └── MediaServerPort.kt
     │   │       │   └── service/                  # Core Business Services
@@ -128,8 +131,12 @@ media-webhook-notifier/
     │   │           │       └── controller/
     │   │           │           └── SchemaController.kt
     │   │           └── outbound/
+    │   │               ├── downloadclient/
+    │   │               │   └── DownloadClientFactory.kt
     │   │               ├── qbittorrent/
     │   │               │   └── QBittorrentClientAdapter.kt
+    │   │               ├── transmission/
+    │   │               │   └── TransmissionClientAdapter.kt
     │   │               ├── telegram/
     │   │               │   └── TelegramPublisherAdapter.kt
     │   │               └── mediaserver/
@@ -149,7 +156,7 @@ We avoid throwing unchecked runtime exceptions across domain boundaries. All dom
 
 ### 3.1 Domain Error Hierarchy (`DomainError.kt`)
 * **`WebhookError`**: `Unauthorized`, `InvalidPayload`, `UnsupportedEventType`, `MissingTorrentHash`.
-* **`TorrentClientError`**: `ConnectionFailed`, `TorrentNotFound`, `AuthenticationFailed`, `InvalidResponse`.
+* **`DownloadClientError`**: `ConnectionFailed`, `DownloadNotFound`, `AuthenticationFailed`, `InvalidResponse`.
 * **`NotificationError`**: `RateLimited(retryAfterSeconds)`, `DeliveryFailed`, `ImageFetchFailed`, `ChatNotFound`.
 
 ---
@@ -158,7 +165,7 @@ We avoid throwing unchecked runtime exceptions across domain boundaries. All dom
 
 ### 4.1 1:1:1 Single-Purpose Microservice Model
 To maintain minimal resource consumption (~35-40 MB RSS memory under load), each running container instance operates on a **1:1:1** mapping:
-* **1 Download Client:** `qBittorrent` instance.
+* **1 Download Client:** `qBittorrent` or `Transmission` instance, selected via `DOWNLOAD_CLIENT_TYPE` / `DOWNLOAD_CLIENT_URL` (SABnzbd is recognised but not yet supported).
 * **1 Media Server:** `Plex` or `Jellyfin` instance (configured via `mediaServer.type`).
 * **1 Destination Notification Sink:** (e.g. 1 Telegram chat / topic).
 

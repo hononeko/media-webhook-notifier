@@ -5,6 +5,7 @@ import app.hononeko.notifier.domain.model.TemplateConfig
 data class AppConfig(
     val server: ServerConfig = ServerConfig(),
     val mediaServer: MediaServerConfig = MediaServerConfig(),
+    val downloadClient: DownloadClientConfig = DownloadClientConfig(),
     val qbittorrent: QBittorrentConfig = QBittorrentConfig(),
     val transmission: TransmissionConfig = TransmissionConfig(),
     val notifications: NotificationConfig = NotificationConfig(),
@@ -27,10 +28,23 @@ data class MediaServerConfig(
     val maxAvailableAgeSeconds: Long = 86_400L
 )
 
-data class QBittorrentConfig(
-    val url: String = "http://localhost:8080",
-    val username: String = "",
-    val password: String = "",
+enum class DownloadClientType(
+    val key: String
+) {
+    QBITTORRENT("qbittorrent"),
+    TRANSMISSION("transmission"),
+    SABNZBD("sabnzbd");
+
+    companion object {
+        fun fromKey(raw: String): DownloadClientType? = entries.firstOrNull { it.key == raw.trim().lowercase() }
+
+        val supportedKeys: List<String> get() = entries.map { it.key }
+    }
+}
+
+/** Which download client is active plus the client-agnostic live tracking settings. */
+data class DownloadClientConfig(
+    val type: DownloadClientType = DownloadClientType.QBITTORRENT,
     val pollIntervalSeconds: Long = 5,
     val maxPollingMinutes: Long = 30,
     val stalledTimeoutMinutes: Long = 15,
@@ -40,6 +54,12 @@ data class QBittorrentConfig(
     val reconciliationEnabled: Boolean = true,
     val reconciliationIntervalMinutes: Long = 5,
     val tagPrefix: String = "mwn_"
+)
+
+data class QBittorrentConfig(
+    val url: String = "http://localhost:8080",
+    val username: String = "",
+    val password: String = ""
 )
 
 data class TransmissionConfig(

@@ -1,7 +1,8 @@
 package app.hononeko.notifier.adapter.outbound.transmission
 
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
+import app.hononeko.notifier.domain.model.SwarmStats
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
@@ -63,10 +64,10 @@ internal data class TransmissionTrackerStatDto(
 internal val TransmissionTorrentDto.isDone: Boolean
     get() = percentDone >= 1.0
 
-internal fun TransmissionTorrentDto.toTorrentProgress(): TorrentProgress {
+internal fun TransmissionTorrentDto.toDownloadItemProgress(): DownloadItemProgress {
     val ratio = percentDone.coerceIn(0.0, 1.0)
-    return TorrentProgress(
-        hash = hashString.lowercase(),
+    return DownloadItemProgress(
+        id = hashString.lowercase(),
         name = name ?: "Unknown",
         progressPercent = ratio * FULL_PERCENT,
         progressRatio = ratio,
@@ -76,10 +77,13 @@ internal fun TransmissionTorrentDto.toTorrentProgress(): TorrentProgress {
         totalSizeBytes = sizeWhenDone,
         downloadedBytes = (sizeWhenDone - leftUntilDone).coerceAtLeast(0L),
         // Mirrors qBittorrent's split: seeds we pull from vs. every other connected peer.
-        seedsCount = peersSendingToUs,
-        seedsTotal = trackerStats.maxOfOrNull { it.seederCount }?.coerceAtLeast(0) ?: 0,
-        peersCount = (peersConnected - peersSendingToUs).coerceAtLeast(0),
-        peersTotal = trackerStats.maxOfOrNull { it.leecherCount }?.coerceAtLeast(0) ?: 0,
+        swarm =
+            SwarmStats(
+                seedsCount = peersSendingToUs,
+                seedsTotal = trackerStats.maxOfOrNull { it.seederCount }?.coerceAtLeast(0) ?: 0,
+                peersCount = (peersConnected - peersSendingToUs).coerceAtLeast(0),
+                peersTotal = trackerStats.maxOfOrNull { it.leecherCount }?.coerceAtLeast(0) ?: 0
+            ),
         state = resolveState(),
         tags = labels.map { it.trim() }.filter { it.isNotBlank() }
     )
@@ -93,17 +97,17 @@ internal fun TransmissionTorrentDto.matchesFilter(filter: String): Boolean =
         else -> true
     }
 
-private fun TransmissionTorrentDto.resolveState(): TorrentState =
+private fun TransmissionTorrentDto.resolveState(): DownloadState =
     when (status) {
-        STATUS_STOPPED -> if (isDone) TorrentState.COMPLETED else TorrentState.PAUSED
-        STATUS_CHECK_WAIT, STATUS_CHECK -> TorrentState.CHECKING
-        STATUS_DOWNLOAD_WAIT -> TorrentState.QUEUED
+        STATUS_STOPPED -> if (isDone) DownloadState.COMPLETED else DownloadState.PAUSED
+        STATUS_CHECK_WAIT, STATUS_CHECK -> DownloadState.CHECKING
+        STATUS_DOWNLOAD_WAIT -> DownloadState.QUEUED
         STATUS_DOWNLOAD ->
             when {
-                metadataPercentComplete < 1.0 -> TorrentState.ALLOCATING_METADATA
-                isStalled -> TorrentState.STALLED
-                else -> TorrentState.DOWNLOADING
+                metadataPercentComplete < 1.0 -> DownloadState.ALLOCATING_METADATA
+                isStalled -> DownloadState.STALLED
+                else -> DownloadState.DOWNLOADING
             }
-        STATUS_SEED_WAIT, STATUS_SEED -> TorrentState.COMPLETED
-        else -> TorrentState.UNKNOWN
+        STATUS_SEED_WAIT, STATUS_SEED -> DownloadState.COMPLETED
+        else -> DownloadState.UNKNOWN
     }

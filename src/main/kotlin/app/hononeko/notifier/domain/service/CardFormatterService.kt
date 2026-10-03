@@ -3,14 +3,14 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.model.ActionLink
 import app.hononeko.notifier.domain.model.ActionStyle
 import app.hononeko.notifier.domain.model.CardField
+import app.hononeko.notifier.domain.model.DownloadItemProgress
+import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.MediaSpecs
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationLevel
 import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.model.TorrentProgress
-import app.hononeko.notifier.domain.model.TorrentState
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import java.util.Locale
 
@@ -262,7 +262,7 @@ object CardFormatterService {
     }
 
     fun formatEpisodeTracks(
-        items: List<TorrentProgress>,
+        items: List<DownloadItemProgress>,
         engine: TemplateEngine = templateEngine,
         maxItems: Int = 8
     ): String? {
@@ -305,7 +305,7 @@ object CardFormatterService {
 
     fun buildProgressUpdate(
         payload: MediaPayload.ArrGrab,
-        progress: TorrentProgress,
+        progress: DownloadItemProgress,
         webUiUrl: String?,
         engine: TemplateEngine = templateEngine
     ): ProgressUpdate {
@@ -319,13 +319,9 @@ object CardFormatterService {
         val sizeFormatted = "${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalSizeBytes)}"
         val speedFormatted = formatSpeed(progress.downloadSpeedBytesPerSec)
         val etaFormatted = formatDuration(progress.etaSeconds)
+        // Only swarm-based (torrent) clients report peers; the empty value suppresses the template line otherwise.
         val peersFormatted =
-            formatPeers(
-                progress.seedsCount,
-                progress.seedsTotal,
-                progress.peersCount,
-                progress.peersTotal
-            )
+            progress.swarm?.let { formatPeers(it.seedsCount, it.seedsTotal, it.peersCount, it.peersTotal) }.orEmpty()
         val progressBar =
             drawProgressBar(
                 progress.progressPercent,
@@ -335,14 +331,14 @@ object CardFormatterService {
 
         val stateLabel =
             when (progress.state) {
-                TorrentState.DOWNLOADING -> "Downloading"
-                TorrentState.STALLED -> "Stalled (No seeds)"
-                TorrentState.COMPLETED, TorrentState.UPLOADING -> "Completed"
-                TorrentState.ALLOCATING_METADATA -> "Allocating metadata"
-                TorrentState.PAUSED -> "Paused"
-                TorrentState.QUEUED -> "Queued"
-                TorrentState.CHECKING -> "Checking"
-                TorrentState.UNKNOWN -> "Active"
+                DownloadState.DOWNLOADING -> "Downloading"
+                DownloadState.STALLED -> "Stalled (No seeds)"
+                DownloadState.COMPLETED, DownloadState.UPLOADING -> "Completed"
+                DownloadState.ALLOCATING_METADATA -> "Allocating metadata"
+                DownloadState.PAUSED -> "Paused"
+                DownloadState.QUEUED -> "Queued"
+                DownloadState.CHECKING -> "Checking"
+                DownloadState.UNKNOWN -> "Active"
             }
 
         val episodeTracks = formatEpisodeTracks(progress.items, engine)
@@ -398,7 +394,7 @@ object CardFormatterService {
 
     fun buildCompletionCard(
         payload: MediaPayload.ArrGrab,
-        progress: TorrentProgress,
+        progress: DownloadItemProgress,
         webUiUrl: String?,
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
@@ -470,7 +466,7 @@ object CardFormatterService {
 
     fun buildStalledCard(
         payload: MediaPayload.ArrGrab,
-        progress: TorrentProgress?,
+        progress: DownloadItemProgress?,
         webUiUrl: String?,
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
@@ -1260,18 +1256,18 @@ private fun determinePlexKind(payload: MediaPayload.PlexLibraryNew): PlexMediaKi
     return PlexMediaKind(isEpisode = isEpisode, isSeason = isSeason, seriesTitle = seriesTitle, mediaType = mediaType)
 }
 
-private fun formatTrackPercent(item: TorrentProgress): String =
+private fun formatTrackPercent(item: DownloadItemProgress): String =
     if (item.progressPercent >= 100.0 || item.state.isComplete) {
         "100%"
     } else {
         String.format(Locale.US, "%.1f%%", item.progressPercent)
     }
 
-private fun formatTrackStatusInfo(item: TorrentProgress): String =
+private fun formatTrackStatusInfo(item: DownloadItemProgress): String =
     when {
         item.state.isComplete || item.progressPercent >= 100.0 ->
             CardFormatterService.formatBytes(item.totalSizeBytes)
-        item.state == TorrentState.DOWNLOADING -> {
+        item.state == DownloadState.DOWNLOADING -> {
             val speed = CardFormatterService.formatSpeed(item.downloadSpeedBytesPerSec)
             if (item.etaSeconds > 0) {
                 "$speed (ETA: ${CardFormatterService.formatDuration(item.etaSeconds)})"
@@ -1279,10 +1275,10 @@ private fun formatTrackStatusInfo(item: TorrentProgress): String =
                 speed
             }
         }
-        item.state == TorrentState.STALLED -> "Stalled"
-        item.state == TorrentState.QUEUED -> "Queued"
-        item.state == TorrentState.PAUSED -> "Paused"
-        item.state == TorrentState.ALLOCATING_METADATA -> "Allocating"
+        item.state == DownloadState.STALLED -> "Stalled"
+        item.state == DownloadState.QUEUED -> "Queued"
+        item.state == DownloadState.PAUSED -> "Paused"
+        item.state == DownloadState.ALLOCATING_METADATA -> "Allocating"
         else -> "${CardFormatterService.formatBytes(
             item.downloadedBytes
         )} / ${CardFormatterService.formatBytes(item.totalSizeBytes)}"

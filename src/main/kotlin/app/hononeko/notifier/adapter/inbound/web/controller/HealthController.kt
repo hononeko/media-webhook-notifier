@@ -2,8 +2,8 @@ package app.hononeko.notifier.adapter.inbound.web.controller
 
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
-import app.hononeko.notifier.domain.service.TorrentReconciliationService
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -70,7 +70,7 @@ data class MetricsDto(
 class HealthController(
     private val eventRail: EventRail? = null,
     private val downloadTracker: DownloadTrackerEngine? = null,
-    private val reconciliationService: TorrentReconciliationService? = null,
+    private val reconciliationService: DownloadReconciliationService? = null,
     private val stateStore: StateStorePort? = null,
     private val startTimeMillis: Long = System.currentTimeMillis()
 ) {

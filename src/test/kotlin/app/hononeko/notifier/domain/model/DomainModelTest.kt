@@ -51,10 +51,10 @@ class DomainModelTest {
     }
 
     @Test
-    fun `should construct TorrentProgress and assert states correctly`() {
+    fun `should construct DownloadItemProgress and assert states correctly`() {
         val downloading =
-            TorrentProgress(
-                hash = "aabbcc",
+            DownloadItemProgress(
+                id = "aabbcc",
                 name = "Test.Torrent",
                 progressPercent = 45.0,
                 progressRatio = 0.45,
@@ -63,11 +63,8 @@ class DomainModelTest {
                 etaSeconds = 300,
                 totalSizeBytes = 10737418240L,
                 downloadedBytes = 4831838208L,
-                seedsCount = 20,
-                seedsTotal = 50,
-                peersCount = 5,
-                peersTotal = 10,
-                state = TorrentState.DOWNLOADING
+                swarm = SwarmStats(seedsCount = 20, seedsTotal = 50, peersCount = 5, peersTotal = 10),
+                state = DownloadState.DOWNLOADING
             )
 
         assertFalse(downloading.state.isComplete)
@@ -78,14 +75,14 @@ class DomainModelTest {
             downloading.copy(
                 progressPercent = 100.0,
                 progressRatio = 1.0,
-                state = TorrentState.COMPLETED
+                state = DownloadState.COMPLETED
             )
         assertTrue(completed.state.isComplete)
         assertFalse(completed.state.isStalled)
 
         val stalled =
             downloading.copy(
-                state = TorrentState.STALLED
+                state = DownloadState.STALLED
             )
         assertTrue(stalled.state.isStalled)
     }

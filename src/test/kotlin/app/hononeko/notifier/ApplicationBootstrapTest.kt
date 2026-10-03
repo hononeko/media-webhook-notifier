@@ -33,7 +33,7 @@ class ApplicationBootstrapTest {
             val config = AppConfig(server = ServerConfig(authToken = ""))
             val dependencies = buildDependencies(config, scope = testScope)
 
-            assertNotNull(dependencies.torrentClient)
+            assertNotNull(dependencies.downloadClient)
             assertNotNull(dependencies.notificationPublisher)
             assertNotNull(dependencies.mediaServerPort)
             assertNotNull(dependencies.downloadTracker)
@@ -115,9 +115,9 @@ class ApplicationBootstrapTest {
             val config =
                 AppConfig(
                     server = ServerConfig(authToken = ""),
-                    qbittorrent =
+                    downloadClient =
                         app.hononeko.notifier.config
-                            .QBittorrentConfig(debounceSeconds = 1)
+                            .DownloadClientConfig(debounceSeconds = 1)
                 )
             val dependencies = buildDependencies(config, scope = testScope)
 

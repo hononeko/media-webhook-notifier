@@ -1,7 +1,7 @@
 package app.hononeko.notifier.domain.port.outbound
 
 import app.hononeko.notifier.domain.model.ActiveTrackerSession
-import app.hononeko.notifier.domain.model.TorrentProgress
+import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.TrackerSnapshot
 import kotlinx.coroutines.flow.StateFlow
 
@@ -16,7 +16,7 @@ interface ActiveTrackerStore {
 
     fun updateProgress(
         hash: String,
-        progress: TorrentProgress,
+        progress: DownloadItemProgress,
         stalledSeconds: Long
     )
 
