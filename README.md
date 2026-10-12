@@ -90,6 +90,7 @@ Every other option (download client tuning, the Valkey / Redis state store, card
 ## 📚 Documentation & Deep Dives
 
 * ⚙️ **[Configuration Reference](docs/CONFIGURATION.md):** Every environment variable, grouped by server, notifications, download client, state store, media server, and templates.
+* 🔘 **[Telegram Interactions](docs/TELEGRAM_INTERACTIONS.md):** Inline-button handling behind `TELEGRAM_INTERACTIVE_ENABLED`: allowlist, polling vs. webhook mode, replica rules and troubleshooting.
 * 🚀 **[Installation & Deployment Examples](docs/INSTALLATION_EXAMPLES.md):** Production Kubernetes manifests, Docker CLI, secret file mounts (`*_FILE`), and Linux Systemd service.
 * 🎨 **[Card Templates & Formatting Guide](docs/TEMPLATES.md):** Complete tag reference, suppression rules, sandbox preview API, and the canonical default templates in [src/main/resources/templates.default.yaml](src/main/resources/templates.default.yaml).
 * 📐 **[Hexagonal Architecture Blueprint](docs/ARCHITECTURE.md):** Layer boundaries, domain ports, error handling with Arrow-kt, and resilience policies.
