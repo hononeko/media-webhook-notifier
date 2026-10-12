@@ -10,8 +10,43 @@ data class AppConfig(
     val transmission: TransmissionConfig = TransmissionConfig(),
     val notifications: NotificationConfig = NotificationConfig(),
     val state: StateConfig = StateConfig(),
-    val templates: TemplateConfig = TemplateConfig()
+    val templates: TemplateConfig = TemplateConfig(),
+    val features: FeatureFlags = FeatureFlags(),
+    val telegramInteraction: TelegramInteractionConfig = TelegramInteractionConfig()
 )
+
+/** Boot-time feature flags. Each one switches a whole feature on or off; nothing is toggled at runtime. */
+data class FeatureFlags(
+    val telegramInteractive: Boolean = false
+)
+
+enum class TelegramUpdatesMode(
+    val key: String
+) {
+    POLLING("polling"),
+    WEBHOOK("webhook");
+
+    companion object {
+        fun fromKey(raw: String): TelegramUpdatesMode? = entries.firstOrNull { it.key == raw.trim().lowercase() }
+    }
+}
+
+/** Inbound Telegram button handling; only read when [FeatureFlags.telegramInteractive] is on. */
+data class TelegramInteractionConfig(
+    val mode: TelegramUpdatesMode = TelegramUpdatesMode.POLLING,
+    val allowedUserIds: Set<Long> = emptySet(),
+    val webhookUrl: String = "",
+    val webhookSecret: String = "",
+    val pollTimeoutSeconds: Int = 25
+) {
+    /** The URL registered with Telegram: [webhookUrl] with the webhook path appended exactly once. */
+    val webhookEndpoint: String
+        get() = webhookUrl.trimEnd('/').removeSuffix(WEBHOOK_PATH).trimEnd('/') + WEBHOOK_PATH
+
+    companion object {
+        const val WEBHOOK_PATH = "/api/v1/telegram/webhook"
+    }
+}
 
 data class ServerConfig(
     val port: Int = 8080,
