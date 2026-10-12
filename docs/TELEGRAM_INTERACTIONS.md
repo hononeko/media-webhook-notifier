@@ -17,9 +17,9 @@ This release adds the listener and the security checks only. Cards don't show ac
 ## Enable it
 
 1. Make sure notifications already go to Telegram (`NOTIFICATION_URL=telegram://<bot_token>@<chat_id>`, or `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`).
-2. Find the **numeric user ID** of everyone who should be able to press buttons. Usernames aren't accepted, because they can be changed or claimed by someone else. To find an ID, *before* enabling the feature:
-   - send any message to your bot, open `https://api.telegram.org/bot<bot_token>/getUpdates` and read `message.from.id`, or
-   - ask a user-info bot such as `@userinfobot`.
+2. Find the **numeric user ID** of everyone who should be able to press buttons. Usernames aren't accepted, because they can be changed or claimed by someone else. To find an ID:
+   - ask a user-info bot such as `@userinfobot`. This works at any time, including when adding someone later, or
+   - **only if the feature has never run for this bot:** send your bot any message, open `https://api.telegram.org/bot<bot_token>/getUpdates` and read `message.from.id`. Once the feature has run, this stops working: the service consumes updates (or a webhook makes `getUpdates` return 409), and the bot keeps receiving only button clicks. To use it later anyway, stop the service and request `getUpdates?allowed_updates=["message"]`, after removing any webhook with `deleteWebhook` in webhook mode.
 3. Set:
    ```yaml
    environment:
