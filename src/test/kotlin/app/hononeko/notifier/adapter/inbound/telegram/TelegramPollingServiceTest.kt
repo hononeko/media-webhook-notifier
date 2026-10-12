@@ -107,6 +107,23 @@ class TelegramPollingServiceTest {
         }
 
     @Test
+    fun `unexpected exception from deleteWebhook is retried instead of killing polling`() =
+        runTest {
+            var attempts = 0
+            coEvery { api.deleteWebhook() } coAnswers {
+                events += "deleteWebhook"
+                if (attempts++ == 0) throw IllegalStateException("resolver not ready") else Either.Right(Unit)
+            }
+            script()
+
+            startPolling()
+            advanceUntilIdle()
+
+            assertEquals(listOf("deleteWebhook", "deleteWebhook", "getUpdates"), events)
+            assertEquals(1_000L, polls.single().atMillis)
+        }
+
+    @Test
     fun `advances offset past each update and processes callbacks`() =
         runTest {
             deleteWebhookReturns()

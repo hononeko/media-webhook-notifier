@@ -23,6 +23,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import java.io.IOException
+import java.nio.channels.UnresolvedAddressException
 
 /**
  * The Bot API calls the inbound side needs: long polling, callback answers and webhook registration.
@@ -188,6 +189,11 @@ internal class TelegramBotApi(
                         configure()
                     }
                 response.status to response.bodyAsText()
+            } catch (e: UnresolvedAddressException) {
+                // CIO reports DNS failures with this IllegalArgumentException, not an IOException.
+                return Either.Left(
+                    DomainError.NotificationError.DeliveryFailed(PROVIDER, "$method: cannot resolve the Bot API host")
+                )
             } catch (e: IOException) {
                 // Ktor puts the request URL, and with it the bot token, into exception messages. Drop the cause.
                 return Either.Left(

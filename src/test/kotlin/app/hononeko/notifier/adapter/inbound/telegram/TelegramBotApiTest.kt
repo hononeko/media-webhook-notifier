@@ -22,6 +22,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import java.io.IOException
+import java.nio.channels.UnresolvedAddressException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -198,5 +199,15 @@ class TelegramBotApiTest {
                     .contains(token),
                 "cause must not carry the token either"
             )
+        }
+
+    @Test
+    fun `unresolvable host maps to DeliveryFailed instead of throwing`() =
+        runTest {
+            val result = api { throw UnresolvedAddressException() }.deleteWebhook()
+
+            val error = assertIs<DomainError.NotificationError.DeliveryFailed>(assertIs<Either.Left<*>>(result).value)
+            assertNull(error.httpStatus)
+            assertTrue(error.message.contains("resolve"), error.message)
         }
 }
