@@ -47,7 +47,8 @@ sealed interface DomainError {
         data class DeliveryFailed(
             override val provider: String,
             val message: String,
-            val cause: Throwable? = null
+            val cause: Throwable? = null,
+            val httpStatus: Int? = null
         ) : NotificationError
 
         data class ConnectionTimeout(
@@ -60,5 +61,20 @@ sealed interface DomainError {
             val url: String,
             val cause: Throwable? = null
         ) : NotificationError
+    }
+
+    sealed interface InteractionError : DomainError {
+        data class UnauthorizedUser(
+            val userId: String,
+            val reason: String
+        ) : InteractionError
+
+        data class ExpiredCallback(
+            val ref: String
+        ) : InteractionError
+
+        data class UnknownAction(
+            val operation: String
+        ) : InteractionError
     }
 }

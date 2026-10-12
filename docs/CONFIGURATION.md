@@ -15,6 +15,18 @@ All settings can be configured via environment variables. For a minimal setup, s
 |---|---|---|
 | `NOTIFICATION_URL` | `""` | Sink URL: `telegram://<bot_token>@<chat_id>?topic=<id>&photos=true`. Supports `NOTIFICATION_URL_FILE` |
 
+## Telegram Interactions
+Inline-button handling for Telegram cards, off by default. See [Telegram Interactions](TELEGRAM_INTERACTIONS.md) for setup, the deployment rules (polling supports **one replica only**; webhook mode with several replicas needs Valkey / Redis) and troubleshooting. Every variable except the flag is only read, and only validated, when the flag is `true`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `TELEGRAM_INTERACTIVE_ENABLED` | `false` | Feature flag for inbound button handling. Needs a Telegram `NOTIFICATION_URL` (or `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`); with another provider it logs a warning and stays off |
+| `TELEGRAM_UPDATES_MODE` | `polling` | How clicks reach the service: `polling` (no public ingress needed) or `webhook` |
+| `TELEGRAM_ALLOWED_USERS` | — | Required. Comma-separated **numeric** Telegram user IDs allowed to press buttons; usernames are rejected at startup |
+| `TELEGRAM_WEBHOOK_URL` | — | Webhook mode: required. Public `https://` base URL of this service; `/api/v1/telegram/webhook` is appended |
+| `TELEGRAM_WEBHOOK_SECRET` | — | Webhook mode: required. 1–256 characters of `A-Z a-z 0-9 _ -`, checked against Telegram's `X-Telegram-Bot-Api-Secret-Token` header. Supports `TELEGRAM_WEBHOOK_SECRET_FILE` |
+| `TELEGRAM_POLL_TIMEOUT_SECONDS` | `25` | Polling mode: long-poll timeout, 1–50 |
+
 ## Download Client & Live Tracking
 Pick the client with `DOWNLOAD_CLIENT_TYPE` or the scheme of `DOWNLOAD_CLIENT_URL`. With neither set, qBittorrent is used, so existing `QBITTORRENT_*` setups keep working unchanged.
 

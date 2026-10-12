@@ -1,5 +1,7 @@
 package app.hononeko.notifier
 
+import app.hononeko.notifier.adapter.inbound.telegram.TelegramInteractionModule
+import app.hononeko.notifier.adapter.inbound.telegram.registerTelegramWebhookRoute
 import app.hononeko.notifier.adapter.inbound.web.DeadLetterPersistence
 import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.adapter.inbound.web.InboundRateLimiter
@@ -46,6 +48,7 @@ import app.hononeko.notifier.domain.service.ReconciliationConfig
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
 import app.hononeko.notifier.domain.service.TemplateEngine
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -61,6 +64,7 @@ import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.path
 import io.ktor.server.response.respond
+import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -94,7 +98,8 @@ data class AppDependencies(
     val providerRegistry: WebhookProviderRegistry,
     val healthController: HealthController,
     val stateStore: StateStorePort = InMemoryStateStore(),
-    val deadLetterPersistence: DeadLetterPersistence? = null
+    val deadLetterPersistence: DeadLetterPersistence? = null,
+    val telegramInteractions: TelegramInteractionModule? = null
 ) {
     fun close() {
         logger.info("Closing application dependencies and draining queues...")
@@ -104,6 +109,7 @@ data class AppDependencies(
             deadLetterPersistence?.flush()
         }
         downloadTracker.stopAll()
+        telegramInteractions?.close()
         stateStore.close()
         scope.cancel()
         logger.info("Application dependencies closed")
@@ -112,7 +118,8 @@ data class AppDependencies(
 
 fun buildDependencies(
     config: AppConfig,
-    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    telegramApiEngine: HttpClientEngine? = null
 ): AppDependencies {
     CardFormatterService.templateEngine = TemplateEngine(config.templates)
 
@@ -240,6 +247,13 @@ fun buildDependencies(
             stateStore = stateStore
         )
 
+    val telegramInteractions =
+        if (config.features.telegramInteractive) {
+            TelegramInteractionModule.create(config, stateStore, scope, telegramApiEngine).also { it.start(scope) }
+        } else {
+            null
+        }
+
     return AppDependencies(
         config = config,
         scope = scope,
@@ -261,7 +275,8 @@ fun buildDependencies(
         providerRegistry = providerRegistry,
         healthController = healthController,
         stateStore = stateStore,
-        deadLetterPersistence = deadLetterPersistence
+        deadLetterPersistence = deadLetterPersistence,
+        telegramInteractions = telegramInteractions
     )
 }
 
@@ -335,6 +350,10 @@ fun Application.module(dependencies: AppDependencies) {
         healthController = dependencies.healthController,
         rateLimiter = dependencies.rateLimiter
     )
+
+    dependencies.telegramInteractions?.controller?.let { controller ->
+        routing { registerTelegramWebhookRoute(controller, dependencies.rateLimiter) }
+    }
 }
 
 fun startServer(

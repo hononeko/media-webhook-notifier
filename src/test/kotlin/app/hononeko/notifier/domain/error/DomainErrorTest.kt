@@ -64,4 +64,26 @@ class DomainErrorTest {
         assertEquals("http://image.url", imgFetch.url)
         assertEquals(cause, imgFetch.cause)
     }
+
+    @Test
+    fun `delivery failures carry no http status unless one is given`() {
+        assertNull(DomainError.NotificationError.DeliveryFailed("telegram", "x").httpStatus)
+        assertEquals(409, DomainError.NotificationError.DeliveryFailed("telegram", "x", httpStatus = 409).httpStatus)
+    }
+
+    @Test
+    fun `test all InteractionError variants`() {
+        val unauthorized = DomainError.InteractionError.UnauthorizedUser("7", "not in TELEGRAM_ALLOWED_USERS")
+        assertEquals("7", unauthorized.userId)
+        assertEquals("not in TELEGRAM_ALLOWED_USERS", unauthorized.reason)
+        assertTrue(unauthorized is DomainError)
+
+        val expired = DomainError.InteractionError.ExpiredCallback("AAAAAAAAAA")
+        assertEquals("AAAAAAAAAA", expired.ref)
+        assertTrue(expired is DomainError.InteractionError)
+
+        val unknown = DomainError.InteractionError.UnknownAction("nope")
+        assertEquals("nope", unknown.operation)
+        assertTrue(unknown is DomainError.InteractionError)
+    }
 }

@@ -9,15 +9,19 @@ object ConfigLoader {
     fun load(env: Map<String, String> = System.getenv()): AppConfig {
         val reader = EnvReader(env)
         val downloadClients = DownloadClientConfigLoader.load(reader)
+        val notifications = loadNotificationsConfig(reader)
+        val (features, telegramInteraction) = TelegramInteractionConfigLoader.load(reader, notifications)
         return AppConfig(
             server = loadServerConfig(reader),
             mediaServer = loadMediaServerConfig(reader),
             downloadClient = downloadClients.downloadClient,
             qbittorrent = downloadClients.qbittorrent,
             transmission = downloadClients.transmission,
-            notifications = loadNotificationsConfig(reader),
+            notifications = notifications,
             state = loadStateConfig(reader),
-            templates = loadTemplatesConfig(reader)
+            templates = loadTemplatesConfig(reader),
+            features = features,
+            telegramInteraction = telegramInteraction
         )
     }
 
