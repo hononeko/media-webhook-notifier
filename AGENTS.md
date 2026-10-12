@@ -92,11 +92,12 @@ This repository enforces the [Conventional Commits](https://www.conventionalcomm
 * `fix:` Patches a bug &rarr; **Patch Bump** (`0.1.0` &rarr; `0.1.1`)
 * `feat:` Adds a new feature &rarr; **Minor Bump** (`0.1.0` &rarr; `0.2.0`)
 * `feat!:` or `fix!:` or commit body with `BREAKING CHANGE:` &rarr; **Major Bump** (`0.1.0` &rarr; `1.0.0`)
-* `refactor:`, `test:`, `docs:`, `chore:`, `perf:` &rarr; No version bump (included in release changelog)
+* `refactor:`, `perf:`, `chore:`, `ci:`, `build:` and any other type &rarr; **Patch Bump**
+* `docs:`, `test:` &rarr; **No version bump** (still included in the next release's changelog)
 
 ### Automated Release Pipeline (`.github/workflows/cd.yml`):
 1. Runs full validation (`ktlintCheck`, `test`, `build-scan`).
-2. Calculates semantic version from git history.
+2. Calculates semantic version from git history, ignoring `docs:` and `test:` commits. If no other commits landed since the last tag, the release is skipped.
 3. Builds and pushes multi-stage distroless container image to `ghcr.io/hononeko/media-webhook-notifier`.
 4. Tags git commit and creates GitHub Release with auto-generated changelog.
 
