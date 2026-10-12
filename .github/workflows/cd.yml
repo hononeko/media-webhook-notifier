@@ -12,14 +12,15 @@ env:
   IMAGE_NAME: media-webhook-notifier
 
 jobs:
-  release:
-    name: Build, Tag & Release
+  version:
+    name: Calculate Version
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      packages: write
-      attestations: write
-      id-token: write
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
+      version_type: ${{ steps.version.outputs.version_type }}
 
     steps:
       - name: Checkout repository
@@ -37,7 +38,31 @@ jobs:
           tag_prefix: ""
           major_pattern: "/!:|BREAKING CHANGE:|BREAKING:/"
           minor_pattern: "/feat(\\(.+\\))?:/"
+          # docs: and test: commits never bump the version; every other type bumps at least the patch.
+          ignore_commits_pattern: "/^(docs|test)(\\(.+\\))?:/"
           version_format: "${major}.${minor}.${patch}"
+
+      # version_type is "none" when every commit since the last tag was ignored, or HEAD is already tagged.
+      - name: Report skipped release
+        if: steps.version.outputs.version_type == 'none'
+        run: echo "::notice title=Release skipped::No version-bumping commits since the last tag (only docs:/test:, or HEAD is already tagged)."
+
+  release:
+    name: Build, Tag & Release
+    needs: version
+    if: needs.version.outputs.version_type != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - name: Setup GraalVM (Java 25)
         uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1
@@ -103,7 +128,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.version }}
 
       - name: Build and push Docker image
         id: push
@@ -124,7 +149,6 @@ jobs:
           push-to-registry: true
 
       - name: Generate Changelog
-        if: steps.version.outputs.version_tag
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
           if [ -z "$PREV_TAG" ]; then
@@ -134,16 +158,14 @@ jobs:
           fi
 
       - name: Push Git Tag
-        if: steps.version.outputs.version_tag
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git tag ${{ steps.version.outputs.version_tag }}
-          git push origin ${{ steps.version.outputs.version_tag }}
+          git tag ${{ needs.version.outputs.version_tag }}
+          git push origin ${{ needs.version.outputs.version_tag }}
 
       - name: Create GitHub Release
-        if: steps.version.outputs.version_tag
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
-          tag_name: ${{ steps.version.outputs.version_tag }}
+          tag_name: ${{ needs.version.outputs.version_tag }}
           body_path: changelog.txt
