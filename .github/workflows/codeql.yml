@@ -4,20 +4,17 @@ on:
   push:
     branches: ["main", "master"]
   pull_request:
-    branches: ["main", "master"]
-    # `edited` fires when GitHub retargets a stacked PR after its base merges; jobs skip other edits.
-    types: [opened, synchronize, reopened, edited]
+    # No base-branch filter and no `edited` trigger: stacked PRs are checked on every push, so after a
+    # retarget to main the required checks are already on the head commit, and description edits run nothing.
   schedule:
     - cron: "30 4 * * 1"
 
 concurrency:
-  # Title/body-only edits get a throwaway group so they never cancel an in-flight run.
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}${{ github.event.action == 'edited' && !github.event.changes.base && format('-edit-{0}', github.run_id) || '' }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   analyze:
-    if: github.event.action != 'edited' || github.event.changes.base
     name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
