@@ -20,7 +20,9 @@ jobs:
       packages: read
 
   integration-test:
-    name: Integration Tests
+    # Title/body edits skip this job. Its skipped run gets a different name so it can't replace
+    # the real result of a required check with the same name.
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Integration Tests (skipped on PR edit)' || 'Integration Tests' }}
     runs-on: ubuntu-latest
     if: github.base_ref == 'main' && (github.event.action != 'edited' || github.event.changes.base)
     permissions:

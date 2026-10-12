@@ -15,7 +15,9 @@ concurrency:
 jobs:
   sonar:
     if: github.event.action != 'edited' || github.event.changes.base
-    name: Sonar Analysis
+    # Title/body edits skip this job. Its skipped run gets a different name so it can't replace
+    # the real result of a required check with the same name.
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Sonar Analysis (skipped on PR edit)' || 'Sonar Analysis' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
