@@ -108,8 +108,9 @@ data class AppDependencies(
         runBlocking {
             seasonDebouncer.flushAll()
             deadLetterPersistence?.flush()
+            // Before the state store closes: stopping loops release their tracking leases.
+            downloadTracker.stopAll()
         }
-        downloadTracker.stopAll()
         telegramInteractions?.close()
         stateStore.close()
         scope.cancel()

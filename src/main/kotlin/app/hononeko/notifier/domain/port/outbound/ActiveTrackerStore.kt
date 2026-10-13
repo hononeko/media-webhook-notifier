@@ -3,6 +3,7 @@ package app.hononeko.notifier.domain.port.outbound
 import app.hononeko.notifier.domain.model.ActiveTrackerSession
 import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.TrackerSnapshot
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
 
 interface ActiveTrackerStore {
@@ -30,7 +31,8 @@ interface ActiveTrackerStore {
 
     fun isTracking(hash: String): Boolean
 
-    fun stopAll()
+    /** Cancels every session and returns their jobs, so callers can wait for the loops to finish. */
+    fun stopAll(): List<Job>
 
     val snapshotsFlow: StateFlow<List<TrackerSnapshot>>
 }
