@@ -6,6 +6,7 @@ import app.hononeko.notifier.domain.model.BotActor
 import app.hononeko.notifier.domain.model.BotInteraction
 import app.hononeko.notifier.domain.model.BotReply
 import app.hononeko.notifier.domain.model.CallbackTarget
+import app.hononeko.notifier.domain.model.NotificationCard
 import arrow.core.Either
 import io.mockk.coVerify
 import io.mockk.spyk
@@ -15,6 +16,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class BotInteractionServiceTest {
+    private fun target(title: String) = CallbackTarget(NotificationCard(title = title))
+
     private val actor = BotActor(platform = "telegram", id = "42", displayName = "@alice")
     private val store = spyk(InMemoryStateStore())
     private val registry = CallbackRefRegistry(store)
@@ -26,7 +29,7 @@ class BotInteractionServiceTest {
             override suspend fun handle(
                 actor: BotActor,
                 target: CallbackTarget
-            ): Either<DomainError, BotReply> = Either.Right(BotReply("pong ${target.downloadId}"))
+            ): Either<DomainError, BotReply> = Either.Right(BotReply("pong ${target.card.title}"))
         }
 
     private val service = BotInteractionService(listOf(ping), registry)
@@ -34,7 +37,7 @@ class BotInteractionServiceTest {
     @Test
     fun `dispatches to the handler for the operation with the resolved target`() =
         runTest {
-            val ref = registry.register(CallbackTarget("h1"), 60)!!
+            val ref = registry.register(target("h1"), 60)!!
 
             val result = service.handle(BotInteraction(actor, "ping", ref))
 
@@ -71,7 +74,7 @@ class BotInteractionServiceTest {
                         target: CallbackTarget
                     ): Either<DomainError, BotReply> = Either.Left(failure)
                 }
-            val ref = registry.register(CallbackTarget("h1"), 60)!!
+            val ref = registry.register(target("h1"), 60)!!
 
             val result = BotInteractionService(listOf(failing), registry).handle(BotInteraction(actor, "pause", ref))
 
