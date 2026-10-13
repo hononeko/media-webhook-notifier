@@ -3,6 +3,7 @@ package app.hononeko.notifier.adapter.inbound.web.dto
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class WebhookDtoTest {
     private val json =
@@ -143,6 +144,40 @@ class WebhookDtoTest {
         )
         assertEquals(dto.release?.customFormatScore, 1500)
         assertEquals(dto.upgrade?.isUpgrade, true)
+    }
+
+    @Test
+    fun `test Servarr download info and status messages default to empty when fields are missing`() {
+        assertEquals(ServarrDownloadInfoDto(), json.decodeFromString(ServarrDownloadInfoDto.serializer(), "{}"))
+        assertEquals(
+            ServarrDownloadStatusMessageDto(),
+            json.decodeFromString(ServarrDownloadStatusMessageDto.serializer(), "{}")
+        )
+
+        val dto =
+            json.decodeFromString(
+                ServarrWebhookDto.serializer(),
+                """{"eventType": "ManualInteractionRequired"}"""
+            )
+        assertNull(dto.downloadInfo)
+        assertEquals(emptyList(), dto.downloadStatusMessages)
+
+        val info =
+            ServarrDownloadInfoDto(
+                quality = "WEBDL-1080p",
+                qualityVersion = 2,
+                title = "Show.S01E01",
+                indexer = "TL",
+                size = 1L
+            )
+        assertEquals(
+            info,
+            json.decodeFromString(
+                ServarrDownloadInfoDto.serializer(),
+                json.encodeToString(ServarrDownloadInfoDto.serializer(), info)
+            )
+        )
+        assertNull(ServarrDownloadStatusMessageDto(messages = listOf("Sample")).title)
     }
 
     @Test
