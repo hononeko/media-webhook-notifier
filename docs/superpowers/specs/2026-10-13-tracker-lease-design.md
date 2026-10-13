@@ -29,7 +29,7 @@ This is the "clean rollouts first" slice of MWN-12:
 | # | Decision | Choice | Why |
 |---|---|---|---|
 | D1 | Coordination | A lease per download, held by its tracking loop | Zero-downtime rollouts. Grabs keep their rich cards on whichever pod received them. Lays the groundwork for multiple replicas. |
-| D2 | Gating | Leases only when `STATE_TYPE` is `valkey` or `redis` (`ValkeyStateStore`) | Each pod has its own in-memory store, so in-memory locks can't coordinate pods. The per-download mutex and the local session registry already prevent duplicates within one pod. |
+| D2 | Gating | Leases only when the state store is `ValkeyStateStore` (`STATE_STORE_TYPE`, or its alias `STATE_TYPE`, is `valkey` or `redis`, or a Valkey URL is set) | Each pod has its own in-memory store, so in-memory locks can't coordinate pods. The per-download mutex and the local session registry already prevent duplicates within one pod. |
 | D3 | Lease keys | `lock:track:<hash>` for each individual normalized hash; a `a\|b` download holds both | A later sweep that sees the hashes in another order, or only `b` still downloading, still finds `b` taken. |
 | D4 | Lease TTL | `max(30, 3 × DOWNLOAD_CLIENT_POLL_INTERVAL_SECONDS)` seconds, renewed on every tick | Survives a couple of slow ticks, and a slow poll interval can't let the lease lapse. No new variable. |
 | D5 | Owner id | `$HOSTNAME-<6 random alphanumerics>`, built once at startup | The pod name keeps logs readable. The suffix means a container restarted in the same pod doesn't assume it still owns old leases; it waits up to one TTL. |
@@ -152,13 +152,13 @@ The constructor gains `leases: TrackingLeases? = null`.
 | Valkey down at renew | `STORE_UNAVAILABLE`; tracking continues. |
 | Valkey back, lease expired meanwhile | Renewal takes it back (`RENEWED`). |
 | Another owner holds the lease at renew | `LOST`; the loop stops quietly. |
-| `STATE_TYPE=memory` | No leases. Clean restarts keep the tags, so the same card continues. During a rollout overlap both pods edit briefly. |
+| `STATE_STORE_TYPE=memory` | No leases. Clean restarts keep the tags, so the same card continues. During a rollout overlap both pods edit briefly. |
 
 ## 7. Configuration & documentation
 
 * No new variables.
 * `docs/CONFIGURATION.md` gets a **Rollouts and replicas** subsection under *State Store*:
-  * smooth rollouts need `STATE_TYPE=valkey` or `redis`
+  * smooth rollouts need `STATE_STORE_TYPE=valkey` or `redis`
   * the handoff timings: ~35s on a rollout, ~65s after a crash
   * what the in-memory store does (a brief double edit, then the same card continues)
   * that permanent multi-replica operation isn't tuned yet
@@ -189,5 +189,5 @@ The constructor gains `leases: TrackingLeases? = null`.
 
 ## 9. Risks
 
-* **Dragonfly Lua support.** The deployment uses Dragonfly through `STATE_TYPE=redis`. Dragonfly supports `EVAL`, but scripts must declare their keys, so pass every key through `KEYS[]`. The Testcontainers test runs against Valkey; check a rollout against Dragonfly after merge.
+* **Dragonfly Lua support.** The deployment uses Dragonfly (`STATE_TYPE=redis`, an alias of `STATE_STORE_TYPE`). Dragonfly supports `EVAL`, but scripts must declare their keys, so pass every key through `KEYS[]`. The Testcontainers test runs against Valkey; check a rollout against Dragonfly after merge.
 * **Clock-free TTLs.** Valkey enforces TTLs server-side. The in-memory store uses `nowMillis`, which matters only in tests and in fallback mode.
