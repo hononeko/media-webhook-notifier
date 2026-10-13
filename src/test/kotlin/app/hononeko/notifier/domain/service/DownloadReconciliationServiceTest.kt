@@ -694,6 +694,7 @@ class DownloadReconciliationServiceTest {
                 override suspend fun getActiveDownloads(
                     filter: String
                 ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> {
+                    if (filter != "downloading") return Either.Right(emptyList())
                     sweeps.incrementAndGet()
                     return Either.Right(listOf(tagged))
                 }
@@ -765,5 +766,80 @@ class DownloadReconciliationServiceTest {
             testScope.advanceTimeBy(100 + 35_000)
             assertEquals(1, sweep.sweeps.get())
             sweep.job?.cancel()
+        }
+
+    @Test
+    fun `a tagged download that finished while untracked is resumed so its card completes`() =
+        runTest {
+            fun finished(
+                id: String,
+                tags: List<String>
+            ) = DownloadItemProgress(
+                id = id,
+                name = "Show",
+                progressPercent = 100.0,
+                progressRatio = 1.0,
+                downloadSpeedBytesPerSec = 0L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 0L,
+                totalSizeBytes = 10000L,
+                downloadedBytes = 10000L,
+                state = DownloadState.COMPLETED,
+                tags = tags
+            )
+            val client =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
+                        hash: String
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(null)
+
+                    override suspend fun getActiveDownloads(
+                        filter: String
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
+                        when (filter) {
+                            "completed" ->
+                                Either.Right(
+                                    listOf(
+                                        finished("hash_done", listOf("mwn_msg:42")),
+                                        finished("hash_plain", emptyList())
+                                    )
+                                )
+                            else -> Either.Right(emptyList())
+                        }
+                }
+            val resumed = Collections.synchronizedList(mutableListOf<Pair<String, String>>())
+            val started = Collections.synchronizedList(mutableListOf<String>())
+            val tracker =
+                object : TrackDownloadUseCase {
+                    override suspend fun track(
+                        hash: String,
+                        initialPayload: MediaPayload.ArrGrab
+                    ): Either<DomainError, TrackingStart> {
+                        started += hash
+                        return Either.Right(TrackingStart.STARTED)
+                    }
+
+                    override suspend fun trackExisting(
+                        hash: String,
+                        payload: MediaPayload.ArrGrab,
+                        handle: NotificationHandle,
+                        isPhoto: Boolean
+                    ): Either<DomainError, TrackingStart> {
+                        resumed += hash to handle.messageReferenceId
+                        return Either.Right(TrackingStart.STARTED)
+                    }
+                }
+            val service =
+                DownloadReconciliationService(
+                    downloadClient = client,
+                    trackDownloadUseCase = tracker,
+                    activeTrackerStore = InMemoryActiveTrackerStore(),
+                    notificationPublisher = FakeNotificationPublisher()
+                )
+
+            service.reconcile()
+
+            assertEquals(listOf("hash_done" to "42"), resumed.toList())
+            assertTrue(started.isEmpty(), "finished downloads without a card must not get one")
         }
 }

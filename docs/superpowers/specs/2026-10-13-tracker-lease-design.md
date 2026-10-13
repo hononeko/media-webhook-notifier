@@ -127,6 +127,7 @@ The constructor gains `leases: TrackingLeases? = null`.
 * **`reconcile()`:**
   * Still returns the number of downloads it resumed (`Int`), so existing callers are unchanged.
   * Counts results that are `TRACKED_ELSEWHERE`, from both `trackExisting` and `track`, and stores the count in a new `val heldElsewhereLastSweep: Int`, next to the existing `runCount`/`resumedCount` counters.
+* **Finished tagged downloads:** each sweep also queries `completed` downloads and resumes the *tagged* ones, so a download that finished while no instance tracked it gets its completion card and its tags removed on the first tick. Untagged finished downloads are ignored. (Added after the final review.)
 * **The `start` loop:** after a sweep with `heldElsewhereLastSweep > 0`, the next delay is `(leaseTtlSeconds + 5).seconds`. Otherwise it is the configured interval.
   * `ReconciliationConfig` gains `leaseRetrySeconds: Long? = null`. It is null without leases, and the fast path never applies.
 

@@ -19,9 +19,11 @@ import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import arrow.core.Either
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.spyk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -924,5 +926,37 @@ class DownloadTrackerEngineTest {
             a.engine.stopAll()
 
             assertTrue(currentTime - before <= 3_000, "stopAll took ${currentTime - before}ms")
+        }
+
+    @Test
+    fun `a cancelled duplicate loop leaves the surviving session alone`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val store = spyk(InMemoryActiveTrackerStore())
+            val survivorJob = Job()
+            store.register(
+                app.hononeko.notifier.domain.model.ActiveTrackerSession(
+                    hash = "h1",
+                    payload = leaseGrab,
+                    handle = liveHandle,
+                    isPhoto = false,
+                    job = survivorJob
+                )
+            )
+            // The race: the duplicate's pre-check misses the survivor, then register() finds it.
+            every { store.isTracking("h1") } returns false andThenAnswer { callOriginal() }
+            val engine =
+                createEngine(
+                    downloadClient = FakeTorrentClient(),
+                    notificationPublisher = FakeNotificationPublisher(),
+                    activeTrackerStore = store,
+                    scope = testScope
+                )
+
+            engine.track("h1", leaseGrab)
+            testScope.advanceTimeBy(1)
+
+            assertFalse(survivorJob.isCancelled, "the surviving loop must keep running")
+            assertTrue(store.get("h1")?.job === survivorJob)
         }
 }

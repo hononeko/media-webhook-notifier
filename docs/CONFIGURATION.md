@@ -83,6 +83,7 @@ With `STATE_STORE_TYPE=valkey` (or `redis`), each live download card is edited b
 - **Rollout:** the new instance leaves the old instance's cards alone while it's still running, and continues the *same* cards within about 35 seconds of the old one stopping.
 - **Crash:** if an instance dies without shutting down, another instance takes its cards over within about 65 seconds, once the leases expire.
 - **Valkey hiccups:** tracking carries on; a lease that lapsed during an outage is taken back on the next tick.
+- **Finished while nobody watched:** a download that completes during a handoff or downtime gets its completion card, and its tags removed, at the next sweep.
 
 With the default `memory` store, instances can't see each other: during a rollout overlap both may update the same card for a moment. After a restart the same card still continues, because shutdown keeps the download's resume tags.
 

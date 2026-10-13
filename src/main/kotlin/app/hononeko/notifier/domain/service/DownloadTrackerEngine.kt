@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -229,12 +230,15 @@ class DownloadTrackerEngine(
             logger.error("Unexpected error in tracking loop for {}", hash, e)
         } finally {
             // Tags stay: every real ending removes them itself, and a cancelled or failed loop must stay resumable.
+            val selfJob = currentCoroutineContext()[Job]
             withContext(NonCancellable) {
-                leases?.release(hash)
-                if (activeTrackerStore.isTracking(hash)) {
-                    activeTrackerStore.cancel(hash)
+                val registered = activeTrackerStore.get(hash)
+                // A duplicate loop that lost register() to another session must not tear that session down.
+                if (registered == null || registered.job == selfJob) {
+                    leases?.release(hash)
+                    if (registered != null) activeTrackerStore.cancel(hash)
+                    trackingLocks.remove(hash)
                 }
-                trackingLocks.remove(hash)
             }
         }
     }

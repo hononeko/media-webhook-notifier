@@ -72,6 +72,18 @@ class DownloadReconciliationService(
                     return 0
                 }
             }
+        // Tagged downloads that finished while nothing tracked them (a rollout handoff, downtime): resuming them lets
+        // the first tick send the completion card and remove the tags. Untagged finished downloads never had a card.
+        val finishedTagged =
+            when (val finishedResult = downloadClient.getActiveDownloads("completed")) {
+                is Either.Right ->
+                    finishedResult.value.filter { torrent -> torrent.tags.any { it.startsWith("${tagPrefix}msg:") } }
+                is Either.Left -> {
+                    logger.debug("Torrent reconciliation failed to query finished torrents: {}", finishedResult.value)
+                    emptyList()
+                }
+            }
+        val candidates = (activeTorrents + finishedTagged).distinctBy { it.id.trim().lowercase() }
 
         var resumedThisRun = 0
         var heldElsewhere = 0
@@ -87,7 +99,7 @@ class DownloadReconciliationService(
             }
         }
         val untrackedTorrents =
-            activeTorrents.filter { torrent ->
+            candidates.filter { torrent ->
                 val normalizedHash = torrent.id.trim().lowercase()
                 normalizedHash.isNotBlank() && !activeTrackerStore.isTracking(normalizedHash)
             }
