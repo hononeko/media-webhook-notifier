@@ -295,11 +295,21 @@ class TelegramPublisherAdapter(
         val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
         val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
 
-        return if (isPhoto) {
+        if (isPhoto) return editCaption(targetChatId, msgId, buildCardHtml(card, CAPTION_LIMIT), markup)
+
+        val textResult = editText(targetChatId, msgId, buildCardHtml(card, TEXT_LIMIT), markup)
+        // Callbacks on old or inaccessible messages don't say the message is a photo; Telegram then rejects the text
+        // edit, and the caption is the part to edit.
+        return if (textResult.isNoTextToEdit()) {
             editCaption(targetChatId, msgId, buildCardHtml(card, CAPTION_LIMIT), markup)
         } else {
-            editText(targetChatId, msgId, buildCardHtml(card, TEXT_LIMIT), markup)
+            textResult
         }
+    }
+
+    private fun Either<DomainError.NotificationError, Unit>.isNoTextToEdit(): Boolean {
+        val failure = (this as? Either.Left)?.value as? DomainError.NotificationError.DeliveryFailed ?: return false
+        return failure.message.contains("there is no text in the message to edit", ignoreCase = true)
     }
 
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
@@ -455,8 +465,13 @@ class TelegramPublisherAdapter(
         operation: String,
         e: Throwable
     ): Either<DomainError.NotificationError, T> {
-        logger.warn("Error sending Telegram {}: {}", operation, e.message)
-        return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, e.message ?: NETWORK_ERROR_MSG))
+        // Ktor's timeout messages include the request URL, which contains the bot token.
+        val reason =
+            (e.message ?: NETWORK_ERROR_MSG).let { message ->
+                if (config.botToken.isBlank()) message else message.replace(config.botToken, "<redacted>")
+            }
+        logger.warn("Error sending Telegram {}: {}", operation, reason)
+        return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
     }
 
     private suspend fun handleSendResponse(

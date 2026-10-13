@@ -206,4 +206,36 @@ class TelegramCallbackProcessorTest {
 
             assertEquals(1, answers.size)
         }
+
+    private val updateJson = Json { ignoreUnknownKeys = true }
+
+    private fun decodeCallback(messageJson: String) =
+        updateJson
+            .decodeFromString(
+                TelegramUpdate.serializer(),
+                """{"update_id":1,"callback_query":{"id":"cq1",""" +
+                    """"from":{"id":42,"is_bot":false,"first_name":"Alice"},""" +
+                    """"message":$messageJson,"data":"mwn1:ack:AAAAAAAAAA"}}"""
+            ).callbackQuery!!
+
+    @Test
+    fun `origin is decoded from a real photo callback`() =
+        runTest {
+            val photoMessage =
+                """{"message_id":10,"chat":{"id":-1001,"type":"supergroup"},"date":1,""" +
+                    """"photo":[{"file_id":"a","file_unique_id":"b","width":90,"height":90}],"caption":"x"}"""
+
+            processor(returning(Either.Right(BotReply("ok")))).process(decodeCallback(photoMessage))
+
+            assertEquals(NotificationHandle("telegram", "-1001", "10", isPhoto = true), interactions.single().origin)
+        }
+
+    @Test
+    fun `origin is decoded from an inaccessible message without content`() =
+        runTest {
+            processor(returning(Either.Right(BotReply("ok"))))
+                .process(decodeCallback("""{"message_id":10,"chat":{"id":-1001,"type":"supergroup"},"date":0}"""))
+
+            assertEquals(NotificationHandle("telegram", "-1001", "10", isPhoto = false), interactions.single().origin)
+        }
 }

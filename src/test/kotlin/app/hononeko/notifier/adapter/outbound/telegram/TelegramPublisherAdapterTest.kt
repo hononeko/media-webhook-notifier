@@ -1105,4 +1105,66 @@ class TelegramPublisherAdapterTest {
 
             assertEquals(Either.Right(Unit), result)
         }
+
+    @Test
+    fun `editCard falls back to editMessageCaption when Telegram reports no text to edit`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val engine =
+                MockEngine { request ->
+                    sent += Sent(request.url.encodedPath, request.body.toByteArray().decodeToString())
+                    if (request.url.encodedPath.endsWith("/editMessageText")) {
+                        respond(
+                            """{"ok":false,"error_code":400,"description":"Bad Request: there is no text in the message to edit"}""",
+                            HttpStatusCode.BadRequest,
+                            headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    } else {
+                        respond(
+                            """{"ok":true,"result":true}""",
+                            HttpStatusCode.OK,
+                            headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    }
+                }
+            val adapter = TelegramPublisherAdapter(interactiveConfig, engine)
+            val footnote = "✅ Handled by @alex · 11:53"
+
+            // An old or inaccessible callback message carries no photo, so the origin says "text".
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "5"),
+                    NotificationCard(title = "Health", footnote = footnote)
+                )
+
+            assertEquals(Either.Right(Unit), result)
+            assertEquals(listOf("editMessageText", "editMessageCaption"), sent.map { it.path.substringAfterLast('/') })
+            assertTrue(
+                sent
+                    .last()
+                    .json["caption"]!!
+                    .jsonPrimitive.content
+                    .endsWith(footnote)
+            )
+        }
+
+    @Test
+    fun `delivery errors never carry the bot token`() =
+        runTest {
+            val engine =
+                MockEngine { request ->
+                    throw IOException("Request timeout has expired [url=${request.url}, request_timeout=15000 ms]")
+                }
+            val adapter = TelegramPublisherAdapter(interactiveConfig, engine)
+
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "5"),
+                    NotificationCard(title = "Health")
+                )
+
+            val failure = assertIs<DomainError.NotificationError.DeliveryFailed>((result as Either.Left).value)
+            assertFalse(failure.message.contains("12345:TOKEN"), failure.message)
+            assertTrue(failure.message.contains("Request timeout has expired"), failure.message)
+        }
 }
