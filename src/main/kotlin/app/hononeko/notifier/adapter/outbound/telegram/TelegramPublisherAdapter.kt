@@ -1,12 +1,15 @@
 package app.hononeko.notifier.adapter.outbound.telegram
 
+import app.hononeko.notifier.adapter.inbound.telegram.TelegramCallbackData
 import app.hononeko.notifier.config.NotificationConfig
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.ActionLink
+import app.hononeko.notifier.domain.model.CallbackTarget
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.domain.service.CallbackRefRegistry
 import arrow.core.Either
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -25,6 +28,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
@@ -35,13 +39,23 @@ import java.io.IOException
 import java.util.Collections
 import java.util.LinkedHashMap
 
+/**
+ * Telegram Bot API publisher. With [callbackRefs] set (`TELEGRAM_INTERACTIVE_ENABLED=true`), card interactions are
+ * rendered as callback buttons backed by a ref to the card; without it they are ignored.
+ */
 class TelegramPublisherAdapter(
     private val config: NotificationConfig,
-    engine: HttpClientEngine? = null
+    engine: HttpClientEngine? = null,
+    private val callbackRefs: CallbackRefRegistry? = null
 ) : NotificationPublisherPort {
     companion object {
         private const val NETWORK_ERROR_MSG = "Network error"
         private const val MAX_REGISTRY_SIZE = 2000
+        private const val CAPTION_LIMIT = 1024
+        private const val TEXT_LIMIT = 4096
+
+        /** Buttons stay usable for 30 days; a health card may be acknowledged long after it was sent. */
+        const val CALLBACK_TTL_SECONDS = 2_592_000L
     }
 
     override val providerId: String = "telegram"
@@ -182,7 +196,9 @@ class TelegramPublisherAdapter(
     @Serializable
     private data class InlineKeyboardButton(
         val text: String,
-        val url: String? = null
+        val url: String? = null,
+        @SerialName("callback_data")
+        val callbackData: String? = null
     )
 
     override suspend fun sendCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> =
@@ -192,13 +208,14 @@ class TelegramPublisherAdapter(
         initialCard: NotificationCard
     ): Either<DomainError.NotificationError, NotificationHandle> = deliverCard(initialCard)
 
-    private suspend fun deliverCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> =
-        sendMutex.withLock {
-            val markup = buildKeyboard(card.actions)
-            val textContent = buildCardHtml(card)
+    private suspend fun deliverCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> {
+        // Registered outside the mutex so a slow state store never holds up other deliveries.
+        val markup = keyboardFor(card)
+        return sendMutex.withLock {
+            val textContent = buildCardHtml(card, TEXT_LIMIT)
 
             if (config.sendPhotos) {
-                val caption = truncateToLimit(textContent, 1024)
+                val caption = buildCardHtml(card, CAPTION_LIMIT)
                 if (card.artworkBytes != null && card.artworkBytes.isNotEmpty()) {
                     val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup, card.silent)
                     if (photoResult is Either.Right) {
@@ -228,6 +245,7 @@ class TelegramPublisherAdapter(
             }
             textResult
         }
+    }
 
     override suspend fun updateProgress(
         handle: NotificationHandle,
@@ -253,43 +271,35 @@ class TelegramPublisherAdapter(
     override suspend fun completeProgress(
         handle: NotificationHandle,
         finalCard: NotificationCard
-    ): Either<DomainError.NotificationError, Unit> {
-        val msgId = handle.messageReferenceId.toLongOrNull() ?: return Either.Right(Unit)
-        val markup = buildKeyboard(finalCard.actions)
-        val html = buildCardHtml(finalCard)
-
-        val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
-        val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
-
-        val result =
-            if (isPhoto) {
-                editCaption(targetChatId, msgId, truncateToLimit(html, 1024), markup)
-            } else {
-                editText(targetChatId, msgId, html, markup)
-            }
-        photoMessageRegistry.remove(handle.messageReferenceId)
-        return result
-    }
+    ): Either<DomainError.NotificationError, Unit> =
+        editWithCard(handle, finalCard).also { photoMessageRegistry.remove(handle.messageReferenceId) }
 
     override suspend fun cancelProgress(
         handle: NotificationHandle,
         reasonCard: NotificationCard
+    ): Either<DomainError.NotificationError, Unit> =
+        editWithCard(handle, reasonCard).also { photoMessageRegistry.remove(handle.messageReferenceId) }
+
+    override suspend fun editCard(
+        handle: NotificationHandle,
+        card: NotificationCard
+    ): Either<DomainError.NotificationError, Unit> = editWithCard(handle, card)
+
+    private suspend fun editWithCard(
+        handle: NotificationHandle,
+        card: NotificationCard
     ): Either<DomainError.NotificationError, Unit> {
         val msgId = handle.messageReferenceId.toLongOrNull() ?: return Either.Right(Unit)
-        val markup = buildKeyboard(reasonCard.actions)
-        val html = buildCardHtml(reasonCard)
+        val markup = keyboardFor(card)
 
         val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
         val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
 
-        val result =
-            if (isPhoto) {
-                editCaption(targetChatId, msgId, truncateToLimit(html, 1024), markup)
-            } else {
-                editText(targetChatId, msgId, html, markup)
-            }
-        photoMessageRegistry.remove(handle.messageReferenceId)
-        return result
+        return if (isPhoto) {
+            editCaption(targetChatId, msgId, buildCardHtml(card, CAPTION_LIMIT), markup)
+        } else {
+            editText(targetChatId, msgId, buildCardHtml(card, TEXT_LIMIT), markup)
+        }
     }
 
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
@@ -518,7 +528,10 @@ class TelegramPublisherAdapter(
         return Either.Right(Unit)
     }
 
-    private fun buildCardHtml(card: NotificationCard): String = TelegramHtmlFormatter.buildCardHtml(card)
+    private fun buildCardHtml(
+        card: NotificationCard,
+        maxChars: Int
+    ): String = TelegramHtmlFormatter.buildCardHtml(card, maxChars)
 
     private fun buildProgressHtml(update: ProgressUpdate): String = TelegramHtmlFormatter.buildProgressHtml(update)
 
@@ -530,14 +543,42 @@ class TelegramPublisherAdapter(
         return scheme in allowedUrlSchemes
     }
 
-    private fun buildKeyboard(actions: List<ActionLink>): InlineKeyboardMarkup? {
-        val validActions = actions.filter { isValidUrlScheme(it.url) }
-        if (validActions.isEmpty()) return null
-        val buttons =
-            validActions.map { action ->
-                InlineKeyboardButton(text = action.label, url = action.url)
+    private fun buildKeyboard(actions: List<ActionLink>): InlineKeyboardMarkup? =
+        urlButtons(actions).takeIf { it.isNotEmpty() }?.let { InlineKeyboardMarkup(inlineKeyboard = listOf(it)) }
+
+    private fun urlButtons(actions: List<ActionLink>): List<InlineKeyboardButton> =
+        actions
+            .filter { isValidUrlScheme(it.url) }
+            .map { action -> InlineKeyboardButton(text = action.label, url = action.url) }
+
+    /** URL buttons in the first row, callback buttons in the second. Either row is left out when empty. */
+    private suspend fun keyboardFor(card: NotificationCard): InlineKeyboardMarkup? {
+        val rows = listOf(urlButtons(card.actions), callbackButtons(card)).filter { it.isNotEmpty() }
+        return rows.takeIf { it.isNotEmpty() }?.let { InlineKeyboardMarkup(inlineKeyboard = it) }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun callbackButtons(card: NotificationCard): List<InlineKeyboardButton> {
+        val registry = callbackRefs ?: return emptyList()
+        if (card.interactions.isEmpty()) return emptyList()
+        val ref =
+            try {
+                registry.register(CallbackTarget(card.copy(artworkBytes = null)), CALLBACK_TTL_SECONDS)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.warn("Could not register callback buttons for '{}': {}", card.title, e.message)
+                null
             }
-        return InlineKeyboardMarkup(inlineKeyboard = listOf(buttons))
+        if (ref == null) {
+            logger.warn("Sending '{}' without its callback buttons: no callback ref available", card.title)
+            return emptyList()
+        }
+        return card.interactions.mapNotNull { interaction ->
+            TelegramCallbackData.encode(interaction.operation, ref)?.let { data ->
+                InlineKeyboardButton(text = interaction.label, callbackData = data)
+            }
+        }
     }
 
     private fun truncateToLimit(
