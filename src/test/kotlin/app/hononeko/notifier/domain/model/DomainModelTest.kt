@@ -361,13 +361,14 @@ class DomainModelTest {
             app.hononeko.notifier.adapter.inbound.web.dto.ServarrMediaInfoDto(
                 videoCodec = "x265",
                 audioCodec = "TrueHD",
-                resolution = "3840x2160",
+                height = 2160,
+                width = 3840,
                 audioChannels = 8.0,
                 videoDynamicRange = "HDR"
             )
         assertEquals("x265", mediaInfo.videoCodec)
         assertEquals("TrueHD", mediaInfo.audioCodec)
-        assertEquals("3840x2160", mediaInfo.resolution)
+        assertEquals(2160, mediaInfo.height)
         assertEquals(8.0, mediaInfo.audioChannels)
         assertEquals("HDR", mediaInfo.videoDynamicRange)
 
@@ -378,8 +379,6 @@ class DomainModelTest {
                 path = "/movies/Movie.mkv",
                 size = 1000L,
                 quality = "2160p",
-                videoCodec = "x265",
-                audioCodec = "TrueHD",
                 mediaInfo = mediaInfo
             )
         assertEquals(1, movieFile.id)
@@ -392,8 +391,6 @@ class DomainModelTest {
                 path = "/tv/S01E01.mkv",
                 size = 2000L,
                 quality = "1080p",
-                videoCodec = "x264",
-                audioCodec = "AAC",
                 mediaInfo = mediaInfo
             )
         assertEquals(2, episodeFile.id)

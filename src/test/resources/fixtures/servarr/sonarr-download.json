@@ -1,0 +1,77 @@
+{
+  "series": {
+    "id": 10,
+    "title": "Silo",
+    "titleSlug": "silo",
+    "path": "/tv/Silo",
+    "tvdbId": 403245,
+    "tvMazeId": 51483,
+    "tmdbId": 125988,
+    "imdbId": "tt14688458",
+    "malIds": [],
+    "aniListIds": [],
+    "type": "standard",
+    "year": 2023,
+    "genres": ["Drama", "Science Fiction"],
+    "images": [
+      { "coverType": "banner", "url": "/MediaCover/10/banner.jpg", "remoteUrl": "https://artworks.thetvdb.com/banners/silo-banner.jpg" },
+      { "coverType": "poster", "url": "/MediaCover/10/poster.jpg", "remoteUrl": "https://artworks.thetvdb.com/banners/silo-poster.jpg" }
+    ],
+    "tags": [],
+    "originalLanguage": { "id": 1, "name": "English" },
+    "originalCountry": "us"
+  },
+  "episodes": [
+    {
+      "id": 101,
+      "episodeNumber": 1,
+      "seasonNumber": 2,
+      "title": "The Engineer",
+      "overview": "Juliette ventures out.",
+      "airDate": "2024-11-15",
+      "airDateUtc": "2024-11-15T08:00:00Z",
+      "seriesId": 10,
+      "tvdbId": 10424242,
+      "finaleType": null
+    }
+  ],
+  "episodeFile": {
+    "id": 555,
+    "relativePath": "Season 02/Silo - S02E01 - The Engineer WEBDL-2160p.mkv",
+    "path": "/tv/Silo/Season 02/Silo - S02E01 - The Engineer WEBDL-2160p.mkv",
+    "quality": "WEBDL-2160p",
+    "qualityVersion": 1,
+    "releaseGroup": "FLUX",
+    "sceneName": "Silo.S02E01.2160p.ATVP.WEB-DL.DDP5.1.HDR.H.265-FLUX",
+    "size": 6442450944,
+    "dateAdded": "2024-11-15T09:12:44Z",
+    "languages": [{ "id": 1, "name": "English" }],
+    "mediaInfo": {
+      "audioChannels": 5.1,
+      "audioCodec": "EAC3",
+      "audioLanguages": ["eng"],
+      "height": 2160,
+      "width": 3840,
+      "subtitles": ["eng", "spa"],
+      "videoCodec": "x265",
+      "videoDynamicRange": "HDR",
+      "videoDynamicRangeType": "HDR10"
+    },
+    "sourcePath": "/downloads/complete/Silo.S02E01.2160p.ATVP.WEB-DL.DDP5.1.HDR.H.265-FLUX/silo.s02e01.mkv"
+  },
+  "release": {
+    "releaseTitle": "Silo.S02E01.2160p.ATVP.WEB-DL.DDP5.1.HDR.H.265-FLUX",
+    "indexer": "TorrentLeech",
+    "size": 6500000000,
+    "indexerFlags": ["freeleech"],
+    "releaseType": "singleEpisode"
+  },
+  "isUpgrade": false,
+  "downloadClient": "qBittorrent",
+  "downloadClientType": "qBittorrent",
+  "downloadId": "8F1C2B3A4D5E6F708192A3B4C5D6E7F801234567",
+  "customFormatInfo": { "customFormats": [], "customFormatScore": 0 },
+  "eventType": "Download",
+  "instanceName": "Sonarr",
+  "applicationUrl": "http://sonarr.lan:8989"
+}

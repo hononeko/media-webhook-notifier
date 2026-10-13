@@ -1,0 +1,60 @@
+{
+  "movie": {
+    "id": 1,
+    "title": "Oppenheimer",
+    "year": 2023,
+    "filePath": "/movies/Oppenheimer (2023)/Oppenheimer (2023) Bluray-2160p.mkv",
+    "releaseDate": "2023-11-21",
+    "folderPath": "/movies/Oppenheimer (2023)",
+    "tmdbId": 872585,
+    "imdbId": "tt15398776",
+    "overview": "The story of J. Robert Oppenheimer.",
+    "genres": ["Drama", "History"],
+    "images": [
+      { "coverType": "poster", "url": "/MediaCover/1/poster.jpg", "remoteUrl": "https://image.tmdb.org/t/p/original/poster.jpg" }
+    ],
+    "tags": [],
+    "originalLanguage": { "id": 1, "name": "English" }
+  },
+  "remoteMovie": { "tmdbId": 872585, "imdbId": "tt15398776", "title": "Oppenheimer", "year": 2023 },
+  "movieFile": {
+    "id": 77,
+    "relativePath": "Oppenheimer (2023) Bluray-2160p.mkv",
+    "path": "/movies/Oppenheimer (2023)/Oppenheimer (2023) Bluray-2160p.mkv",
+    "quality": "Bluray-2160p",
+    "qualityVersion": 1,
+    "releaseGroup": "FraMeSToR",
+    "sceneName": "Oppenheimer.2023.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.Atmos.7.1-FraMeSToR",
+    "indexerFlags": "0",
+    "size": 75161927680,
+    "dateAdded": "2023-11-22T10:00:00Z",
+    "languages": [{ "id": 1, "name": "English" }],
+    "mediaInfo": {
+      "audioChannels": 7.1,
+      "audioCodec": "TrueHD Atmos",
+      "audioLanguages": ["eng"],
+      "height": 2160,
+      "width": 3840,
+      "subtitles": ["eng"],
+      "videoCodec": "HEVC",
+      "videoDynamicRange": "HDR",
+      "videoDynamicRangeType": "DV HDR10"
+    },
+    "sourcePath": "/downloads/complete/Oppenheimer.2023.2160p.UHD.BluRay.REMUX/oppenheimer.mkv"
+  },
+  "isUpgrade": true,
+  "downloadClient": "qBittorrent",
+  "downloadClientType": "qBittorrent",
+  "downloadId": "1234567890ABCDEF1234567890ABCDEF12345678",
+  "deletedFiles": [],
+  "customFormatInfo": { "customFormats": [], "customFormatScore": 0 },
+  "release": {
+    "releaseTitle": "Oppenheimer.2023.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.Atmos.7.1-FraMeSToR",
+    "indexer": "BeyondHD",
+    "size": 75200000000,
+    "indexerFlags": []
+  },
+  "eventType": "Download",
+  "instanceName": "Radarr-4K",
+  "applicationUrl": "http://radarr.lan:7878"
+}
