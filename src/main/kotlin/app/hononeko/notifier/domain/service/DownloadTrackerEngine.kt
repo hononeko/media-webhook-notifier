@@ -6,6 +6,7 @@ import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.TrackerSnapshot
+import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
@@ -54,7 +55,7 @@ class DownloadTrackerEngine(
     override suspend fun track(
         hash: String,
         initialPayload: MediaPayload.ArrGrab
-    ): Either<DomainError, Unit> {
+    ): Either<DomainError, TrackingStart> {
         val normalizedHash = hash.trim().lowercase()
         if (normalizedHash.isBlank()) {
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
@@ -64,7 +65,7 @@ class DownloadTrackerEngine(
         return mutex.withLock {
             if (activeTrackerStore.isTracking(normalizedHash)) {
                 logger.info("Download tracker already running for hash: {}", normalizedHash)
-                return@withLock Either.Right(Unit)
+                return@withLock Either.Right(TrackingStart.ALREADY_TRACKED)
             }
 
             val initialCard = CardFormatterService.buildGrabInitialCard(initialPayload, webuiPublicUrl)
@@ -112,7 +113,7 @@ class DownloadTrackerEngine(
                 trackingJob.cancel()
             }
 
-            Either.Right(Unit)
+            Either.Right(TrackingStart.STARTED)
         }
     }
 
@@ -121,7 +122,7 @@ class DownloadTrackerEngine(
         payload: MediaPayload.ArrGrab,
         handle: NotificationHandle,
         isPhoto: Boolean
-    ): Either<DomainError, Unit> {
+    ): Either<DomainError, TrackingStart> {
         val normalizedHash = hash.trim().lowercase()
         if (normalizedHash.isBlank()) {
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
@@ -131,7 +132,7 @@ class DownloadTrackerEngine(
         return mutex.withLock {
             if (activeTrackerStore.isTracking(normalizedHash)) {
                 logger.info("Download tracker already running for restored hash: {}", normalizedHash)
-                return@withLock Either.Right(Unit)
+                return@withLock Either.Right(TrackingStart.ALREADY_TRACKED)
             }
 
             logger.info("Resuming active tracking loop for existing card {} ({})", payload.title, normalizedHash)
@@ -159,7 +160,7 @@ class DownloadTrackerEngine(
                 trackingJob.cancel()
             }
 
-            Either.Right(Unit)
+            Either.Right(TrackingStart.STARTED)
         }
     }
 

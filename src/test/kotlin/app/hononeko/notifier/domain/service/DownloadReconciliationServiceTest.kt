@@ -9,6 +9,7 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
+import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
@@ -70,9 +71,9 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         newTrackCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
 
                     override suspend fun trackExisting(
@@ -80,9 +81,9 @@ class DownloadReconciliationServiceTest {
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedExistingCalls.add(hash to handle)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -145,16 +146,16 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> = Either.Right(Unit)
+                    ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
 
                     override suspend fun trackExisting(
                         hash: String,
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedExistingCalls.add(hash to handle)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -212,9 +213,9 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         newTrackCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -271,9 +272,9 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         trackCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -366,7 +367,7 @@ class DownloadReconciliationServiceTest {
                             ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                                 Either.Right(emptyList())
                         },
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher,
                     config = ReconciliationConfig(enabled = false)
@@ -393,7 +394,7 @@ class DownloadReconciliationServiceTest {
                                     )
                                 )
                         },
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher
                 )
@@ -475,7 +476,7 @@ class DownloadReconciliationServiceTest {
             val reconciliationService =
                 DownloadReconciliationService(
                     downloadClient = downloadClient,
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher,
                     config = ReconciliationConfig(intervalMinutes = 1)
@@ -507,16 +508,16 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> = Either.Right(Unit)
+                    ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
 
                     override suspend fun trackExisting(
                         hash: String,
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedCalls.add(hash to payload)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -592,16 +593,16 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> = Either.Right(Unit)
+                    ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
 
                     override suspend fun trackExisting(
                         hash: String,
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 

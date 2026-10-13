@@ -1,0 +1,55 @@
+package app.hononeko.notifier.domain.service
+
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
+
+/**
+ * Cross-instance ownership of tracking loops: one lock per download hash, so only one instance edits a live card.
+ * A `hash1|hash2` download holds a lock for each hash, which keeps a later sweep that sees only `hash2` out too.
+ */
+class TrackingLeases(
+    private val stateStore: StateStorePort,
+    val ownerId: String,
+    val ttlSeconds: Long,
+    private val clock: () -> Long = System::currentTimeMillis
+) {
+    fun keysFor(downloadId: String): List<String> =
+        downloadId
+            .split('|')
+            .map { it.trim().lowercase() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .sorted()
+            .map { "$KEY_PREFIX$it" }
+
+    /** Takes every hash's lock or none of them. */
+    suspend fun acquire(downloadId: String): Boolean {
+        val acquired = mutableListOf<String>()
+        for (key in keysFor(downloadId)) {
+            if (!stateStore.acquireLock(key, ownerId, ttlSeconds, clock())) {
+                acquired.forEach { stateStore.releaseLock(it, ownerId) }
+                return false
+            }
+            acquired += key
+        }
+        return true
+    }
+
+    /** [LockRenewal.LOST] if any hash now belongs to someone else; otherwise unavailable if any couldn't be checked. */
+    suspend fun renew(downloadId: String): LockRenewal {
+        val results = keysFor(downloadId).map { stateStore.renewLock(it, ownerId, ttlSeconds, clock()) }
+        return when {
+            LockRenewal.LOST in results -> LockRenewal.LOST
+            LockRenewal.STORE_UNAVAILABLE in results -> LockRenewal.STORE_UNAVAILABLE
+            else -> LockRenewal.RENEWED
+        }
+    }
+
+    suspend fun release(downloadId: String) {
+        keysFor(downloadId).forEach { stateStore.releaseLock(it, ownerId) }
+    }
+
+    private companion object {
+        const val KEY_PREFIX = "lock:track:"
+    }
+}
