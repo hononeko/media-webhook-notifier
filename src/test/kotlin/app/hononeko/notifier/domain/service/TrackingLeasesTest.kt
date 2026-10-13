@@ -60,4 +60,10 @@ class TrackingLeasesTest {
 
             assertTrue(podB.acquire("a|b"))
         }
+
+    @Test
+    fun `lease ttl scales with slow poll intervals`() {
+        assertEquals(30L, trackingLeaseTtlSeconds(5))
+        assertEquals(180L, trackingLeaseTtlSeconds(60))
+    }
 }

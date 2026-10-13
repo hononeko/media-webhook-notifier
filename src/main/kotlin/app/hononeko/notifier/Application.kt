@@ -49,6 +49,8 @@ import app.hononeko.notifier.domain.service.ReconciliationConfig
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
 import app.hononeko.notifier.domain.service.TemplateEngine
+import app.hononeko.notifier.domain.service.TrackingLeases
+import app.hononeko.notifier.domain.service.trackingLeaseTtlSeconds
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -118,6 +120,14 @@ data class AppDependencies(
     }
 }
 
+private const val LEASE_RETRY_MARGIN_SECONDS = 5L
+
+/** The pod name for readable logs, plus a suffix so a restarted container never assumes it still owns old leases. */
+private fun trackingOwnerId(): String {
+    val suffix = (1..6).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
+    return "${System.getenv("HOSTNAME") ?: "mwn"}-$suffix"
+}
+
 fun buildDependencies(
     config: AppConfig,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -138,6 +148,16 @@ fun buildDependencies(
     val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
     val activeTrackerStore = InMemoryActiveTrackerStore()
 
+    // Only a shared store can coordinate instances; with the in-memory store each instance would just lock itself.
+    val trackingLeases =
+        (stateStore as? ValkeyStateStore)?.let { valkey ->
+            TrackingLeases(
+                valkey,
+                ownerId = trackingOwnerId(),
+                ttlSeconds = trackingLeaseTtlSeconds(config.downloadClient.pollIntervalSeconds)
+            ).also { logger.info("Tracking leases enabled (owner {}, ttl {}s)", it.ownerId, it.ttlSeconds) }
+        }
+
     val downloadTracker =
         DownloadTrackerEngine(
             downloadClient = downloadClient,
@@ -152,7 +172,8 @@ fun buildDependencies(
                     webuiPublicUrl = config.downloadClient.webuiPublicUrl,
                     tagPrefix = config.downloadClient.tagPrefix
                 ),
-            scope = scope
+            scope = scope,
+            leases = trackingLeases
         )
 
     val reconciliationService =
@@ -165,7 +186,8 @@ fun buildDependencies(
                 ReconciliationConfig(
                     intervalMinutes = config.downloadClient.reconciliationIntervalMinutes,
                     enabled = config.downloadClient.reconciliationEnabled,
-                    tagPrefix = config.downloadClient.tagPrefix
+                    tagPrefix = config.downloadClient.tagPrefix,
+                    leaseRetrySeconds = trackingLeases?.let { it.ttlSeconds + LEASE_RETRY_MARGIN_SECONDS }
                 )
         )
     reconciliationService.start(scope)

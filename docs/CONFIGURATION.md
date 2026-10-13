@@ -77,6 +77,17 @@ Persistent state storage across restarts and rollouts, enabling multi-instance t
 | `STATE_TIMEOUT_MILLIS` | `2000` | Connection and socket timeout in milliseconds |
 | `STATE_MAX_POOL_SIZE` | `16` | Maximum connection pool size |
 
+### Rollouts and replicas
+With `STATE_STORE_TYPE=valkey` (or `redis`), each live download card is edited by one instance at a time. Instances coordinate through a short lease per download, renewed on every progress tick, so a rolling update needs no downtime:
+
+- **Rollout:** the new instance leaves the old instance's cards alone while it's still running, and continues the *same* cards within about 35 seconds of the old one stopping.
+- **Crash:** if an instance dies without shutting down, another instance takes its cards over within about 65 seconds, once the leases expire.
+- **Valkey hiccups:** tracking carries on; a lease that lapsed during an outage is taken back on the next tick.
+
+With the default `memory` store, instances can't see each other: during a rollout overlap both may update the same card for a moment. After a restart the same card still continues, because shutdown keeps the download's resume tags.
+
+Running several replicas permanently isn't a tuned setup yet: grab webhooks and season-pack batching are handled per instance.
+
 ## Media Server (Plex & Jellyfin)
 | Variable | Default | Description |
 |---|---|---|

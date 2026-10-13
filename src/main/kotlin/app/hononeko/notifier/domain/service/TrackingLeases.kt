@@ -3,6 +3,9 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 
+/** Long enough to survive a couple of slow ticks, and never shorter than three poll intervals. */
+fun trackingLeaseTtlSeconds(pollIntervalSeconds: Long): Long = maxOf(30L, 3L * pollIntervalSeconds)
+
 /**
  * Cross-instance ownership of tracking loops: one lock per download hash, so only one instance edits a live card.
  * A `hash1|hash2` download holds a lock for each hash, which keeps a later sweep that sees only `hash2` out too.

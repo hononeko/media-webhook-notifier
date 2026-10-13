@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -661,5 +662,108 @@ class DownloadReconciliationServiceTest {
             val count = reconciliationService.reconcile()
             assertEquals(0, count)
             assertEquals(0, resumedCalls.size)
+        }
+
+    private class LeaseSweep(
+        results: List<TrackingStart>,
+        leaseRetrySeconds: Long?,
+        testScope: TestScope
+    ) {
+        val sweeps = AtomicInteger(0)
+        private val remaining = ArrayDeque(results)
+        private val tagged =
+            DownloadItemProgress(
+                id = "hash_leased",
+                name = "Show",
+                progressPercent = 20.0,
+                progressRatio = 0.2,
+                downloadSpeedBytesPerSec = 1000L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 100L,
+                totalSizeBytes = 10000L,
+                downloadedBytes = 2000L,
+                state = DownloadState.DOWNLOADING,
+                tags = listOf("mwn_msg:42")
+            )
+        private val client =
+            object : DownloadClientPort {
+                override suspend fun getProgress(
+                    hash: String
+                ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(tagged)
+
+                override suspend fun getActiveDownloads(
+                    filter: String
+                ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> {
+                    sweeps.incrementAndGet()
+                    return Either.Right(listOf(tagged))
+                }
+            }
+        private val tracker =
+            object : TrackDownloadUseCase {
+                override suspend fun track(
+                    hash: String,
+                    initialPayload: MediaPayload.ArrGrab
+                ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
+
+                override suspend fun trackExisting(
+                    hash: String,
+                    payload: MediaPayload.ArrGrab,
+                    handle: NotificationHandle,
+                    isPhoto: Boolean
+                ): Either<DomainError, TrackingStart> =
+                    Either.Right(remaining.removeFirstOrNull() ?: TrackingStart.STARTED)
+            }
+        val service =
+            DownloadReconciliationService(
+                downloadClient = client,
+                trackDownloadUseCase = tracker,
+                activeTrackerStore = InMemoryActiveTrackerStore(),
+                notificationPublisher = FakeNotificationPublisher(),
+                config = ReconciliationConfig(intervalMinutes = 5, leaseRetrySeconds = leaseRetrySeconds)
+            )
+        val job = service.start(testScope)
+    }
+
+    @Test
+    fun `a sweep that hit another pod's lease retries after the lease delay`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val sweep = LeaseSweep(List(10) { TrackingStart.TRACKED_ELSEWHERE }, leaseRetrySeconds = 35, testScope)
+
+            testScope.advanceTimeBy(100)
+            assertEquals(1, sweep.sweeps.get())
+            assertEquals(1, sweep.service.heldElsewhereLastSweep)
+
+            testScope.advanceTimeBy(35_000)
+            assertEquals(2, sweep.sweeps.get())
+            sweep.job?.cancel()
+        }
+
+    @Test
+    fun `the fast re-sweep stops once the other pod lets go`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val sweep = LeaseSweep(listOf(TrackingStart.TRACKED_ELSEWHERE), leaseRetrySeconds = 35, testScope)
+
+            testScope.advanceTimeBy(100 + 35_000)
+            assertEquals(2, sweep.sweeps.get())
+
+            testScope.advanceTimeBy(35_000)
+            assertEquals(2, sweep.sweeps.get(), "back on the normal interval")
+
+            testScope.advanceTimeBy(300_000)
+            assertEquals(3, sweep.sweeps.get())
+            sweep.job?.cancel()
+        }
+
+    @Test
+    fun `without lease retry the interval is unchanged`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val sweep = LeaseSweep(List(10) { TrackingStart.TRACKED_ELSEWHERE }, leaseRetrySeconds = null, testScope)
+
+            testScope.advanceTimeBy(100 + 35_000)
+            assertEquals(1, sweep.sweeps.get())
+            sweep.job?.cancel()
         }
 }
