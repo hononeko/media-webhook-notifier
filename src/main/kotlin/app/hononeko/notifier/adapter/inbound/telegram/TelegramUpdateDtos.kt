@@ -2,6 +2,7 @@ package app.hononeko.notifier.adapter.inbound.telegram
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 // Minimal slices of the Bot API `Update` object: only what callback handling reads. Unknown keys are ignored.
 
@@ -33,7 +34,9 @@ internal data class TelegramUser(
 internal data class TelegramMessage(
     @SerialName("message_id")
     val messageId: Long,
-    val chat: TelegramChat
+    val chat: TelegramChat,
+    // Only its presence matters: photo cards are edited with editMessageCaption.
+    val photo: List<JsonElement>? = null
 )
 
 @Serializable

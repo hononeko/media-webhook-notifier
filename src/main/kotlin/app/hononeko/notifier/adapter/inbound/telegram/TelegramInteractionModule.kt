@@ -2,7 +2,8 @@ package app.hononeko.notifier.adapter.inbound.telegram
 
 import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.TelegramUpdatesMode
-import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.domain.service.AcknowledgeHandler
 import app.hononeko.notifier.domain.service.BotInteractionService
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
 import io.ktor.client.engine.HttpClientEngine
@@ -50,7 +51,8 @@ class TelegramInteractionModule private constructor(
     companion object {
         fun create(
             config: AppConfig,
-            stateStore: StateStorePort,
+            refRegistry: CallbackRefRegistry,
+            publisher: NotificationPublisherPort,
             scope: CoroutineScope,
             engine: HttpClientEngine? = null
         ): TelegramInteractionModule {
@@ -59,11 +61,10 @@ class TelegramInteractionModule private constructor(
             val processor =
                 TelegramCallbackProcessor(
                     guard = TelegramCallbackGuard(interaction.allowedUserIds, config.notifications.chatId),
-                    // MWN-1 ships the protocol only; MWN-3 registers the pause/resume/... handlers here.
                     useCase =
                         BotInteractionService(
-                            handlers = emptyList(),
-                            refRegistry = CallbackRefRegistry(stateStore)
+                            handlers = listOf(AcknowledgeHandler(publisher, refRegistry)),
+                            refRegistry = refRegistry
                         ),
                     api = api,
                     scope = scope

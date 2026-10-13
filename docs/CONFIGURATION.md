@@ -27,6 +27,8 @@ Inline-button handling for Telegram cards, off by default. See [Telegram Interac
 | `TELEGRAM_WEBHOOK_SECRET` | — | Webhook mode: required. 1–256 characters of `A-Z a-z 0-9 _ -`, checked against Telegram's `X-Telegram-Bot-Api-Secret-Token` header. Supports `TELEGRAM_WEBHOOK_SECRET_FILE` |
 | `TELEGRAM_POLL_TIMEOUT_SECONDS` | `25` | Polling mode: long-poll timeout, 1–50 |
 
+With the flag on, cards that need attention carry an **✅ Acknowledge** button; see [Buttons](TELEGRAM_INTERACTIONS.md#buttons). The time in its "Handled by" stamp follows the container's `TZ` (UTC when unset).
+
 ## Download Client & Live Tracking
 Pick the client with `DOWNLOAD_CLIENT_TYPE` or the scheme of `DOWNLOAD_CLIENT_URL`. With neither set, qBittorrent is used, so existing `QBITTORRENT_*` setups keep working unchanged.
 

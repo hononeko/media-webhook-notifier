@@ -2,7 +2,7 @@
 
 Telegram interactions let the notifier react to **inline-button clicks** on its Telegram cards. Each click is checked against an allowlist of Telegram users and answered within Telegram's 3-second window, then handed to the matching action.
 
-This release adds the listener and the security checks only. Cards don't show action buttons yet; download controls such as pause and resume build on this. The feature is **off by default**: with `TELEGRAM_INTERACTIVE_ENABLED` unset, the service behaves exactly as before.
+Cards that need a person's attention carry an **✅ Acknowledge** button (see [Buttons](#buttons)). The feature is **off by default**: with `TELEGRAM_INTERACTIVE_ENABLED` unset, cards look exactly as before and the service never listens for clicks.
 
 > [!WARNING]
 > **Replica rules.** The service can't detect how many replicas you run, so these rules aren't enforced. Follow them yourself:
@@ -48,6 +48,23 @@ environment:
 - `TELEGRAM_WEBHOOK_SECRET` (or `TELEGRAM_WEBHOOK_SECRET_FILE`) is required: 1–256 characters of `A-Z a-z 0-9 _ -`. Telegram sends it in the `X-Telegram-Bot-Api-Secret-Token` header, and requests without it get `401`. `SERVER_AUTH_TOKEN` isn't used for this endpoint.
 - The service registers the webhook itself on startup and retries in the background if Telegram is unreachable. It leaves the webhook registered on shutdown, so clicks queue up while it restarts.
 
+## Buttons
+
+### ✅ Acknowledge
+
+Lets everyone in the chat see that someone is dealing with a card. It appears on:
+
+| Card | When |
+|---|---|
+| Health issue | Sonarr / Radarr report a warning or error (not on "health restored") |
+| Manual interaction required | An import needs a person to finish it |
+| Stalled download | Tracking stopped because the download stopped making progress |
+| Seerr request failed | Seerr couldn't send an approved request to Sonarr / Radarr |
+
+Pressing it edits the card in place: a `✅ Handled by @alex · 14:32` line is added at the bottom and the button is removed. Link buttons such as **Wiki** stay. The time follows the container's `TZ` variable (UTC when unset), for example `TZ=Europe/Bucharest`.
+
+Each button works **once** and for **30 days**. After that, or after a restart with the in-memory state store, pressing it answers "⌛ This button has expired." Use the Valkey / Redis state store to keep buttons working across restarts.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -57,5 +74,6 @@ environment:
 | Webhook requests get `401` | The secret Telegram sends doesn't match `TELEGRAM_WEBHOOK_SECRET`. Check the logs for `Telegram webhook registered` after a secret change, and make sure your proxy forwards the `X-Telegram-Bot-Api-Secret-Token` header. |
 | A user gets "⛔ You're not allowed to control this bot." | Their numeric ID isn't in `TELEGRAM_ALLOWED_USERS`, or the button sits on a message outside `TELEGRAM_CHAT_ID`. Rejections are logged at INFO with the user ID. |
 | Logs show `TELEGRAM_INTERACTIVE_ENABLED is set but the notification provider is ...` | Interactions need the Telegram notification provider, so the feature stays off. |
+| Acknowledge answers "⚠️ Action failed." | The card was deleted, or the bot can no longer edit it. The reason is logged at WARN. |
 
 All variables are listed in the [Configuration Reference](CONFIGURATION.md#telegram-interactions).

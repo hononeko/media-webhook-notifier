@@ -5,6 +5,8 @@ import app.hononeko.notifier.config.FeatureFlags
 import app.hononeko.notifier.config.NotificationConfig
 import app.hononeko.notifier.config.TelegramInteractionConfig
 import app.hononeko.notifier.config.TelegramUpdatesMode
+import app.hononeko.notifier.domain.model.NotificationCard
+import app.hononeko.notifier.domain.service.CardFormatterService
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
@@ -21,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -28,6 +31,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -44,11 +48,13 @@ class TelegramInteractionBootstrapTest {
             val method = request.url.encodedPath.substringAfterLast('/')
             calls += ApiCall(method, request.body.toByteArray().decodeToString())
             val result =
-                if (method == "getUpdates") {
-                    delay(200) // stand-in for a long poll that returns nothing
-                    "[]"
-                } else {
-                    "true"
+                when (method) {
+                    "getUpdates" -> {
+                        delay(200) // stand-in for a long poll that returns nothing
+                        "[]"
+                    }
+                    "sendMessage" -> """{"message_id":5}"""
+                    else -> "true"
                 }
             respond(
                 """{"ok":true,"result":$result}""",
@@ -183,5 +189,66 @@ class TelegramInteractionBootstrapTest {
             delay(600)
 
             assertEquals(pollsAtClose, methods().count { it == "getUpdates" })
+        }
+
+    private fun sentBodies() = calls.filter { it.method == "sendMessage" }.map { it.body }
+
+    private val ackCard = NotificationCard(title = "t", interactions = listOf(CardFormatterService.ACKNOWLEDGE))
+
+    @Test
+    fun `flag on - publisher renders the acknowledge row`() =
+        runBlocking {
+            val dependencies =
+                buildDependencies(
+                    config(TelegramUpdatesMode.WEBHOOK),
+                    CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                    telegramApiEngine = engine
+                )
+
+            dependencies.notificationPublisher.sendCard(ackCard)
+
+            assertTrue(sentBodies().single().contains("mwn1:ack:"), sentBodies().single())
+            dependencies.close()
+        }
+
+    @Test
+    fun `flag off - publisher ignores interactions`() =
+        runBlocking {
+            val dependencies =
+                buildDependencies(
+                    AppConfig(notifications = NotificationConfig(botToken = "1:T", chatId = "-1001")),
+                    CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                    telegramApiEngine = engine
+                )
+
+            dependencies.notificationPublisher.sendCard(ackCard)
+
+            assertFalse(sentBodies().single().contains("callback_data"), sentBodies().single())
+            dependencies.close()
+        }
+
+    @Test
+    fun `flag on - ack with an unknown ref answers expired`() =
+        testApplication {
+            val dependencies =
+                buildDependencies(
+                    config(TelegramUpdatesMode.WEBHOOK),
+                    CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                    telegramApiEngine = engine
+                )
+            application { module(dependencies) }
+
+            val accepted =
+                client.post("/api/v1/telegram/webhook") {
+                    header("X-Telegram-Bot-Api-Secret-Token", "s3cret")
+                    contentType(ContentType.Application.Json)
+                    setBody(callbackUpdate.replace("mwn1:ping:", "mwn1:ack:"))
+                }
+            assertEquals(HttpStatusCode.OK, accepted.status)
+
+            eventually { "answerCallbackQuery" in methods() }
+            val answer = Json.parseToJsonElement(calls.first { it.method == "answerCallbackQuery" }.body).jsonObject
+            assertEquals("⌛ This button has expired.", answer["text"]!!.jsonPrimitive.content)
+            dependencies.close()
         }
 }

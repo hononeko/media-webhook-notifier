@@ -3,6 +3,7 @@ package app.hononeko.notifier.adapter.inbound.telegram
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.BotInteraction
 import app.hononeko.notifier.domain.model.BotReply
+import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.port.inbound.HandleBotInteractionUseCase
 import arrow.core.Either
 import io.ktor.client.engine.mock.MockEngine
@@ -20,6 +21,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -85,13 +87,33 @@ class TelegramCallbackProcessorTest {
 
     private fun query(
         userId: Long = 42,
-        data: String? = "mwn1:pause:AAAAAAAAAA"
+        data: String? = "mwn1:pause:AAAAAAAAAA",
+        message: TelegramMessage = TelegramMessage(messageId = 10, chat = TelegramChat(-1001))
     ) = TelegramCallbackQuery(
         id = "cq1",
         from = TelegramUser(id = userId, firstName = "Alice", username = "alice"),
-        message = TelegramMessage(messageId = 10, chat = TelegramChat(-1001)),
+        message = message,
         data = data
     )
+
+    @Test
+    fun `origin is the clicked text message`() =
+        runTest {
+            processor(returning(Either.Right(BotReply("ok")))).process(query())
+
+            assertEquals(NotificationHandle("telegram", "-1001", "10", isPhoto = false), interactions.single().origin)
+        }
+
+    @Test
+    fun `origin marks photo messages`() =
+        runTest {
+            val photo =
+                TelegramMessage(messageId = 10, chat = TelegramChat(-1001), photo = listOf(JsonObject(emptyMap())))
+
+            processor(returning(Either.Right(BotReply("ok")))).process(query(message = photo))
+
+            assertEquals(true, interactions.single().origin?.isPhoto)
+        }
 
     @Test
     fun `unauthorized user is answered with alert and use case is never called`() =
