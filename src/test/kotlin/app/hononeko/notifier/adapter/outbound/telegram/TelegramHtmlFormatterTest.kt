@@ -334,4 +334,13 @@ class TelegramHtmlFormatterTest {
             TelegramHtmlFormatter.buildCardHtml(card, 1024)
         )
     }
+
+    @Test
+    fun `footnote longer than the limit is cut instead of throwing`() {
+        val card = NotificationCard(title = "Health issue", footnote = "x".repeat(2000))
+
+        val html = TelegramHtmlFormatter.buildCardHtml(card, 1024)
+
+        assertTrue(html.length <= 1024, "length ${html.length}")
+    }
 }

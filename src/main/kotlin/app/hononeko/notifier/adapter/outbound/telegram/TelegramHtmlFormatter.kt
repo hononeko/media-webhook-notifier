@@ -83,6 +83,8 @@ object TelegramHtmlFormatter {
         maxChars: Int
     ): String {
         val suffix = card.footnote?.let { "\n\n" + escapeHtml(it) }.orEmpty()
+        // A footnote that can't fit on its own is cut along with the body rather than breaking the card.
+        if (suffix.length >= maxChars) return truncateHtml(buildCardHtml(card) + suffix, maxChars)
         return truncateHtml(buildCardHtml(card), maxChars - suffix.length) + suffix
     }
 

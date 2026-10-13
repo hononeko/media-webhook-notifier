@@ -1566,6 +1566,7 @@ class CardFormatterServiceTest {
         val restored = CardFormatterService.buildHealthCard(healthPayload(EventType.HEALTH_RESTORED))
         assertTrue(restored.interactions.isEmpty())
         assertTrue(CardFormatterService.buildHealthCard(healthPayload(level = "ok")).interactions.isEmpty())
+        assertTrue(CardFormatterService.buildHealthCard(healthPayload(level = "restored")).interactions.isEmpty())
         assertTrue(CardFormatterService.buildGrabInitialCard(grabPayload, null).interactions.isEmpty())
         assertTrue(CardFormatterService.buildImportCard(importPayload).interactions.isEmpty())
         assertTrue(

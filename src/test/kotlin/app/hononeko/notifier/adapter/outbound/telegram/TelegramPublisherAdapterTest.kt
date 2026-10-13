@@ -1167,4 +1167,20 @@ class TelegramPublisherAdapterTest {
             assertFalse(failure.message.contains("12345:TOKEN"), failure.message)
             assertTrue(failure.message.contains("Request timeout has expired"), failure.message)
         }
+
+    @Test
+    fun `editCard reports an error instead of success for a non-Telegram message id`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent))
+
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "not-a-number"),
+                    NotificationCard(title = "Health")
+                )
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+            assertTrue(sent.isEmpty())
+        }
 }

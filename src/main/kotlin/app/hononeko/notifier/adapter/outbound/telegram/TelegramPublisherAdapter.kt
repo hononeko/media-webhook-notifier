@@ -283,7 +283,14 @@ class TelegramPublisherAdapter(
     override suspend fun editCard(
         handle: NotificationHandle,
         card: NotificationCard
-    ): Either<DomainError.NotificationError, Unit> = editWithCard(handle, card)
+    ): Either<DomainError.NotificationError, Unit> {
+        // Unlike the progress paths, a requested edit that can't happen must not read as done.
+        if (handle.messageReferenceId.toLongOrNull() == null) {
+            val reason = "cannot edit '${handle.messageReferenceId}': not a Telegram message id"
+            return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
+        }
+        return editWithCard(handle, card)
+    }
 
     private suspend fun editWithCard(
         handle: NotificationHandle,
@@ -582,8 +589,8 @@ class TelegramPublisherAdapter(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.warn("Could not register callback buttons for '{}': {}", card.title, e.message)
-                null
+                logger.warn("Sending '{}' without its callback buttons: {}", card.title, e.message)
+                return emptyList()
             }
         if (ref == null) {
             logger.warn("Sending '{}' without its callback buttons: no callback ref available", card.title)
