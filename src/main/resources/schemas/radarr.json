@@ -3,16 +3,9 @@
   "title": "Radarr Webhook Payload",
   "type": "object",
   "properties": {
-    "eventType": {
-      "type": "string",
-      "enum": ["Grab", "Download", "Health", "HealthIssue", "HealthRestored", "ManualInteractionRequired", "Test"]
-    },
-    "instanceName": {
-      "type": "string"
-    },
-    "applicationUrl": {
-      "type": "string"
-    },
+    "eventType": { "type": "string", "enum": ["Grab", "Download", "Health", "HealthIssue", "HealthRestored", "ManualInteractionRequired", "Test"] },
+    "instanceName": { "type": "string" },
+    "applicationUrl": { "type": "string" },
     "movie": {
       "type": "object",
       "properties": {
@@ -33,18 +26,38 @@
               "remoteUrl": { "type": "string" }
             }
           }
-        },
-        "movieFile": {
+        }
+      }
+    },
+    "movieFile": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "relativePath": { "type": "string" },
+        "path": { "type": "string" },
+        "quality": { "type": "string" },
+        "qualityVersion": { "type": "integer" },
+        "releaseGroup": { "type": "string" },
+        "sceneName": { "type": "string" },
+        "size": { "type": "integer" },
+        "mediaInfo": {
           "type": "object",
           "properties": {
-            "id": { "type": "integer" },
-            "relativePath": { "type": "string" },
-            "path": { "type": "string" },
-            "quality": { "type": "string" },
-            "qualityVersion": { "type": "integer" },
-            "size": { "type": "integer" },
+            "audioChannels": { "type": "number" },
+            "audioCodec": { "type": "string" },
+            "audioLanguages": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "height": { "type": "integer" },
+            "width": { "type": "integer" },
+            "subtitles": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
             "videoCodec": { "type": "string" },
-            "audioCodec": { "type": "string" }
+            "videoDynamicRange": { "type": "string" },
+            "videoDynamicRangeType": { "type": "string" }
           }
         }
       }
@@ -57,15 +70,44 @@
         "releaseGroup": { "type": "string" },
         "releaseTitle": { "type": "string" },
         "indexer": { "type": "string" },
+        "size": { "type": "integer" },
+        "indexerFlags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "downloadId": { "type": "string" },
+    "isUpgrade": { "type": "boolean" },
+    "downloadClient": { "type": "string" },
+    "downloadInfo": {
+      "type": "object",
+      "properties": {
+        "quality": { "type": "string" },
+        "qualityVersion": { "type": "integer" },
+        "title": { "type": "string" },
+        "indexer": { "type": "string" },
         "size": { "type": "integer" }
       }
     },
-    "downloadId": {
-      "type": "string"
+    "downloadStatus": { "type": "string" },
+    "downloadStatusMessages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "messages": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
     },
-    "isUpgrade": {
-      "type": "boolean"
-    }
+    "level": { "type": "string" },
+    "message": { "type": "string" },
+    "type": { "type": "string" },
+    "wikiUrl": { "type": "string" }
   },
   "required": ["eventType"]
 }

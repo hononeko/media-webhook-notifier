@@ -1,0 +1,42 @@
+{
+  "series": {
+    "id": 20,
+    "title": "Severance",
+    "path": "/tv/Severance",
+    "tvdbId": 371980,
+    "type": "standard",
+    "year": 2022,
+    "images": []
+  },
+  "episodes": [
+    { "id": 201, "episodeNumber": 1, "seasonNumber": 2, "title": "Hello, Ms. Cobel", "seriesId": 20, "tvdbId": 9999 }
+  ],
+  "downloadInfo": {
+    "quality": "WEBDL-1080p",
+    "qualityVersion": 1,
+    "title": "Severance.S02E01.1080p.ATVP.WEB-DL.DDP5.1.H.264-NTb",
+    "indexer": "TorrentLeech",
+    "size": 2147483648
+  },
+  "downloadClient": "qBittorrent",
+  "downloadClientType": "qBittorrent",
+  "downloadId": "ABCDEF1234567890ABCDEF1234567890ABCDEF12",
+  "downloadStatus": "warning",
+  "downloadStatusMessages": [
+    {
+      "title": "Severance.S02E01.1080p.ATVP.WEB-DL.DDP5.1.H.264-NTb",
+      "messages": ["Found matching series via grab history, but release was matched to series by ID. Automatic import is not possible."]
+    }
+  ],
+  "customFormatInfo": { "customFormats": [], "customFormatScore": 0 },
+  "release": {
+    "releaseTitle": "Severance.S02E01.1080p.ATVP.WEB-DL.DDP5.1.H.264-NTb",
+    "indexer": "TorrentLeech",
+    "size": 2147483648,
+    "indexerFlags": [],
+    "releaseType": "singleEpisode"
+  },
+  "eventType": "ManualInteractionRequired",
+  "instanceName": "Sonarr",
+  "applicationUrl": "http://sonarr.lan:8989"
+}

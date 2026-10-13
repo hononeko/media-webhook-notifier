@@ -109,25 +109,16 @@ abstract class AbstractServarrWebhookProvider(
         val poster = extractPosterUrl(dto)
         val isUpgrade = dto.isUpgrade == true || dto.upgrade?.isUpgrade == true
 
-        val movieFile = dto.movie?.movieFile
-        val episodeFile = dto.episodes.firstOrNull()?.episodeFile
-
-        val videoCodec =
-            movieFile?.mediaInfo?.videoCodec
-                ?: movieFile?.videoCodec
-                ?: episodeFile?.mediaInfo?.videoCodec
-                ?: episodeFile?.videoCodec
-        val audioCodec =
-            movieFile?.mediaInfo?.audioCodec
-                ?: movieFile?.audioCodec
-                ?: episodeFile?.mediaInfo?.audioCodec
-                ?: episodeFile?.audioCodec
-        val quality = extractDownloadQuality(dto)
+        // Sonarr and Radarr send the imported file at the top level, never inside `episodes` or `movie`.
+        val mediaInfo = dto.movieFile?.mediaInfo ?: dto.episodeFile?.mediaInfo
+        val quality = dto.movieFile?.quality ?: dto.episodeFile?.quality ?: dto.release?.quality
         val resolution =
-            movieFile?.mediaInfo?.resolution
-                ?: episodeFile?.mediaInfo?.resolution
+            mediaInfo
+                ?.height
+                ?.takeIf { it > 0 }
+                ?.let { "${it}p" }
                 ?: quality
-        val sizeBytes = extractDownloadSizeBytes(dto)
+        val sizeBytes = dto.movieFile?.size ?: dto.episodeFile?.size ?: dto.release?.size
         val effectiveInstanceName = resolveInstanceName(callerName, dto.instanceName, source)
 
         return MediaPayload.ArrDownload(
@@ -142,8 +133,8 @@ abstract class AbstractServarrWebhookProvider(
                     .firstOrNull()
                     ?.title
                     ?.ifBlank { null },
-            videoCodec = videoCodec,
-            audioCodec = audioCodec,
+            videoCodec = mediaInfo?.videoCodec,
+            audioCodec = mediaInfo?.audioCodec,
             resolution = resolution,
             quality = quality,
             isUpgrade = isUpgrade,
@@ -174,22 +165,6 @@ abstract class AbstractServarrWebhookProvider(
             ?: moviePoster?.remoteUrl
             ?: moviePoster?.url
     }
-
-    private fun extractDownloadQuality(dto: ServarrWebhookDto): String? =
-        dto.movie?.movieFile?.quality
-            ?: dto.episodes
-                .firstOrNull()
-                ?.episodeFile
-                ?.quality
-            ?: dto.release?.quality
-
-    private fun extractDownloadSizeBytes(dto: ServarrWebhookDto): Long? =
-        dto.movie?.movieFile?.size
-            ?: dto.episodes
-                .firstOrNull()
-                ?.episodeFile
-                ?.size
-            ?: dto.release?.size
 
     private fun mapToHealth(
         dto: ServarrWebhookDto,
@@ -244,17 +219,26 @@ abstract class AbstractServarrWebhookProvider(
                     ?.title
                     ?.ifBlank { null },
             releaseTitle = dto.release?.releaseTitle ?: dto.downloadId,
-            quality = dto.release?.quality ?: dto.release?.qualityVersion?.toString(),
-            sizeBytes = dto.release?.size,
-            indexer = dto.release?.indexer,
+            quality = dto.downloadInfo?.quality ?: dto.release?.quality,
+            sizeBytes = dto.downloadInfo?.size ?: dto.release?.size,
+            indexer = dto.downloadInfo?.indexer ?: dto.release?.indexer,
             downloadClient = dto.downloadClient,
             downloadId = dto.downloadId,
-            reason = dto.reason ?: dto.message,
+            reason = extractManualInteractionReason(dto),
             posterUrl = poster,
             webUrl = dto.applicationUrl,
             instanceName = effectiveInstanceName
         )
     }
+
+    private fun extractManualInteractionReason(dto: ServarrWebhookDto): String? =
+        dto.downloadStatusMessages
+            .flatMap { it.messages.ifEmpty { listOfNotNull(it.title) } }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("\n")
+            .ifBlank { null }
+            ?: dto.message
 
     private fun resolveInstanceName(
         callerName: String?,

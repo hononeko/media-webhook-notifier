@@ -8,7 +8,11 @@ data class ServarrWebhookDto(
     val series: ServarrSeriesDto? = null,
     val movie: ServarrMovieDto? = null,
     val episodes: List<ServarrEpisodeDto> = emptyList(),
+    val episodeFile: ServarrEpisodeFileDto? = null,
+    val movieFile: ServarrMovieFileDto? = null,
     val release: ServarrReleaseDto? = null,
+    val downloadInfo: ServarrDownloadInfoDto? = null,
+    val downloadStatusMessages: List<ServarrDownloadStatusMessageDto> = emptyList(),
     val downloadId: String? = null,
     val downloadClient: String? = null,
     val isUpgrade: Boolean? = null,
@@ -17,7 +21,6 @@ data class ServarrWebhookDto(
     val message: String? = null,
     val type: String? = null,
     val wikiUrl: String? = null,
-    val reason: String? = null,
     val instanceName: String? = null,
     val applicationUrl: String? = null
 )
@@ -44,8 +47,7 @@ data class ServarrMovieDto(
     val tmdbId: Int? = null,
     val imdbId: String? = null,
     val overview: String? = null,
-    val images: List<ServarrImageDto> = emptyList(),
-    val movieFile: ServarrMovieFileDto? = null
+    val images: List<ServarrImageDto> = emptyList()
 )
 
 @Serializable
@@ -54,8 +56,7 @@ data class ServarrEpisodeDto(
     val episodeNumber: Int? = null,
     val seasonNumber: Int? = null,
     val title: String? = null,
-    val overview: String? = null,
-    val episodeFile: ServarrEpisodeFileDto? = null
+    val overview: String? = null
 )
 
 @Serializable
@@ -90,8 +91,6 @@ data class ServarrMovieFileDto(
     val qualityVersion: Int? = null,
     val releaseGroup: String? = null,
     val size: Long? = null,
-    val videoCodec: String? = null,
-    val audioCodec: String? = null,
     val mediaInfo: ServarrMediaInfoDto? = null
 )
 
@@ -104,8 +103,6 @@ data class ServarrEpisodeFileDto(
     val qualityVersion: Int? = null,
     val releaseGroup: String? = null,
     val size: Long? = null,
-    val videoCodec: String? = null,
-    val audioCodec: String? = null,
     val mediaInfo: ServarrMediaInfoDto? = null
 )
 
@@ -116,5 +113,21 @@ data class ServarrMediaInfoDto(
     val videoCodec: String? = null,
     val videoDynamicRange: String? = null,
     val videoDynamicRangeType: String? = null,
-    val resolution: String? = null
+    val height: Int? = null,
+    val width: Int? = null
+)
+
+@Serializable
+data class ServarrDownloadInfoDto(
+    val quality: String? = null,
+    val qualityVersion: Int? = null,
+    val title: String? = null,
+    val indexer: String? = null,
+    val size: Long? = null
+)
+
+@Serializable
+data class ServarrDownloadStatusMessageDto(
+    val title: String? = null,
+    val messages: List<String> = emptyList()
 )

@@ -99,15 +99,14 @@ class WebhookRoutesTest {
                       "id": 10,
                       "episodeNumber": 1,
                       "seasonNumber": 2,
-                      "title": "Hello",
-                      "episodeFile": {
-                        "quality": "1080p",
-                        "videoCodec": "x265",
-                        "audioCodec": "EAC3",
-                        "size": 1400000000
-                      }
+                      "title": "Hello"
                     }
                   ],
+                  "episodeFile": {
+                    "quality": "WEBDL-1080p",
+                    "size": 1400000000,
+                    "mediaInfo": { "videoCodec": "x265", "audioCodec": "EAC3", "height": 1080, "width": 1920 }
+                  },
                   "isUpgrade": false
                 }
                 """.trimIndent()
@@ -175,13 +174,12 @@ class WebhookRoutesTest {
                     "id": 5,
                     "title": "Dune: Part Two",
                     "year": 2024,
-                    "overview": "Paul Atreides unites with Chani...",
-                    "movieFile": {
-                      "quality": "2160p",
-                      "videoCodec": "HEVC",
-                      "audioCodec": "TrueHD Atmos",
-                      "size": 24000000000
-                    }
+                    "overview": "Paul Atreides unites with Chani..."
+                  },
+                  "movieFile": {
+                    "quality": "Bluray-2160p",
+                    "size": 24000000000,
+                    "mediaInfo": { "videoCodec": "HEVC", "audioCodec": "TrueHD Atmos", "height": 2160, "width": 3840 }
                   },
                   "isUpgrade": true
                 }
@@ -811,12 +809,13 @@ class WebhookRoutesTest {
                     "id": 1,
                     "title": "Dune: Part Two"
                   },
+                  "downloadInfo": { "quality": "Bluray-2160p", "title": "Dune.2.2024.UHD", "size": 15000000000 },
                   "release": {
-                    "quality": "2160p",
                     "size": 15000000000,
                     "releaseTitle": "Dune.2.2024.UHD"
                   },
-                  "reason": "Sample file detected",
+                  "downloadStatus": "warning",
+                  "downloadStatusMessages": [{ "title": "Dune.2.2024.UHD", "messages": ["Sample file detected"] }],
                   "downloadClient": "qBittorrent",
                   "applicationUrl": "http://radarr:7878/activity/queue"
                 }

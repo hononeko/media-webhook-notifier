@@ -136,14 +136,15 @@ class JellyfinAndServarrWebhookProviderTest {
                         "year": 2023,
                         "images": [
                             { "coverType": "poster", "remoteUrl": "https://image.tmdb.org/poster.jpg" }
-                        ],
-                        "movieFile": {
-                            "size": 35000000000,
-                            "mediaInfo": {
-                                "videoCodec": "hevc",
-                                "audioCodec": "truehd",
-                                "resolution": "3840x2160"
-                            }
+                        ]
+                    },
+                    "movieFile": {
+                        "size": 35000000000,
+                        "mediaInfo": {
+                            "videoCodec": "hevc",
+                            "audioCodec": "truehd",
+                            "height": 2160,
+                            "width": 3840
                         }
                     },
                     "isUpgrade": true
@@ -162,7 +163,7 @@ class JellyfinAndServarrWebhookProviderTest {
             assertEquals(true, payload.isUpgrade)
             assertEquals("hevc", payload.videoCodec)
             assertEquals("truehd", payload.audioCodec)
-            assertEquals("3840x2160", payload.resolution)
+            assertEquals("2160p", payload.resolution)
             assertEquals("https://image.tmdb.org/poster.jpg", payload.posterUrl)
             assertEquals("Radarr-4K", payload.instanceName)
             assertEquals("http://radarr.lan:7878", payload.webUrl)
@@ -247,15 +248,18 @@ class JellyfinAndServarrWebhookProviderTest {
                     "eventType": "ManualInteractionRequired",
                     "series": { "title": "Severance" },
                     "episodes": [{ "episodeNumber": 1, "seasonNumber": 2, "title": "Hello World" }],
+                    "downloadInfo": { "quality": "WEBDL-1080p", "title": "Severance.S02E01.1080p", "size": 2000000000 },
                     "release": {
                         "releaseTitle": "Severance.S02E01.1080p",
                         "size": 2000000000,
-                        "indexer": "TL",
-                        "quality": "1080p"
+                        "indexer": "TL"
                     },
                     "downloadClient": "qBittorrent",
                     "downloadId": "hash999",
-                    "message": "Unknown series folder"
+                    "downloadStatus": "warning",
+                    "downloadStatusMessages": [
+                        { "title": "Severance.S02E01.1080p", "messages": ["Unknown series folder"] }
+                    ]
                 }
                 """.trimIndent()
 

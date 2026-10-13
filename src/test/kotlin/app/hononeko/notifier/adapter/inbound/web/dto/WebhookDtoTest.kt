@@ -48,27 +48,6 @@ class WebhookDtoTest {
                         images =
                             listOf(
                                 ServarrImageDto(coverType = "poster", url = "http://dune.jpg")
-                            ),
-                        movieFile =
-                            ServarrMovieFileDto(
-                                id = 10,
-                                relativePath = "Dune.mkv",
-                                path = "/movies/Dune.mkv",
-                                quality = "2160p",
-                                qualityVersion = 1,
-                                releaseGroup = "FLUX",
-                                size = 25000000000L,
-                                videoCodec = "hevc",
-                                audioCodec = "truehd",
-                                mediaInfo =
-                                    ServarrMediaInfoDto(
-                                        audioChannels = 7.1,
-                                        audioCodec = "truehd",
-                                        videoCodec = "hevc",
-                                        videoDynamicRange = "HDR10",
-                                        videoDynamicRangeType = "HDR",
-                                        resolution = "3840x2160"
-                                    )
                             )
                     ),
                 episodes =
@@ -78,29 +57,48 @@ class WebhookDtoTest {
                             episodeNumber = 1,
                             seasonNumber = 1,
                             title = "Space Pilot 3000",
-                            overview = "Philip J. Fry...",
-                            episodeFile =
-                                ServarrEpisodeFileDto(
-                                    id = 200,
-                                    relativePath = "S01E01.mkv",
-                                    path = "/tv/Futurama/S01E01.mkv",
-                                    quality = "1080p",
-                                    qualityVersion = 1,
-                                    releaseGroup = "NTb",
-                                    size = 2000000000L,
-                                    videoCodec = "x265",
-                                    audioCodec = "aac",
-                                    mediaInfo =
-                                        ServarrMediaInfoDto(
-                                            audioChannels = 2.0,
-                                            audioCodec = "aac",
-                                            videoCodec = "x265",
-                                            videoDynamicRange = null,
-                                            videoDynamicRangeType = null,
-                                            resolution = "1920x1080"
-                                        )
-                                )
+                            overview = "Philip J. Fry..."
                         )
+                    ),
+                movieFile =
+                    ServarrMovieFileDto(
+                        id = 10,
+                        relativePath = "Dune.mkv",
+                        path = "/movies/Dune.mkv",
+                        quality = "2160p",
+                        qualityVersion = 1,
+                        releaseGroup = "FLUX",
+                        size = 25000000000L,
+                        mediaInfo =
+                            ServarrMediaInfoDto(
+                                audioChannels = 7.1,
+                                audioCodec = "truehd",
+                                videoCodec = "hevc",
+                                videoDynamicRange = "HDR10",
+                                videoDynamicRangeType = "HDR",
+                                height = 2160,
+                                width = 3840
+                            )
+                    ),
+                episodeFile =
+                    ServarrEpisodeFileDto(
+                        id = 200,
+                        relativePath = "S01E01.mkv",
+                        path = "/tv/Futurama/S01E01.mkv",
+                        quality = "1080p",
+                        qualityVersion = 1,
+                        releaseGroup = "NTb",
+                        size = 2000000000L,
+                        mediaInfo =
+                            ServarrMediaInfoDto(
+                                audioChannels = 2.0,
+                                audioCodec = "aac",
+                                videoCodec = "x265",
+                                videoDynamicRange = null,
+                                videoDynamicRangeType = null,
+                                height = 1080,
+                                width = 1920
+                            )
                     ),
                 release =
                     ServarrReleaseDto(
@@ -120,7 +118,6 @@ class WebhookDtoTest {
                 message = "Download completed",
                 type = "DiskSpace",
                 wikiUrl = "https://wiki.servarr.com",
-                reason = "Upgrade",
                 instanceName = "Sonarr-TV",
                 applicationUrl = "http://sonarr.lan:8989"
             )
@@ -133,16 +130,13 @@ class WebhookDtoTest {
         assertEquals(dto.movie?.title, deserialized.movie?.title)
         assertEquals(dto.episodes.first().title, deserialized.episodes.first().title)
         assertEquals(
-            dto.episodes
-                .first()
-                .episodeFile
+            deserialized.episodeFile
                 ?.mediaInfo
                 ?.audioChannels,
             2.0
         )
         assertEquals(
-            dto.movie
-                ?.movieFile
+            deserialized.movieFile
                 ?.mediaInfo
                 ?.videoDynamicRange,
             "HDR10"
