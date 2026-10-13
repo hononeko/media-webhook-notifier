@@ -3,6 +3,7 @@ package app.hononeko.notifier.adapter.inbound.telegram
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.BotInteraction
 import app.hononeko.notifier.domain.model.BotReply
+import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.port.inbound.HandleBotInteractionUseCase
 import arrow.core.Either
 import arrow.core.getOrElse
@@ -55,7 +56,17 @@ internal class TelegramCallbackProcessor(
                 return BotReply("")
             }
 
-        val interaction = BotInteraction(actor, decoded.operation, decoded.ref)
+        val origin =
+            query.message?.let {
+                NotificationHandle(
+                    "telegram",
+                    it.chat.id.toString(),
+                    it.messageId.toString(),
+                    isPhoto =
+                        it.photo != null
+                )
+            }
+        val interaction = BotInteraction(actor, decoded.operation, decoded.ref, origin)
         val pending = scope.async { useCase.handle(interaction) }
         val result =
             try {

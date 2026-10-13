@@ -3,6 +3,7 @@ package app.hononeko.notifier.adapter.inbound.telegram
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.BotInteraction
 import app.hononeko.notifier.domain.model.BotReply
+import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.port.inbound.HandleBotInteractionUseCase
 import arrow.core.Either
 import io.ktor.client.engine.mock.MockEngine
@@ -20,6 +21,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -85,13 +87,33 @@ class TelegramCallbackProcessorTest {
 
     private fun query(
         userId: Long = 42,
-        data: String? = "mwn1:pause:AAAAAAAAAA"
+        data: String? = "mwn1:pause:AAAAAAAAAA",
+        message: TelegramMessage = TelegramMessage(messageId = 10, chat = TelegramChat(-1001))
     ) = TelegramCallbackQuery(
         id = "cq1",
         from = TelegramUser(id = userId, firstName = "Alice", username = "alice"),
-        message = TelegramMessage(messageId = 10, chat = TelegramChat(-1001)),
+        message = message,
         data = data
     )
+
+    @Test
+    fun `origin is the clicked text message`() =
+        runTest {
+            processor(returning(Either.Right(BotReply("ok")))).process(query())
+
+            assertEquals(NotificationHandle("telegram", "-1001", "10", isPhoto = false), interactions.single().origin)
+        }
+
+    @Test
+    fun `origin marks photo messages`() =
+        runTest {
+            val photo =
+                TelegramMessage(messageId = 10, chat = TelegramChat(-1001), photo = listOf(JsonObject(emptyMap())))
+
+            processor(returning(Either.Right(BotReply("ok")))).process(query(message = photo))
+
+            assertEquals(true, interactions.single().origin?.isPhoto)
+        }
 
     @Test
     fun `unauthorized user is answered with alert and use case is never called`() =
@@ -183,5 +205,37 @@ class TelegramCallbackProcessorTest {
             ).process(query())
 
             assertEquals(1, answers.size)
+        }
+
+    private val updateJson = Json { ignoreUnknownKeys = true }
+
+    private fun decodeCallback(messageJson: String) =
+        updateJson
+            .decodeFromString(
+                TelegramUpdate.serializer(),
+                """{"update_id":1,"callback_query":{"id":"cq1",""" +
+                    """"from":{"id":42,"is_bot":false,"first_name":"Alice"},""" +
+                    """"message":$messageJson,"data":"mwn1:ack:AAAAAAAAAA"}}"""
+            ).callbackQuery!!
+
+    @Test
+    fun `origin is decoded from a real photo callback`() =
+        runTest {
+            val photoMessage =
+                """{"message_id":10,"chat":{"id":-1001,"type":"supergroup"},"date":1,""" +
+                    """"photo":[{"file_id":"a","file_unique_id":"b","width":90,"height":90}],"caption":"x"}"""
+
+            processor(returning(Either.Right(BotReply("ok")))).process(decodeCallback(photoMessage))
+
+            assertEquals(NotificationHandle("telegram", "-1001", "10", isPhoto = true), interactions.single().origin)
+        }
+
+    @Test
+    fun `origin is decoded from an inaccessible message without content`() =
+        runTest {
+            processor(returning(Either.Right(BotReply("ok"))))
+                .process(decodeCallback("""{"message_id":10,"chat":{"id":-1001,"type":"supergroup"},"date":0}"""))
+
+            assertEquals(NotificationHandle("telegram", "-1001", "10", isPhoto = false), interactions.single().origin)
         }
 }

@@ -9,11 +9,15 @@ data class BotActor(
     val displayName: String
 )
 
-/** A decoded button click: the operation to run on the target that [ref] points to. */
+/**
+ * A decoded button click: the operation to run on the target that [ref] points to.
+ * [origin] is the message the button was pressed on, when the platform reports one.
+ */
 data class BotInteraction(
     val actor: BotActor,
     val operation: String,
-    val ref: String
+    val ref: String,
+    val origin: NotificationHandle? = null
 )
 
 /** Short acknowledgement shown to the actor; [alert] asks the platform for a modal popup instead of a toast. */
@@ -22,8 +26,11 @@ data class BotReply(
     val alert: Boolean = false
 )
 
-/** What a callback ref resolves to. Stored as JSON, so fields can be added without changing existing refs. */
+/**
+ * What a callback ref resolves to: the card the buttons were sent on, so a handler can re-render it.
+ * Stored as JSON, so fields can be added without changing existing refs.
+ */
 @Serializable
 data class CallbackTarget(
-    val downloadId: String
+    val card: NotificationCard
 )

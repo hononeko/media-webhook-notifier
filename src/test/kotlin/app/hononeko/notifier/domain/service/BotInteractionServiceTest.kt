@@ -6,6 +6,8 @@ import app.hononeko.notifier.domain.model.BotActor
 import app.hononeko.notifier.domain.model.BotInteraction
 import app.hononeko.notifier.domain.model.BotReply
 import app.hononeko.notifier.domain.model.CallbackTarget
+import app.hononeko.notifier.domain.model.NotificationCard
+import app.hononeko.notifier.domain.model.NotificationHandle
 import arrow.core.Either
 import io.mockk.coVerify
 import io.mockk.spyk
@@ -15,18 +17,25 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class BotInteractionServiceTest {
+    private fun target(title: String) = CallbackTarget(NotificationCard(title = title))
+
     private val actor = BotActor(platform = "telegram", id = "42", displayName = "@alice")
     private val store = spyk(InMemoryStateStore())
     private val registry = CallbackRefRegistry(store)
+
+    private var received: BotInteraction? = null
 
     private val ping =
         object : BotActionHandler {
             override val operation = "ping"
 
             override suspend fun handle(
-                actor: BotActor,
+                interaction: BotInteraction,
                 target: CallbackTarget
-            ): Either<DomainError, BotReply> = Either.Right(BotReply("pong ${target.downloadId}"))
+            ): Either<DomainError, BotReply> {
+                received = interaction
+                return Either.Right(BotReply("pong ${target.card.title}"))
+            }
         }
 
     private val service = BotInteractionService(listOf(ping), registry)
@@ -34,11 +43,22 @@ class BotInteractionServiceTest {
     @Test
     fun `dispatches to the handler for the operation with the resolved target`() =
         runTest {
-            val ref = registry.register(CallbackTarget("h1"), 60)!!
+            val ref = registry.register(target("h1"), 60)!!
 
             val result = service.handle(BotInteraction(actor, "ping", ref))
 
             assertEquals(Either.Right(BotReply("pong h1")), result)
+        }
+
+    @Test
+    fun `handler receives the interaction including origin`() =
+        runTest {
+            val ref = registry.register(target("h1"), 60)!!
+            val interaction = BotInteraction(actor, "ping", ref, origin = NotificationHandle("telegram", "-1001", "5"))
+
+            service.handle(interaction)
+
+            assertEquals(interaction, received)
         }
 
     @Test
@@ -67,11 +87,11 @@ class BotInteractionServiceTest {
                     override val operation = "pause"
 
                     override suspend fun handle(
-                        actor: BotActor,
+                        interaction: BotInteraction,
                         target: CallbackTarget
                     ): Either<DomainError, BotReply> = Either.Left(failure)
                 }
-            val ref = registry.register(CallbackTarget("h1"), 60)!!
+            val ref = registry.register(target("h1"), 60)!!
 
             val result = BotInteractionService(listOf(failing), registry).handle(BotInteraction(actor, "pause", ref))
 

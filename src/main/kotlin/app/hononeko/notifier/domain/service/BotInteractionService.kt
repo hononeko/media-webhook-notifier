@@ -31,6 +31,6 @@ class BotInteractionService(
                 ensureNotNull(refRegistry.resolve(interaction.ref)) {
                     DomainError.InteractionError.ExpiredCallback(interaction.ref)
                 }
-            handler.handle(interaction.actor, target).bind()
+            handler.handle(interaction, target).bind()
         }
 }

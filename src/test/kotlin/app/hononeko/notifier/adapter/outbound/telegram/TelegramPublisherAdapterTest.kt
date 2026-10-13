@@ -1,15 +1,19 @@
 package app.hononeko.notifier.adapter.outbound.telegram
 
+import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
 import app.hononeko.notifier.config.NotificationConfig
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.ActionLink
 import app.hononeko.notifier.domain.model.ActionStyle
+import app.hononeko.notifier.domain.model.CallbackTarget
 import app.hononeko.notifier.domain.model.CardField
 import app.hononeko.notifier.domain.model.MediaSpecs
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.NotificationLevel
 import app.hononeko.notifier.domain.model.ProgressUpdate
+import app.hononeko.notifier.domain.service.CallbackRefRegistry
+import app.hononeko.notifier.domain.service.CardFormatterService
 import arrow.core.Either
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -17,12 +21,20 @@ import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import io.mockk.coEvery
+import io.mockk.spyk
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -914,5 +926,261 @@ class TelegramPublisherAdapterTest {
             val audibleResult = adapter.sendCard(audibleCard)
             assertTrue(audibleResult.isRight())
             assertTrue(bodyContentCaptured.contains("""name="disable_notification"""") == false)
+        }
+
+    private data class Sent(
+        val path: String,
+        val body: String
+    ) {
+        val json: JsonObject get() = Json.parseToJsonElement(body).jsonObject
+
+        fun keyboard() = json["reply_markup"]!!.jsonObject["inline_keyboard"]!!.jsonArray
+    }
+
+    private val interactiveConfig =
+        NotificationConfig(botToken = "12345:TOKEN", chatId = "-1001", sendPhotos = false)
+
+    private val wiki = ActionLink("📖 Wiki", "https://wiki.example.com")
+
+    private fun recordingEngine(
+        sent: MutableList<Sent>,
+        status: HttpStatusCode = HttpStatusCode.OK,
+        response: String = """{"ok":true,"result":{"message_id":7}}"""
+    ) = MockEngine { request ->
+        sent += Sent(request.url.encodedPath, request.body.toByteArray().decodeToString())
+        respond(response, status, headersOf(HttpHeaders.ContentType, "application/json"))
+    }
+
+    @Test
+    fun `interactions are ignored without a callback registry`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent))
+            val card = NotificationCard(title = "Health", actions = listOf(wiki))
+
+            adapter.sendCard(card.copy(interactions = listOf(CardFormatterService.ACKNOWLEDGE)))
+            adapter.sendCard(card)
+
+            assertFalse(sent[0].body.contains("callback_data"))
+            assertEquals(sent[1].body, sent[0].body)
+        }
+
+    @Test
+    fun `callback row is rendered below URL buttons and resolves to the card`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val registry = CallbackRefRegistry(InMemoryStateStore())
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent), registry)
+            val card =
+                NotificationCard(
+                    title = "Health",
+                    actions = listOf(wiki),
+                    interactions = listOf(CardFormatterService.ACKNOWLEDGE)
+                )
+
+            adapter.sendCard(card)
+
+            val keyboard = sent.single().keyboard()
+            assertEquals(
+                "https://wiki.example.com",
+                keyboard[0]
+                    .jsonArray[0]
+                    .jsonObject["url"]!!
+                    .jsonPrimitive.content
+            )
+            val button = keyboard[1].jsonArray[0].jsonObject
+            assertEquals("✅ Acknowledge", button["text"]!!.jsonPrimitive.content)
+            val data = button["callback_data"]!!.jsonPrimitive.content
+            assertTrue(Regex("^mwn1:ack:[A-Za-z0-9]{10}$").matches(data), data)
+            assertEquals(CallbackTarget(card), registry.resolve(data.substringAfterLast(':')))
+        }
+
+    @Test
+    fun `card is sent without the callback row when registration fails`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val store = spyk(InMemoryStateStore())
+            coEvery { store.tryAcquire(any(), any(), any(), any()) } throws IllegalStateException("valkey down")
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent), CallbackRefRegistry(store))
+
+            val result =
+                adapter.sendCard(
+                    NotificationCard(
+                        title = "Health",
+                        actions = listOf(wiki),
+                        interactions = listOf(CardFormatterService.ACKNOWLEDGE)
+                    )
+                )
+
+            assertIs<Either.Right<NotificationHandle>>(result)
+            assertTrue(sent.single().body.contains("https://wiki.example.com"))
+            assertFalse(sent.single().body.contains("callback_data"))
+        }
+
+    @Test
+    fun `cancelProgress renders the callback row`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter =
+                TelegramPublisherAdapter(
+                    interactiveConfig,
+                    recordingEngine(sent),
+                    CallbackRefRegistry(InMemoryStateStore())
+                )
+
+            adapter.cancelProgress(
+                NotificationHandle("telegram", "-1001", "5"),
+                NotificationCard(title = "Stalled", interactions = listOf(CardFormatterService.ACKNOWLEDGE))
+            )
+
+            assertTrue(sent.single().path.endsWith("/editMessageText"), sent.single().path)
+            assertTrue(sent.single().body.contains("mwn1:ack:"))
+        }
+
+    @Test
+    fun `editCard uses editMessageCaption for photo messages`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent))
+            val footnote = "✅ Handled by @alex · 11:53"
+            val card =
+                NotificationCard(
+                    title = "Health",
+                    overview = "a".repeat(2000),
+                    artworkUrl = "https://img.example.com/x.jpg",
+                    footnote = footnote
+                )
+
+            val result = adapter.editCard(NotificationHandle("telegram", "-1001", "5", isPhoto = true), card)
+
+            assertEquals(Either.Right(Unit), result)
+            assertTrue(sent.single().path.endsWith("/editMessageCaption"), sent.single().path)
+            val caption =
+                sent
+                    .single()
+                    .json["caption"]!!
+                    .jsonPrimitive.content
+            assertTrue(caption.length <= 1024, "caption length ${caption.length}")
+            assertTrue(caption.endsWith(footnote))
+        }
+
+    @Test
+    fun `editCard uses editMessageText for text messages and keeps URL buttons`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter =
+                TelegramPublisherAdapter(
+                    interactiveConfig,
+                    recordingEngine(sent),
+                    CallbackRefRegistry(InMemoryStateStore())
+                )
+
+            adapter.editCard(
+                NotificationHandle("telegram", "-1001", "5"),
+                NotificationCard(title = "Health", actions = listOf(wiki), footnote = "✅ Handled by @alex · 11:53")
+            )
+
+            assertTrue(sent.single().path.endsWith("/editMessageText"), sent.single().path)
+            assertEquals(1, sent.single().keyboard().size)
+            assertFalse(sent.single().body.contains("callback_data"))
+        }
+
+    @Test
+    fun `editCard treats message is not modified as success`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val engine =
+                recordingEngine(
+                    sent,
+                    HttpStatusCode.BadRequest,
+                    """{"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}"""
+                )
+            val adapter = TelegramPublisherAdapter(interactiveConfig, engine)
+
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "5"),
+                    NotificationCard(title = "Health")
+                )
+
+            assertEquals(Either.Right(Unit), result)
+        }
+
+    @Test
+    fun `editCard falls back to editMessageCaption when Telegram reports no text to edit`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val engine =
+                MockEngine { request ->
+                    sent += Sent(request.url.encodedPath, request.body.toByteArray().decodeToString())
+                    if (request.url.encodedPath.endsWith("/editMessageText")) {
+                        respond(
+                            """{"ok":false,"error_code":400,"description":"Bad Request: there is no text in the message to edit"}""",
+                            HttpStatusCode.BadRequest,
+                            headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    } else {
+                        respond(
+                            """{"ok":true,"result":true}""",
+                            HttpStatusCode.OK,
+                            headersOf(HttpHeaders.ContentType, "application/json")
+                        )
+                    }
+                }
+            val adapter = TelegramPublisherAdapter(interactiveConfig, engine)
+            val footnote = "✅ Handled by @alex · 11:53"
+
+            // An old or inaccessible callback message carries no photo, so the origin says "text".
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "5"),
+                    NotificationCard(title = "Health", footnote = footnote)
+                )
+
+            assertEquals(Either.Right(Unit), result)
+            assertEquals(listOf("editMessageText", "editMessageCaption"), sent.map { it.path.substringAfterLast('/') })
+            assertTrue(
+                sent
+                    .last()
+                    .json["caption"]!!
+                    .jsonPrimitive.content
+                    .endsWith(footnote)
+            )
+        }
+
+    @Test
+    fun `delivery errors never carry the bot token`() =
+        runTest {
+            val engine =
+                MockEngine { request ->
+                    throw IOException("Request timeout has expired [url=${request.url}, request_timeout=15000 ms]")
+                }
+            val adapter = TelegramPublisherAdapter(interactiveConfig, engine)
+
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "5"),
+                    NotificationCard(title = "Health")
+                )
+
+            val failure = assertIs<DomainError.NotificationError.DeliveryFailed>((result as Either.Left).value)
+            assertFalse(failure.message.contains("12345:TOKEN"), failure.message)
+            assertTrue(failure.message.contains("Request timeout has expired"), failure.message)
+        }
+
+    @Test
+    fun `editCard reports an error instead of success for a non-Telegram message id`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent))
+
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "not-a-number"),
+                    NotificationCard(title = "Health")
+                )
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+            assertTrue(sent.isEmpty())
         }
 }

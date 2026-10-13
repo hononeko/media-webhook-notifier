@@ -34,6 +34,7 @@ import app.hononeko.notifier.domain.port.outbound.MediaServerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.service.AlertUseCases
+import app.hononeko.notifier.domain.service.CallbackRefRegistry
 import app.hononeko.notifier.domain.service.CardFormatterService
 import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
@@ -124,15 +125,17 @@ fun buildDependencies(
     CardFormatterService.templateEngine = TemplateEngine(config.templates)
 
     val downloadClient = DownloadClientFactory.create(config)
-    val notificationPublisher = TelegramPublisherAdapter(config = config.notifications)
-    val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
-    val activeTrackerStore = InMemoryActiveTrackerStore()
-
     val stateStore: StateStorePort =
         when (config.state.type.lowercase()) {
             "valkey", "redis" -> ValkeyStateStore(config = config.state)
             else -> InMemoryStateStore()
         }
+    // One registry shared by the publisher (registers button refs) and the listener (resolves them).
+    val callbackRefs = if (config.features.telegramInteractive) CallbackRefRegistry(stateStore) else null
+    val notificationPublisher =
+        TelegramPublisherAdapter(config = config.notifications, engine = telegramApiEngine, callbackRefs = callbackRefs)
+    val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
+    val activeTrackerStore = InMemoryActiveTrackerStore()
 
     val downloadTracker =
         DownloadTrackerEngine(
@@ -248,8 +251,10 @@ fun buildDependencies(
         )
 
     val telegramInteractions =
-        if (config.features.telegramInteractive) {
-            TelegramInteractionModule.create(config, stateStore, scope, telegramApiEngine).also { it.start(scope) }
+        if (callbackRefs != null) {
+            TelegramInteractionModule
+                .create(config, callbackRefs, notificationPublisher, scope, telegramApiEngine)
+                .also { it.start(scope) }
         } else {
             null
         }

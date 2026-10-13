@@ -29,6 +29,18 @@ interface NotificationPublisherPort {
         finalCard: NotificationCard
     ): Either<DomainError.NotificationError, Unit>
 
+    /**
+     * Replaces the content and buttons of an already sent card. Publishers that can't edit messages report it as a
+     * failure rather than pretending the edit happened.
+     */
+    suspend fun editCard(
+        handle: NotificationHandle,
+        card: NotificationCard
+    ): Either<DomainError.NotificationError, Unit> {
+        val reason = "editCard is not supported by $providerId"
+        return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
+    }
+
     suspend fun cancelProgress(
         handle: NotificationHandle,
         reasonCard: NotificationCard

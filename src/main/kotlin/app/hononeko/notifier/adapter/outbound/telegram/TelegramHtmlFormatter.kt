@@ -74,6 +74,20 @@ object TelegramHtmlFormatter {
         return sb.toString().trimEnd()
     }
 
+    /**
+     * Renders [card] within [maxChars]. A footnote is always kept whole as the last line: the body is truncated
+     * first to make room for it.
+     */
+    fun buildCardHtml(
+        card: NotificationCard,
+        maxChars: Int
+    ): String {
+        val suffix = card.footnote?.let { "\n\n" + escapeHtml(it) }.orEmpty()
+        // A footnote that can't fit on its own is cut along with the body rather than breaking the card.
+        if (suffix.length >= maxChars) return truncateHtml(buildCardHtml(card) + suffix, maxChars)
+        return truncateHtml(buildCardHtml(card), maxChars - suffix.length) + suffix
+    }
+
     fun buildProgressHtml(update: ProgressUpdate): String {
         val sb = StringBuilder()
         sb.append("<b>").append(escapeHtml(update.title)).append("</b>\n")

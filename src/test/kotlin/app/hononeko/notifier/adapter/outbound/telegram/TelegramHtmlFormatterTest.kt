@@ -303,4 +303,44 @@ class TelegramHtmlFormatterTest {
         assertEquals(15, truncated.length)
         assertEquals("Score is < 1...", truncated)
     }
+
+    @Test
+    fun `footnote is the escaped last line`() {
+        val card = NotificationCard(title = "Health issue", footnote = "✅ Handled by A<b>&c · 09:05")
+
+        val html = TelegramHtmlFormatter.buildCardHtml(card, 4096)
+
+        assertTrue(html.endsWith("\n\n✅ Handled by A&lt;b&gt;&amp;c · 09:05"), html)
+    }
+
+    @Test
+    fun `body is truncated before the footnote`() {
+        val footnote = "✅ Handled by @alex · 11:53"
+        val card = NotificationCard(title = "Health issue", overview = "a".repeat(2000), footnote = footnote)
+
+        val html = TelegramHtmlFormatter.buildCardHtml(card, 1024)
+
+        assertTrue(html.length <= 1024, "length ${html.length}")
+        assertTrue(html.endsWith(footnote), html.takeLast(80))
+        assertTrue(html.contains("..."))
+    }
+
+    @Test
+    fun `without a footnote it matches the old truncation`() {
+        val card = NotificationCard(title = "Health issue", overview = "a".repeat(2000))
+
+        assertEquals(
+            TelegramHtmlFormatter.truncateHtml(TelegramHtmlFormatter.buildCardHtml(card), 1024),
+            TelegramHtmlFormatter.buildCardHtml(card, 1024)
+        )
+    }
+
+    @Test
+    fun `footnote longer than the limit is cut instead of throwing`() {
+        val card = NotificationCard(title = "Health issue", footnote = "x".repeat(2000))
+
+        val html = TelegramHtmlFormatter.buildCardHtml(card, 1024)
+
+        assertTrue(html.length <= 1024, "length ${html.length}")
+    }
 }

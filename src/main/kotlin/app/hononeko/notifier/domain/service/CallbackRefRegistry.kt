@@ -6,8 +6,8 @@ import kotlinx.serialization.json.Json
 import kotlin.random.Random
 
 /**
- * Maps short random refs to [CallbackTarget]s so button payloads stay within Telegram's 64-byte `callback_data`
- * limit, even for composite (`hash1|hash2`) or BitTorrent v2 download ids.
+ * Maps short random refs to [CallbackTarget]s (the card a button was sent on) so button payloads stay within
+ * Telegram's 64-byte `callback_data` limit.
  *
  * Refs only need to be unique, not unguessable: the inbound adapter rejects non-allowlisted users before any lookup.
  */
@@ -46,6 +46,11 @@ class CallbackRefRegistry(
         if (!REF_PATTERN.matches(ref)) return null
         val raw = stateStore.get(KEY_PREFIX + ref, nowMillis = clock()) ?: return null
         return runCatching { json.decodeFromString(CallbackTarget.serializer(), raw) }.getOrNull()
+    }
+
+    /** Forgets [ref], so later presses of the same button resolve to nothing. Malformed refs are ignored. */
+    suspend fun release(ref: String) {
+        if (REF_PATTERN.matches(ref)) stateStore.delete(KEY_PREFIX + ref)
     }
 
     private fun newRef(): String =

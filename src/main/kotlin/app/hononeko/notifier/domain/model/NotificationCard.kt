@@ -1,5 +1,9 @@
 package app.hononeko.notifier.domain.model
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+
+@Serializable
 data class NotificationCard(
     val title: String,
     val subtitle: String? = null,
@@ -9,10 +13,12 @@ data class NotificationCard(
     val mediaSpecs: MediaSpecs? = null,
     val customBody: String? = null,
     val artworkUrl: String? = null,
-    val artworkBytes: ByteArray? = null,
+    @Transient val artworkBytes: ByteArray? = null,
     val actions: List<ActionLink> = emptyList(),
     val eventType: String? = null,
-    val silent: Boolean = false
+    val silent: Boolean = false,
+    val interactions: List<CardInteraction> = emptyList(),
+    val footnote: String? = null
 ) {
     @Suppress("CyclomaticComplexMethod")
     override fun equals(other: Any?): Boolean {
@@ -35,6 +41,8 @@ data class NotificationCard(
         if (actions != other.actions) return false
         if (eventType != other.eventType) return false
         if (silent != other.silent) return false
+        if (interactions != other.interactions) return false
+        if (footnote != other.footnote) return false
         return true
     }
 
@@ -51,10 +59,13 @@ data class NotificationCard(
         result = 31 * result + actions.hashCode()
         result = 31 * result + (eventType?.hashCode() ?: 0)
         result = 31 * result + silent.hashCode()
+        result = 31 * result + interactions.hashCode()
+        result = 31 * result + (footnote?.hashCode() ?: 0)
         return result
     }
 }
 
+@Serializable
 enum class NotificationLevel {
     INFO,
     PROGRESS,
@@ -63,12 +74,14 @@ enum class NotificationLevel {
     ERROR
 }
 
+@Serializable
 data class CardField(
     val name: String,
     val value: String,
     val inline: Boolean = true
 )
 
+@Serializable
 data class MediaSpecs(
     val video: String? = null,
     val audio: String? = null,
