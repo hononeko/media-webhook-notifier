@@ -1,6 +1,7 @@
 package app.hononeko.notifier.adapter.outbound.state
 
 import app.hononeko.notifier.config.StateConfig
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -210,6 +211,67 @@ class ValkeyStateStore(
             }
         }
 
+    override suspend fun acquireLock(
+        key: String,
+        owner: String,
+        ttlSeconds: Long,
+        nowMillis: Long
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val client = jedis ?: return@withContext fallbackStore.acquireLock(key, owner, ttlSeconds, nowMillis)
+            try {
+                val acquired = client.set(keyPrefix + key, owner, SetParams.setParams().nx().ex(ttlSeconds)) == "OK"
+                isHealthy = true
+                acquired
+            } catch (e: JedisException) {
+                isHealthy = false
+                logger.warn("Valkey acquireLock failed for key '{}', falling back to in-memory: {}", key, e.message)
+                fallbackStore.acquireLock(key, owner, ttlSeconds, nowMillis)
+            }
+        }
+
+    override suspend fun renewLock(
+        key: String,
+        owner: String,
+        ttlSeconds: Long,
+        nowMillis: Long
+    ): LockRenewal =
+        withContext(Dispatchers.IO) {
+            val client = jedis ?: return@withContext fallbackStore.renewLock(key, owner, ttlSeconds, nowMillis)
+            try {
+                val result =
+                    client.eval(
+                        RENEW_LOCK_SCRIPT,
+                        listOf(keyPrefix + key),
+                        listOf(owner, ttlSeconds.toString())
+                    )
+                isHealthy = true
+                if (result == 1L) LockRenewal.RENEWED else LockRenewal.LOST
+            } catch (e: JedisException) {
+                // Asking the fallback would answer LOST and stop a healthy tracker over a blip.
+                isHealthy = false
+                logger.debug("Valkey renewLock failed for key '{}': {}", key, e.message)
+                LockRenewal.STORE_UNAVAILABLE
+            }
+        }
+
+    override suspend fun releaseLock(
+        key: String,
+        owner: String
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val client = jedis ?: return@withContext fallbackStore.releaseLock(key, owner)
+            try {
+                val released = client.eval(RELEASE_LOCK_SCRIPT, listOf(keyPrefix + key), listOf(owner)) == 1L
+                isHealthy = true
+                released
+            } catch (e: JedisException) {
+                isHealthy = false
+                logger.warn("Valkey releaseLock failed for key '{}'; it expires on its own: {}", key, e.message)
+                false
+            }
+        }
+
     override suspend fun healthCheck(): Boolean =
         withContext(Dispatchers.IO) {
             val client = jedis
@@ -257,5 +319,17 @@ class ValkeyStateStore(
         } catch (e: JedisException) {
             logger.warn("Error closing Valkey Jedis client: {}", e.message)
         }
+    }
+
+    private companion object {
+        // Scripts only touch KEYS[1]: Dragonfly requires every key a script uses to be declared.
+        const val RENEW_LOCK_SCRIPT =
+            "local v = redis.call('GET', KEYS[1]) " +
+                "if v == ARGV[1] then redis.call('EXPIRE', KEYS[1], ARGV[2]) return 1 end " +
+                "if not v then redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2]) return 1 end " +
+                "return 0"
+
+        const val RELEASE_LOCK_SCRIPT =
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0"
     }
 }

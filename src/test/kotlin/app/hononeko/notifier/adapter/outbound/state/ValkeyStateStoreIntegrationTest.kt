@@ -2,6 +2,7 @@ package app.hononeko.notifier.adapter.outbound.state
 
 import app.hononeko.notifier.config.StateConfig
 import app.hononeko.notifier.domain.model.MediaPayload
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.service.MediaAvailableDeduplicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -192,6 +193,38 @@ class ValkeyStateStoreIntegrationTest {
                 val isSecondAcquired = deduplicator.tryAcquire(plexItem)
                 assertFalse(isSecondAcquired, "Second arrival must fail tryAcquire")
             } finally {
+                store.close()
+            }
+        }
+
+    @Test
+    fun `lock contract against real Valkey`() =
+        runTest {
+            val store = ValkeyStateStore(config = StateConfig(url = connectionUrl, keyPrefix = "mwn:int:lock:"))
+            try {
+                // One owner at a time until the lock expires.
+                assertTrue(store.acquireLock("expiry", "a", 1))
+                assertFalse(store.acquireLock("expiry", "b", 1))
+                Thread.sleep(1_500)
+                assertTrue(store.acquireLock("expiry", "b", 1))
+
+                // Renew only for the owner.
+                assertTrue(store.acquireLock("renew", "a", 30))
+                assertEquals(LockRenewal.RENEWED, store.renewLock("renew", "a", 30))
+                assertEquals(LockRenewal.LOST, store.renewLock("renew", "b", 30))
+
+                // Renewing a key that vanished takes it back.
+                assertEquals(LockRenewal.RENEWED, store.renewLock("vanished", "a", 30))
+                assertFalse(store.acquireLock("vanished", "b", 30))
+
+                // Release only by the owner.
+                assertTrue(store.acquireLock("release", "a", 30))
+                assertFalse(store.releaseLock("release", "b"))
+                assertFalse(store.acquireLock("release", "b", 30))
+                assertTrue(store.releaseLock("release", "a"))
+                assertTrue(store.acquireLock("release", "b", 30))
+            } finally {
+                store.clear()
                 store.close()
             }
         }

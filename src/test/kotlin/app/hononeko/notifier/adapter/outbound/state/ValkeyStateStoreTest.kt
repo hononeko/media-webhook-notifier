@@ -1,6 +1,7 @@
 package app.hononeko.notifier.adapter.outbound.state
 
 import app.hononeko.notifier.config.StateConfig
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -193,5 +194,30 @@ class ValkeyStateStoreTest {
             val config = StateConfig(url = "http://invalid-host:not-a-port")
             val store = ValkeyStateStore(config = config)
             assertFalse(store.healthCheck())
+        }
+
+    @Test
+    fun `renewLock reports STORE_UNAVAILABLE when Valkey fails`() =
+        runTest {
+            val mockJedis = mockk<UnifiedJedis>(relaxed = true)
+            every { mockJedis.eval(any<String>(), any<List<String>>(), any<List<String>>()) } throws
+                JedisConnectionException("down")
+            val store =
+                ValkeyStateStore(config = StateConfig(url = "valkey://127.0.0.1:6379"), injectedJedis = mockJedis)
+
+            assertEquals(LockRenewal.STORE_UNAVAILABLE, store.renewLock("k", "a", 30))
+        }
+
+    @Test
+    fun `acquireLock falls back to memory when Valkey fails`() =
+        runTest {
+            val mockJedis = mockk<UnifiedJedis>(relaxed = true)
+            every { mockJedis.set(any<String>(), any<String>(), any<SetParams>()) } throws
+                JedisConnectionException("down")
+            val store =
+                ValkeyStateStore(config = StateConfig(url = "valkey://127.0.0.1:6379"), injectedJedis = mockJedis)
+
+            assertTrue(store.acquireLock("k", "a", 30))
+            assertFalse(store.acquireLock("k", "b", 30))
         }
 }
