@@ -3,6 +3,7 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.model.ActionLink
 import app.hononeko.notifier.domain.model.ActionStyle
 import app.hononeko.notifier.domain.model.CardField
+import app.hononeko.notifier.domain.model.CardInteraction
 import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.EventType
@@ -18,6 +19,12 @@ object CardFormatterService {
     private const val SCORE_FORMAT = "%.1f/10"
 
     var templateEngine: TemplateEngine = TemplateEngine()
+
+    /** Added to cards that need a human (health issues, blocked imports, stalls, failed requests). */
+    val ACKNOWLEDGE = CardInteraction("✅ Acknowledge", AcknowledgeHandler.OPERATION)
+
+    private fun NotificationCard.withAcknowledgeIf(condition: Boolean): NotificationCard =
+        if (condition) copy(interactions = interactions + ACKNOWLEDGE) else this
 
     fun drawProgressBar(
         percent: Double,
@@ -465,6 +472,13 @@ object CardFormatterService {
     }
 
     fun buildStalledCard(
+        payload: MediaPayload.ArrGrab,
+        progress: DownloadItemProgress?,
+        webUiUrl: String?,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard = renderStalledCard(payload, progress, webUiUrl, engine).withAcknowledgeIf(true)
+
+    private fun renderStalledCard(
         payload: MediaPayload.ArrGrab,
         progress: DownloadItemProgress?,
         webUiUrl: String?,
@@ -990,11 +1004,18 @@ object CardFormatterService {
     fun buildHealthCard(
         payload: MediaPayload.ServarrHealth,
         engine: TemplateEngine = templateEngine
+    ): NotificationCard = renderHealthCard(payload, engine).withAcknowledgeIf(!isRestoredHealth(payload))
+
+    private fun isRestoredHealth(payload: MediaPayload.ServarrHealth): Boolean =
+        payload.eventType == EventType.HEALTH_RESTORED ||
+            payload.level.equals("ok", ignoreCase = true) ||
+            payload.level.equals("restored", ignoreCase = true)
+
+    private fun renderHealthCard(
+        payload: MediaPayload.ServarrHealth,
+        engine: TemplateEngine = templateEngine
     ): NotificationCard {
-        val isRestored =
-            payload.eventType == EventType.HEALTH_RESTORED ||
-                payload.level.equals("ok", ignoreCase = true) ||
-                payload.level.equals("restored", ignoreCase = true)
+        val isRestored = isRestoredHealth(payload)
         val isError =
             payload.level.equals("error", ignoreCase = true) ||
                 payload.level.equals("critical", ignoreCase = true)
@@ -1066,6 +1087,11 @@ object CardFormatterService {
     }
 
     fun buildManualInteractionCard(
+        payload: MediaPayload.ServarrManualInteraction,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard = renderManualInteractionCard(payload, engine).withAcknowledgeIf(true)
+
+    private fun renderManualInteractionCard(
         payload: MediaPayload.ServarrManualInteraction,
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
@@ -1157,6 +1183,12 @@ object CardFormatterService {
     }
 
     fun buildSeerrCard(
+        payload: MediaPayload.SeerrEvent,
+        engine: TemplateEngine = templateEngine
+    ): NotificationCard =
+        renderSeerrCard(payload, engine).withAcknowledgeIf(payload.eventType == EventType.REQUEST_FAILED)
+
+    private fun renderSeerrCard(
         payload: MediaPayload.SeerrEvent,
         engine: TemplateEngine = templateEngine
     ): NotificationCard {

@@ -6,6 +6,7 @@ import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.EventTemplate
+import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationLevel
 import app.hononeko.notifier.domain.model.SwarmStats
@@ -1508,5 +1509,89 @@ class CardFormatterServiceTest {
 
         val audibleImportCard = CardFormatterService.buildImportCard(importPayload, engine = overrideEngine)
         kotlin.test.assertFalse(audibleImportCard.silent)
+    }
+
+    private fun healthPayload(
+        eventType: EventType = EventType.HEALTH_ISSUE,
+        level: String = "warning"
+    ) = MediaPayload.ServarrHealth(
+        source = AppSource.SONARR,
+        eventType = eventType,
+        level = level,
+        message = "Indexer unavailable",
+        type = "IndexersUnavailable"
+    )
+
+    private val manualPayload =
+        MediaPayload.ServarrManualInteraction(
+            source = AppSource.RADARR,
+            title = "Dune: Part Two (2024)",
+            seriesOrMovieTitle = "Dune: Part Two"
+        )
+
+    private val grabPayload =
+        MediaPayload.ArrGrab(
+            source = AppSource.SONARR,
+            downloadId = "hash123",
+            title = "Show S01E01",
+            seriesOrMovieTitle = "Show"
+        )
+
+    private fun seerrPayload(eventType: EventType) =
+        MediaPayload.SeerrEvent(
+            eventType = eventType,
+            notificationType = eventType.name,
+            subject = "Severance (2022)"
+        )
+
+    @Test
+    fun `acknowledge is offered on cards that need a human`() {
+        val ack = listOf(CardFormatterService.ACKNOWLEDGE)
+
+        assertEquals(ack, CardFormatterService.buildHealthCard(healthPayload()).interactions)
+        assertEquals(ack, CardFormatterService.buildManualInteractionCard(manualPayload).interactions)
+        assertEquals(ack, CardFormatterService.buildStalledCard(grabPayload, null, null).interactions)
+        assertEquals(ack, CardFormatterService.buildSeerrCard(seerrPayload(EventType.REQUEST_FAILED)).interactions)
+    }
+
+    @Test
+    fun `acknowledge is not offered on informational cards`() {
+        val importPayload =
+            MediaPayload.ArrDownload(
+                source = AppSource.SONARR,
+                title = "Show S01E01",
+                seriesOrMovieTitle = "Show"
+            )
+
+        val restored = CardFormatterService.buildHealthCard(healthPayload(EventType.HEALTH_RESTORED))
+        assertTrue(restored.interactions.isEmpty())
+        assertTrue(CardFormatterService.buildHealthCard(healthPayload(level = "ok")).interactions.isEmpty())
+        assertTrue(CardFormatterService.buildGrabInitialCard(grabPayload, null).interactions.isEmpty())
+        assertTrue(CardFormatterService.buildImportCard(importPayload).interactions.isEmpty())
+        assertTrue(
+            CardFormatterService.buildSeerrCard(seerrPayload(EventType.REQUEST_APPROVED)).interactions.isEmpty()
+        )
+    }
+
+    @Test
+    fun `custom templates keep the acknowledge button`() {
+        val engine =
+            TemplateEngine(
+                TemplateConfig(
+                    events =
+                        mapOf(
+                            "download_stalled" to EventTemplate(body = "Custom Stalled Body"),
+                            "manual_interaction" to EventTemplate(body = "Custom Manual Body"),
+                            "health" to EventTemplate(body = "Custom Health Body")
+                        )
+                )
+            )
+        val ack = listOf(CardFormatterService.ACKNOWLEDGE)
+
+        val health = CardFormatterService.buildHealthCard(healthPayload(), engine)
+        assertEquals("Custom Health Body", health.customBody)
+        assertEquals(ack, health.interactions)
+        assertEquals(ack, CardFormatterService.buildManualInteractionCard(manualPayload, engine).interactions)
+        assertEquals(ack, CardFormatterService.buildStalledCard(grabPayload, null, null, engine).interactions)
     }
 }
