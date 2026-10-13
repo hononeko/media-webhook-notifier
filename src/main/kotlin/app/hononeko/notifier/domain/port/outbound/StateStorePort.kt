@@ -44,6 +44,34 @@ interface StateStorePort : AutoCloseable {
     suspend fun delete(key: String): Boolean
 
     /**
+     * Takes [key] for [owner] for [ttlSeconds] if nobody holds it. Returns false when another owner holds it, or when
+     * [owner] already does.
+     */
+    suspend fun acquireLock(
+        key: String,
+        owner: String,
+        ttlSeconds: Long,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean
+
+    /**
+     * Extends [owner]'s hold on [key] by [ttlSeconds]. A key nobody holds any more is taken again, so a lock that
+     * lapsed during a store outage isn't lost.
+     */
+    suspend fun renewLock(
+        key: String,
+        owner: String,
+        ttlSeconds: Long,
+        nowMillis: Long = System.currentTimeMillis()
+    ): LockRenewal
+
+    /** Frees [key] only if [owner] holds it. Returns true when it was freed. */
+    suspend fun releaseLock(
+        key: String,
+        owner: String
+    ): Boolean
+
+    /**
      * Checks store connectivity and health.
      */
     suspend fun healthCheck(): Boolean

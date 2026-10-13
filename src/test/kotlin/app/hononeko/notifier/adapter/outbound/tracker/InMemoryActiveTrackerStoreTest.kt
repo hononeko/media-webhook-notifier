@@ -170,4 +170,19 @@ class InMemoryActiveTrackerStoreTest {
             assertNotNull(retrievedSub)
             assertEquals("hash1|hash2|hash3", retrievedSub.hash)
         }
+
+    @Test
+    fun `stopAll returns the cancelled jobs`() =
+        runTest {
+            val store = InMemoryActiveTrackerStore()
+            val session1 = createSession("hash1")
+            val session2 = createSession("hash2")
+            store.register(session1)
+            store.register(session2)
+
+            val jobs = store.stopAll()
+
+            assertEquals(setOf(session1.job, session2.job), jobs.toSet())
+            assertTrue(jobs.all { it.isCancelled })
+        }
 }

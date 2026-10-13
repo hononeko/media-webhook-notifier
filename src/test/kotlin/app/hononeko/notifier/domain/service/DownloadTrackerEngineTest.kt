@@ -1,5 +1,6 @@
 package app.hononeko.notifier.domain.service
 
+import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
 import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
@@ -10,18 +11,29 @@ import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.model.SwarmStats
+import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import arrow.core.Either
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.spyk
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -667,7 +679,7 @@ class DownloadTrackerEngineTest {
         }
 
     @Test
-    fun `should clean up tags in finally when tracking is stopped`() =
+    fun `should keep resume tags when tracking is stopped`() =
         runTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
@@ -718,9 +730,233 @@ class DownloadTrackerEngineTest {
             engine.stopAll()
             testScheduler.advanceUntilIdle()
 
-            // Tags should be cleaned up via finally
-            val allDeleted = client.deletedTags.flatten().toSet()
-            assertTrue(allDeleted.contains("mwn_msg:msg_live"))
+            // A stop isn't an ending: the tags stay so the next instance resumes the same card.
+            assertTrue(client.removedTags.isEmpty())
+            assertTrue(client.deletedTags.isEmpty())
             assertEquals(0, engine.activeTrackerCount())
+        }
+
+    private fun halfway(hash: String): Either<DomainError.DownloadClientError, DownloadItemProgress?> =
+        Either.Right(
+            DownloadItemProgress(
+                id = hash,
+                name = "Test",
+                progressPercent = 50.0,
+                progressRatio = 0.5,
+                downloadSpeedBytesPerSec = 1_000,
+                uploadSpeedBytesPerSec = 0,
+                etaSeconds = 60,
+                totalSizeBytes = 1_000,
+                downloadedBytes = 500,
+                state = DownloadState.DOWNLOADING
+            )
+        )
+
+    private val leaseGrab =
+        MediaPayload.ArrGrab(source = AppSource.SONARR, downloadId = "h1", title = "Show", seriesOrMovieTitle = "Show")
+
+    private val liveHandle = NotificationHandle("fake", "chat123", "msg_live")
+
+    /** One "pod": its own engine, publisher, client and session registry, sharing [store] with the other pods. */
+    private inner class Pod(
+        owner: String,
+        store: StateStorePort,
+        scope: CoroutineScope,
+        failStart: Boolean = false,
+        withLeases: Boolean = true,
+        progress: (String) -> Either<DomainError.DownloadClientError, DownloadItemProgress?> = { Either.Right(null) },
+        client: DownloadClientPort? = null
+    ) {
+        val publisher = FakeNotificationPublisher(shouldFailStart = failStart)
+        val torrents = FakeTorrentClient(progress)
+        val engine =
+            DownloadTrackerEngine(
+                downloadClient = client ?: torrents,
+                notificationPublisher = publisher,
+                activeTrackerStore = InMemoryActiveTrackerStore(),
+                config = DownloadTrackerConfig(pollIntervalSeconds = 5),
+                scope = scope,
+                leases = if (withLeases) TrackingLeases(store, owner, ttlSeconds = 30) else null
+            )
+    }
+
+    @Test
+    fun `a download tracked by another pod gets no second card`() =
+        runTest {
+            val store = InMemoryStateStore()
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val a = Pod("pod-a", store, scope)
+            val b = Pod("pod-b", store, scope)
+
+            assertEquals(Either.Right(TrackingStart.STARTED), a.engine.track("h1", leaseGrab))
+            assertEquals(Either.Right(TrackingStart.TRACKED_ELSEWHERE), b.engine.track("h1", leaseGrab))
+
+            assertTrue(b.publisher.sentCards.isEmpty())
+            assertTrue(b.torrents.addedTags.isEmpty())
+        }
+
+    @Test
+    fun `a second request on the same pod is ALREADY_TRACKED`() =
+        runTest {
+            val a = Pod("pod-a", InMemoryStateStore(), TestScope(StandardTestDispatcher(testScheduler)))
+
+            a.engine.track("h1", leaseGrab)
+
+            assertEquals(
+                Either.Right(TrackingStart.ALREADY_TRACKED),
+                a.engine.trackExisting("h1", leaseGrab, liveHandle, false)
+            )
+        }
+
+    @Test
+    fun `stopAll keeps resume tags and releases leases`() =
+        runTest {
+            val store = InMemoryStateStore()
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val a = Pod("pod-a", store, scope)
+            val b = Pod("pod-b", store, scope)
+            a.engine.track("h1", leaseGrab)
+
+            a.engine.stopAll()
+
+            assertTrue(a.torrents.removedTags.isEmpty(), "resume tags must survive a shutdown")
+            assertTrue(a.torrents.deletedTags.isEmpty())
+            assertTrue(store.acquireLock("lock:track:h1", "x", 30), "lease must be released")
+            store.releaseLock("lock:track:h1", "x")
+            assertEquals(
+                Either.Right(TrackingStart.STARTED),
+                b.engine.trackExisting("h1", leaseGrab, liveHandle, false)
+            )
+        }
+
+    @Test
+    fun `a pod that lost its lease stops without touching the card`() =
+        runTest {
+            val store = InMemoryStateStore()
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val a = Pod("pod-a", store, scope, progress = ::halfway)
+            a.engine.track("h1", leaseGrab)
+
+            store.releaseLock("lock:track:h1", "pod-a")
+            store.acquireLock("lock:track:h1", "pod-b", 30)
+            scope.advanceTimeBy(6_000)
+
+            assertFalse(a.engine.isTracking("h1"))
+            assertTrue(a.publisher.progressUpdates.isEmpty())
+            assertTrue(a.publisher.completedCards.isEmpty())
+            assertTrue(a.publisher.cancelledCards.isEmpty())
+            assertTrue(a.torrents.removedTags.isEmpty())
+        }
+
+    @Test
+    fun `tracking continues when the store can't renew`() =
+        runTest {
+            val store = spyk(InMemoryStateStore())
+            coEvery { store.renewLock(any(), any(), any(), any()) } returns LockRenewal.STORE_UNAVAILABLE
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val a = Pod("pod-a", store, scope, progress = ::halfway)
+            a.engine.track("h1", leaseGrab)
+
+            scope.advanceTimeBy(12_000)
+
+            assertTrue(a.engine.isTracking("h1"))
+            assertTrue(a.publisher.progressUpdates.isNotEmpty())
+        }
+
+    @Test
+    fun `a pod holding a|b blocks a sweep that only sees b`() =
+        runTest {
+            val store = InMemoryStateStore()
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val a = Pod("pod-a", store, scope)
+            val b = Pod("pod-b", store, scope)
+
+            assertEquals(Either.Right(TrackingStart.STARTED), a.engine.track("a|b", leaseGrab))
+
+            assertEquals(
+                Either.Right(TrackingStart.TRACKED_ELSEWHERE),
+                b.engine.trackExisting("b", leaseGrab, liveHandle, false)
+            )
+            assertEquals(
+                Either.Right(TrackingStart.ALREADY_TRACKED),
+                a.engine.trackExisting("b", leaseGrab, liveHandle, false)
+            )
+            assertEquals(1, a.engine.activeTrackerCount())
+        }
+
+    @Test
+    fun `a failed initial card releases the leases`() =
+        runTest {
+            val store = InMemoryStateStore()
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val a = Pod("pod-a", store, scope, failStart = true)
+            val b = Pod("pod-b", store, scope)
+
+            assertTrue(a.engine.track("h1", leaseGrab).isLeft())
+            assertEquals(Either.Right(TrackingStart.STARTED), b.engine.track("h1", leaseGrab))
+        }
+
+    @Test
+    fun `without leases cancellation keeps tags`() =
+        runTest {
+            val a =
+                Pod("pod-a", InMemoryStateStore(), TestScope(StandardTestDispatcher(testScheduler)), withLeases = false)
+            a.engine.track("h1", leaseGrab)
+
+            a.engine.stopAll()
+
+            assertTrue(a.torrents.removedTags.isEmpty())
+            assertTrue(a.torrents.deletedTags.isEmpty())
+        }
+
+    @Test
+    fun `stopAll returns within its bound when a loop won't cancel`() =
+        runTest {
+            val stuck =
+                DownloadClientPort { hash ->
+                    withContext(NonCancellable) { delay(60_000) }
+                    halfway(hash)
+                }
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val a = Pod("pod-a", InMemoryStateStore(), scope, client = stuck)
+            a.engine.track("h1", leaseGrab)
+            scope.advanceTimeBy(6_000)
+
+            val before = currentTime
+            a.engine.stopAll()
+
+            assertTrue(currentTime - before <= 3_000, "stopAll took ${currentTime - before}ms")
+        }
+
+    @Test
+    fun `a cancelled duplicate loop leaves the surviving session alone`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val store = spyk(InMemoryActiveTrackerStore())
+            val survivorJob = Job()
+            store.register(
+                app.hononeko.notifier.domain.model.ActiveTrackerSession(
+                    hash = "h1",
+                    payload = leaseGrab,
+                    handle = liveHandle,
+                    isPhoto = false,
+                    job = survivorJob
+                )
+            )
+            // The race: the duplicate's pre-check misses the survivor, then register() finds it.
+            every { store.isTracking("h1") } returns false andThenAnswer { callOriginal() }
+            val engine =
+                createEngine(
+                    downloadClient = FakeTorrentClient(),
+                    notificationPublisher = FakeNotificationPublisher(),
+                    activeTrackerStore = store,
+                    scope = testScope
+                )
+
+            engine.track("h1", leaseGrab)
+            testScope.advanceTimeBy(1)
+
+            assertFalse(survivorJob.isCancelled, "the surviving loop must keep running")
+            assertTrue(store.get("h1")?.job === survivorJob)
         }
 }

@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.outbound.state
 
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -116,5 +117,50 @@ class InMemoryStateStoreTest {
             store.set("k6", "v6", nowMillis = t0 + 7000L)
             store.set("k7", "v7", nowMillis = t0 + 8000L)
             assertTrue(store.size(nowMillis = t0 + 8000L) <= 4)
+        }
+
+    private val lockKey = "lock:track:h"
+    private val lockT0 = 1_000_000L
+
+    @Test
+    fun `lock can only be acquired by one owner until it expires`() =
+        runTest {
+            val store = InMemoryStateStore()
+
+            assertTrue(store.acquireLock(lockKey, "a", 30, lockT0))
+            assertFalse(store.acquireLock(lockKey, "b", 30, lockT0))
+            assertTrue(store.acquireLock(lockKey, "b", 30, lockT0 + 30_000))
+        }
+
+    @Test
+    fun `renew extends only the owner's lock`() =
+        runTest {
+            val store = InMemoryStateStore()
+            store.acquireLock(lockKey, "a", 30, lockT0)
+
+            assertEquals(LockRenewal.RENEWED, store.renewLock(lockKey, "a", 30, lockT0 + 20_000))
+            assertFalse(store.acquireLock(lockKey, "b", 30, lockT0 + 40_000))
+            assertEquals(LockRenewal.LOST, store.renewLock(lockKey, "b", 30, lockT0 + 40_000))
+        }
+
+    @Test
+    fun `renew takes back a vanished lock`() =
+        runTest {
+            val store = InMemoryStateStore()
+
+            assertEquals(LockRenewal.RENEWED, store.renewLock(lockKey, "a", 30, lockT0))
+            assertFalse(store.acquireLock(lockKey, "b", 30, lockT0))
+        }
+
+    @Test
+    fun `release only frees the owner's lock`() =
+        runTest {
+            val store = InMemoryStateStore()
+            store.acquireLock(lockKey, "a", 30, lockT0)
+
+            assertFalse(store.releaseLock(lockKey, "b"))
+            assertFalse(store.acquireLock(lockKey, "b", 30, lockT0))
+            assertTrue(store.releaseLock(lockKey, "a"))
+            assertTrue(store.acquireLock(lockKey, "b", 30, lockT0))
         }
 }

@@ -1,5 +1,6 @@
 package app.hononeko.notifier.adapter.outbound.state
 
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import java.util.concurrent.ConcurrentHashMap
 
@@ -78,6 +79,59 @@ class InMemoryStateStore(
     }
 
     override suspend fun delete(key: String): Boolean = store.remove(key) != null
+
+    override suspend fun acquireLock(
+        key: String,
+        owner: String,
+        ttlSeconds: Long,
+        nowMillis: Long
+    ): Boolean {
+        pruneIfNecessary(nowMillis)
+        var acquired = false
+        store.compute(key) { _, existing ->
+            if (existing != null && !existing.isExpired(nowMillis)) {
+                existing
+            } else {
+                acquired = true
+                lockItem(owner, ttlSeconds, nowMillis)
+            }
+        }
+        return acquired
+    }
+
+    override suspend fun renewLock(
+        key: String,
+        owner: String,
+        ttlSeconds: Long,
+        nowMillis: Long
+    ): LockRenewal {
+        var renewal = LockRenewal.LOST
+        store.compute(key) { _, existing ->
+            if (existing == null || existing.isExpired(nowMillis) || existing.value == owner) {
+                renewal = LockRenewal.RENEWED
+                lockItem(owner, ttlSeconds, nowMillis)
+            } else {
+                existing
+            }
+        }
+        return renewal
+    }
+
+    override suspend fun releaseLock(
+        key: String,
+        owner: String
+    ): Boolean {
+        val existing = store[key] ?: return false
+        return existing.value == owner && store.remove(key, existing)
+    }
+
+    private fun StoredItem.isExpired(nowMillis: Long): Boolean = expiresAtMillis != null && nowMillis >= expiresAtMillis
+
+    private fun lockItem(
+        owner: String,
+        ttlSeconds: Long,
+        nowMillis: Long
+    ) = StoredItem(value = owner, expiresAtMillis = nowMillis + ttlSeconds * 1000L, lastAccessedMillis = nowMillis)
 
     override suspend fun healthCheck(): Boolean = true
 

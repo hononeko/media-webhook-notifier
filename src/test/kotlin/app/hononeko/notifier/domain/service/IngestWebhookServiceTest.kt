@@ -2,6 +2,7 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.MediaPayload
+import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaAvailableUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaImportedUseCase
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
@@ -23,7 +24,7 @@ class IngestWebhookServiceTest {
             val trackUseCase =
                 TrackDownloadUseCase { _, grab ->
                     trackedGrabs.add(grab)
-                    Either.Right(Unit)
+                    Either.Right(TrackingStart.STARTED)
                 }
 
             val importUseCase =
@@ -71,7 +72,7 @@ class IngestWebhookServiceTest {
             val trackUseCase =
                 TrackDownloadUseCase { _, grab ->
                     trackedGrabs.add(grab)
-                    Either.Right(Unit)
+                    Either.Right(TrackingStart.STARTED)
                 }
 
             val importUseCase =
@@ -133,7 +134,7 @@ class IngestWebhookServiceTest {
             val service =
                 IngestWebhookService(
                     seasonDebouncer = null,
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     announceMediaImportedUseCase = { Either.Right(Unit) },
                     announceMediaAvailableUseCase = { Either.Right(Unit) },
                     alertUseCases =
@@ -180,7 +181,7 @@ class IngestWebhookServiceTest {
             val service =
                 IngestWebhookService(
                     seasonDebouncer = null,
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     announceMediaImportedUseCase = { Either.Right(Unit) },
                     announceMediaAvailableUseCase = { Either.Right(Unit) },
                     alertUseCases =
@@ -224,7 +225,7 @@ class IngestWebhookServiceTest {
             val service =
                 IngestWebhookService(
                     seasonDebouncer = debouncer,
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     announceMediaImportedUseCase = { Either.Right(Unit) },
                     announceMediaAvailableUseCase = { Either.Right(Unit) }
                 )
@@ -278,7 +279,7 @@ class IngestWebhookServiceTest {
             val service =
                 IngestWebhookService(
                     seasonDebouncer = debouncer,
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     announceMediaImportedUseCase = { Either.Right(Unit) },
                     announceMediaAvailableUseCase = { payload ->
                         directAvailable.add(payload)

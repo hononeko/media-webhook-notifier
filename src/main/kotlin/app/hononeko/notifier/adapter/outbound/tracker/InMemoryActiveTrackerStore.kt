@@ -5,6 +5,7 @@ import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.TrackerSnapshot
 import app.hononeko.notifier.domain.model.TrackerStatus
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,13 +79,16 @@ class InMemoryActiveTrackerStore : ActiveTrackerStore {
         }
     }
 
-    override fun stopAll() {
-        sessions.values.forEach { session ->
-            session.status = TrackerStatus.CANCELLED
-            session.job.cancel()
-        }
+    override fun stopAll(): List<Job> {
+        val jobs =
+            sessions.values.map { session ->
+                session.status = TrackerStatus.CANCELLED
+                session.job.cancel()
+                session.job
+            }
         sessions.clear()
         updateFlow()
+        return jobs
     }
 
     private fun updateFlow() {

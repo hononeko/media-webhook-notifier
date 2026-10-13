@@ -9,6 +9,7 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
+import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
@@ -19,6 +20,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -70,9 +72,9 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         newTrackCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
 
                     override suspend fun trackExisting(
@@ -80,9 +82,9 @@ class DownloadReconciliationServiceTest {
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedExistingCalls.add(hash to handle)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -145,16 +147,16 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> = Either.Right(Unit)
+                    ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
 
                     override suspend fun trackExisting(
                         hash: String,
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedExistingCalls.add(hash to handle)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -212,9 +214,9 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         newTrackCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -271,9 +273,9 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         trackCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -366,7 +368,7 @@ class DownloadReconciliationServiceTest {
                             ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
                                 Either.Right(emptyList())
                         },
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher,
                     config = ReconciliationConfig(enabled = false)
@@ -393,7 +395,7 @@ class DownloadReconciliationServiceTest {
                                     )
                                 )
                         },
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher
                 )
@@ -475,7 +477,7 @@ class DownloadReconciliationServiceTest {
             val reconciliationService =
                 DownloadReconciliationService(
                     downloadClient = downloadClient,
-                    trackDownloadUseCase = { _, _ -> Either.Right(Unit) },
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
                     activeTrackerStore = store,
                     notificationPublisher = publisher,
                     config = ReconciliationConfig(intervalMinutes = 1)
@@ -507,16 +509,16 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> = Either.Right(Unit)
+                    ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
 
                     override suspend fun trackExisting(
                         hash: String,
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedCalls.add(hash to payload)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -592,16 +594,16 @@ class DownloadReconciliationServiceTest {
                     override suspend fun track(
                         hash: String,
                         initialPayload: MediaPayload.ArrGrab
-                    ): Either<DomainError, Unit> = Either.Right(Unit)
+                    ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
 
                     override suspend fun trackExisting(
                         hash: String,
                         payload: MediaPayload.ArrGrab,
                         handle: NotificationHandle,
                         isPhoto: Boolean
-                    ): Either<DomainError, Unit> {
+                    ): Either<DomainError, TrackingStart> {
                         resumedCalls.add(hash)
-                        return Either.Right(Unit)
+                        return Either.Right(TrackingStart.STARTED)
                     }
                 }
 
@@ -660,5 +662,184 @@ class DownloadReconciliationServiceTest {
             val count = reconciliationService.reconcile()
             assertEquals(0, count)
             assertEquals(0, resumedCalls.size)
+        }
+
+    private class LeaseSweep(
+        results: List<TrackingStart>,
+        leaseRetrySeconds: Long?,
+        testScope: TestScope
+    ) {
+        val sweeps = AtomicInteger(0)
+        private val remaining = ArrayDeque(results)
+        private val tagged =
+            DownloadItemProgress(
+                id = "hash_leased",
+                name = "Show",
+                progressPercent = 20.0,
+                progressRatio = 0.2,
+                downloadSpeedBytesPerSec = 1000L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 100L,
+                totalSizeBytes = 10000L,
+                downloadedBytes = 2000L,
+                state = DownloadState.DOWNLOADING,
+                tags = listOf("mwn_msg:42")
+            )
+        private val client =
+            object : DownloadClientPort {
+                override suspend fun getProgress(
+                    hash: String
+                ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(tagged)
+
+                override suspend fun getActiveDownloads(
+                    filter: String
+                ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> {
+                    if (filter != "downloading") return Either.Right(emptyList())
+                    sweeps.incrementAndGet()
+                    return Either.Right(listOf(tagged))
+                }
+            }
+        private val tracker =
+            object : TrackDownloadUseCase {
+                override suspend fun track(
+                    hash: String,
+                    initialPayload: MediaPayload.ArrGrab
+                ): Either<DomainError, TrackingStart> = Either.Right(TrackingStart.STARTED)
+
+                override suspend fun trackExisting(
+                    hash: String,
+                    payload: MediaPayload.ArrGrab,
+                    handle: NotificationHandle,
+                    isPhoto: Boolean
+                ): Either<DomainError, TrackingStart> =
+                    Either.Right(remaining.removeFirstOrNull() ?: TrackingStart.STARTED)
+            }
+        val service =
+            DownloadReconciliationService(
+                downloadClient = client,
+                trackDownloadUseCase = tracker,
+                activeTrackerStore = InMemoryActiveTrackerStore(),
+                notificationPublisher = FakeNotificationPublisher(),
+                config = ReconciliationConfig(intervalMinutes = 5, leaseRetrySeconds = leaseRetrySeconds)
+            )
+        val job = service.start(testScope)
+    }
+
+    @Test
+    fun `a sweep that hit another pod's lease retries after the lease delay`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val sweep = LeaseSweep(List(10) { TrackingStart.TRACKED_ELSEWHERE }, leaseRetrySeconds = 35, testScope)
+
+            testScope.advanceTimeBy(100)
+            assertEquals(1, sweep.sweeps.get())
+            assertEquals(1, sweep.service.heldElsewhereLastSweep)
+
+            testScope.advanceTimeBy(35_000)
+            assertEquals(2, sweep.sweeps.get())
+            sweep.job?.cancel()
+        }
+
+    @Test
+    fun `the fast re-sweep stops once the other pod lets go`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val sweep = LeaseSweep(listOf(TrackingStart.TRACKED_ELSEWHERE), leaseRetrySeconds = 35, testScope)
+
+            testScope.advanceTimeBy(100 + 35_000)
+            assertEquals(2, sweep.sweeps.get())
+
+            testScope.advanceTimeBy(35_000)
+            assertEquals(2, sweep.sweeps.get(), "back on the normal interval")
+
+            testScope.advanceTimeBy(300_000)
+            assertEquals(3, sweep.sweeps.get())
+            sweep.job?.cancel()
+        }
+
+    @Test
+    fun `without lease retry the interval is unchanged`() =
+        runTest {
+            val testScope = TestScope(StandardTestDispatcher(testScheduler))
+            val sweep = LeaseSweep(List(10) { TrackingStart.TRACKED_ELSEWHERE }, leaseRetrySeconds = null, testScope)
+
+            testScope.advanceTimeBy(100 + 35_000)
+            assertEquals(1, sweep.sweeps.get())
+            sweep.job?.cancel()
+        }
+
+    @Test
+    fun `a tagged download that finished while untracked is resumed so its card completes`() =
+        runTest {
+            fun finished(
+                id: String,
+                tags: List<String>
+            ) = DownloadItemProgress(
+                id = id,
+                name = "Show",
+                progressPercent = 100.0,
+                progressRatio = 1.0,
+                downloadSpeedBytesPerSec = 0L,
+                uploadSpeedBytesPerSec = 0L,
+                etaSeconds = 0L,
+                totalSizeBytes = 10000L,
+                downloadedBytes = 10000L,
+                state = DownloadState.COMPLETED,
+                tags = tags
+            )
+            val client =
+                object : DownloadClientPort {
+                    override suspend fun getProgress(
+                        hash: String
+                    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> = Either.Right(null)
+
+                    override suspend fun getActiveDownloads(
+                        filter: String
+                    ): Either<DomainError.DownloadClientError, List<DownloadItemProgress>> =
+                        when (filter) {
+                            "completed" ->
+                                Either.Right(
+                                    listOf(
+                                        finished("hash_done", listOf("mwn_msg:42")),
+                                        finished("hash_plain", emptyList())
+                                    )
+                                )
+                            else -> Either.Right(emptyList())
+                        }
+                }
+            val resumed = Collections.synchronizedList(mutableListOf<Pair<String, String>>())
+            val started = Collections.synchronizedList(mutableListOf<String>())
+            val tracker =
+                object : TrackDownloadUseCase {
+                    override suspend fun track(
+                        hash: String,
+                        initialPayload: MediaPayload.ArrGrab
+                    ): Either<DomainError, TrackingStart> {
+                        started += hash
+                        return Either.Right(TrackingStart.STARTED)
+                    }
+
+                    override suspend fun trackExisting(
+                        hash: String,
+                        payload: MediaPayload.ArrGrab,
+                        handle: NotificationHandle,
+                        isPhoto: Boolean
+                    ): Either<DomainError, TrackingStart> {
+                        resumed += hash to handle.messageReferenceId
+                        return Either.Right(TrackingStart.STARTED)
+                    }
+                }
+            val service =
+                DownloadReconciliationService(
+                    downloadClient = client,
+                    trackDownloadUseCase = tracker,
+                    activeTrackerStore = InMemoryActiveTrackerStore(),
+                    notificationPublisher = FakeNotificationPublisher()
+                )
+
+            service.reconcile()
+
+            assertEquals(listOf("hash_done" to "42"), resumed.toList())
+            assertTrue(started.isEmpty(), "finished downloads without a card must not get one")
         }
 }

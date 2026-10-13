@@ -6,24 +6,32 @@ import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.TrackerSnapshot
+import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import arrow.core.Either
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 data class DownloadTrackerConfig(
     val pollIntervalSeconds: Long = 5,
@@ -39,7 +47,9 @@ class DownloadTrackerEngine(
     private val notificationPublisher: NotificationPublisherPort,
     private val activeTrackerStore: ActiveTrackerStore,
     private val config: DownloadTrackerConfig = DownloadTrackerConfig(),
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    // Null with the in-memory state store: locks there can't coordinate separate instances.
+    private val leases: TrackingLeases? = null
 ) : TrackDownloadUseCase {
     private val pollIntervalSeconds: Long get() = config.pollIntervalSeconds
     private val maxPollingMinutes: Long get() = config.maxPollingMinutes
@@ -54,7 +64,7 @@ class DownloadTrackerEngine(
     override suspend fun track(
         hash: String,
         initialPayload: MediaPayload.ArrGrab
-    ): Either<DomainError, Unit> {
+    ): Either<DomainError, TrackingStart> {
         val normalizedHash = hash.trim().lowercase()
         if (normalizedHash.isBlank()) {
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
@@ -64,7 +74,10 @@ class DownloadTrackerEngine(
         return mutex.withLock {
             if (activeTrackerStore.isTracking(normalizedHash)) {
                 logger.info("Download tracker already running for hash: {}", normalizedHash)
-                return@withLock Either.Right(Unit)
+                return@withLock Either.Right(TrackingStart.ALREADY_TRACKED)
+            }
+            if (!acquireLeases(normalizedHash)) {
+                return@withLock Either.Right(TrackingStart.TRACKED_ELSEWHERE)
             }
 
             val initialCard = CardFormatterService.buildGrabInitialCard(initialPayload, webuiPublicUrl)
@@ -75,6 +88,7 @@ class DownloadTrackerEngine(
                     is Either.Right -> handleResult.value
                     is Either.Left -> {
                         logger.warn("Failed to send initial card for {}: {}", normalizedHash, handleResult.value)
+                        leases?.release(normalizedHash)
                         return@withLock Either.Left(handleResult.value)
                     }
                 }
@@ -94,7 +108,8 @@ class DownloadTrackerEngine(
 
             lateinit var trackingJob: Job
             trackingJob =
-                scope.launch {
+                // ATOMIC: a loop cancelled before it starts still runs its finally and releases its leases.
+                scope.launch(start = CoroutineStart.ATOMIC) {
                     runTrackingLoop(normalizedHash, initialPayload, handle)
                 }
 
@@ -112,7 +127,7 @@ class DownloadTrackerEngine(
                 trackingJob.cancel()
             }
 
-            Either.Right(Unit)
+            Either.Right(TrackingStart.STARTED)
         }
     }
 
@@ -121,7 +136,7 @@ class DownloadTrackerEngine(
         payload: MediaPayload.ArrGrab,
         handle: NotificationHandle,
         isPhoto: Boolean
-    ): Either<DomainError, Unit> {
+    ): Either<DomainError, TrackingStart> {
         val normalizedHash = hash.trim().lowercase()
         if (normalizedHash.isBlank()) {
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
@@ -131,14 +146,18 @@ class DownloadTrackerEngine(
         return mutex.withLock {
             if (activeTrackerStore.isTracking(normalizedHash)) {
                 logger.info("Download tracker already running for restored hash: {}", normalizedHash)
-                return@withLock Either.Right(Unit)
+                return@withLock Either.Right(TrackingStart.ALREADY_TRACKED)
+            }
+            if (!acquireLeases(normalizedHash)) {
+                return@withLock Either.Right(TrackingStart.TRACKED_ELSEWHERE)
             }
 
             logger.info("Resuming active tracking loop for existing card {} ({})", payload.title, normalizedHash)
 
             lateinit var trackingJob: Job
             trackingJob =
-                scope.launch {
+                // ATOMIC: a loop cancelled before it starts still runs its finally and releases its leases.
+                scope.launch(start = CoroutineStart.ATOMIC) {
                     runTrackingLoop(normalizedHash, payload, handle)
                 }
 
@@ -159,7 +178,7 @@ class DownloadTrackerEngine(
                 trackingJob.cancel()
             }
 
-            Either.Right(Unit)
+            Either.Right(TrackingStart.STARTED)
         }
     }
 
@@ -187,6 +206,8 @@ class DownloadTrackerEngine(
                 delay(pollIntervalSeconds * 1000)
                 elapsedSeconds += pollIntervalSeconds
 
+                if (!stillOwned(hash)) return
+
                 isRunning = processTrackingTick(hash, payload, handle, state)
             }
 
@@ -208,12 +229,16 @@ class DownloadTrackerEngine(
         } catch (e: Exception) {
             logger.error("Unexpected error in tracking loop for {}", hash, e)
         } finally {
+            // Tags stay: every real ending removes them itself, and a cancelled or failed loop must stay resumable.
+            val selfJob = currentCoroutineContext()[Job]
             withContext(NonCancellable) {
-                cleanupTags(hash, handle)
-                if (activeTrackerStore.isTracking(hash)) {
-                    activeTrackerStore.cancel(hash)
+                val registered = activeTrackerStore.get(hash)
+                // A duplicate loop that lost register() to another session must not tear that session down.
+                if (registered == null || registered.job == selfJob) {
+                    leases?.release(hash)
+                    if (registered != null) activeTrackerStore.cancel(hash)
+                    trackingLocks.remove(hash)
                 }
-                trackingLocks.remove(hash)
             }
         }
     }
@@ -368,10 +393,35 @@ class DownloadTrackerEngine(
         }
     }
 
-    fun stopAll() {
+    /** Cancels every tracking loop and waits up to [timeout] for them to release their leases. */
+    suspend fun stopAll(timeout: Duration = 3.seconds) {
         logger.info("Stopping all active download trackers (count: {})", activeTrackerStore.activeCount())
-        activeTrackerStore.stopAll()
+        val jobs = activeTrackerStore.stopAll()
+        if (withTimeoutOrNull(timeout) { jobs.joinAll() } == null) {
+            logger.warn("Some download trackers didn't stop within {}", timeout)
+        }
     }
+
+    private suspend fun acquireLeases(hash: String): Boolean {
+        val leases = leases ?: return true
+        if (leases.acquire(hash)) return true
+        logger.info("Download {} is tracked by another instance; not starting a second tracker", hash)
+        return false
+    }
+
+    /** Renews the leases; false only when another instance owns the download now. */
+    private suspend fun stillOwned(hash: String): Boolean =
+        when (leases?.renew(hash)) {
+            LockRenewal.LOST -> {
+                logger.warn("Another instance owns {} now; stopping without touching its card", hash)
+                false
+            }
+            LockRenewal.STORE_UNAVAILABLE -> {
+                logger.debug("Couldn't renew the tracking lease for {}; state store unavailable, carrying on", hash)
+                true
+            }
+            LockRenewal.RENEWED, null -> true
+        }
 
     fun activeTrackerCount(): Int = activeTrackerStore.activeCount()
 

@@ -2,6 +2,7 @@ package app.hononeko.notifier
 
 import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.ServerConfig
+import app.hononeko.notifier.config.StateConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
@@ -23,6 +24,7 @@ import java.net.ServerSocket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ApplicationBootstrapTest {
@@ -156,4 +158,28 @@ class ApplicationBootstrapTest {
 
             dependencies.close()
         }
+
+    @Test
+    fun `valkey store enables lease retry`() {
+        val dependencies =
+            buildDependencies(
+                AppConfig(state = StateConfig(type = "valkey", url = "")),
+                CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            )
+        try {
+            assertEquals(35L, dependencies.reconciliationService!!.leaseRetrySeconds)
+        } finally {
+            dependencies.close()
+        }
+    }
+
+    @Test
+    fun `memory store disables leases`() {
+        val dependencies = buildDependencies(AppConfig(), CoroutineScope(SupervisorJob() + Dispatchers.Default))
+        try {
+            assertNull(dependencies.reconciliationService!!.leaseRetrySeconds)
+        } finally {
+            dependencies.close()
+        }
+    }
 }
