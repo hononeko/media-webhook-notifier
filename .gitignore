@@ -28,3 +28,7 @@ Thumbs.db
 
 # Native Image outputs
 media-webhook-notifier
+
+# Local planning artifacts (superpowers specs, plans and workspaces)
+docs/superpowers/
+.superpowers/
