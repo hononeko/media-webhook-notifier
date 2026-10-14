@@ -236,6 +236,10 @@ sealed interface MediaPayload {
         val commentMessage: String? = null,
         val extra: Map<String, String> = emptyMap(),
         val webUrl: String? = null,
-        override val instanceName: String? = null
+        override val instanceName: String? = null,
+        /** Seerr's numeric request id (`{{request_id}}`), when the event is about a request. */
+        val requestId: Long? = null,
+        /** Seerr's numeric issue id (`{{issue_id}}`), when the event is about an issue. */
+        val issueId: Long? = null
     ) : MediaPayload
 }

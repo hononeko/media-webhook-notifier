@@ -6,12 +6,15 @@ import app.hononeko.notifier.domain.model.BotReply
 import app.hononeko.notifier.domain.port.inbound.HandleBotInteractionUseCase
 import arrow.core.Either
 import arrow.core.raise.either
+import arrow.core.raise.ensure
 import arrow.core.raise.ensureNotNull
+import org.slf4j.LoggerFactory
 
 class BotInteractionService(
     handlers: List<BotActionHandler>,
     private val refRegistry: CallbackRefRegistry
 ) : HandleBotInteractionUseCase {
+    private val logger = LoggerFactory.getLogger(BotInteractionService::class.java)
     private val handlersByOperation = handlers.associateBy { it.operation }
 
     init {
@@ -27,6 +30,19 @@ class BotInteractionService(
                 ensureNotNull(handlersByOperation[interaction.operation]) {
                     DomainError.InteractionError.UnknownAction(interaction.operation)
                 }
+            val actor = interaction.actor
+            ensure(!handler.requiresAdmin || actor.isAdmin) {
+                logger.info(
+                    "Rejected '{}' from {} user {}: admin-only",
+                    interaction.operation,
+                    actor.platform,
+                    actor.id
+                )
+                DomainError.InteractionError.UnauthorizedUser(
+                    actor.id,
+                    "operation '${interaction.operation}' is admin-only"
+                )
+            }
             val target =
                 ensureNotNull(refRegistry.resolve(interaction.ref)) {
                     DomainError.InteractionError.ExpiredCallback(interaction.ref)

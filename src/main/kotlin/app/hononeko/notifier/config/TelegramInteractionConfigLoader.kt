@@ -24,7 +24,7 @@ internal object TelegramInteractionConfigLoader {
         if (!notifications.provider.equals("telegram", ignoreCase = true)) {
             logger.warn(
                 "{} is set but the notification provider is '{}'; Telegram interactions stay disabled and " +
-                    "TELEGRAM_UPDATES_MODE, TELEGRAM_ALLOWED_USERS, TELEGRAM_WEBHOOK_URL, " +
+                    "TELEGRAM_UPDATES_MODE, TELEGRAM_ALLOWED_USERS, TELEGRAM_ADMIN_USERS, TELEGRAM_WEBHOOK_URL, " +
                     "TELEGRAM_WEBHOOK_SECRET and TELEGRAM_POLL_TIMEOUT_SECONDS are ignored.",
                 FLAG,
                 notifications.provider
@@ -49,10 +49,19 @@ internal object TelegramInteractionConfigLoader {
                 }
             }
 
+        val allowed =
+            parseUserIds(reader.get("TELEGRAM_ALLOWED_USERS", "telegram.allowedUsers"), "TELEGRAM_ALLOWED_USERS")
+        val admins = parseUserIds(reader.get("TELEGRAM_ADMIN_USERS", "telegram.adminUsers"), "TELEGRAM_ADMIN_USERS")
+        require(allowed.isNotEmpty() || admins.isNotEmpty()) {
+            "TELEGRAM_ALLOWED_USERS (or TELEGRAM_ADMIN_USERS) is required when $FLAG=true: " +
+                "list the numeric Telegram user IDs allowed to use buttons"
+        }
+
         val config =
             TelegramInteractionConfig(
                 mode = mode,
-                allowedUserIds = parseAllowedUsers(reader.get("TELEGRAM_ALLOWED_USERS", "telegram.allowedUsers")),
+                allowedUserIds = allowed,
+                adminUserIds = admins,
                 pollTimeoutSeconds =
                     parsePollTimeout(
                         reader.get("TELEGRAM_POLL_TIMEOUT_SECONDS", "telegram.pollTimeoutSeconds")
@@ -63,26 +72,22 @@ internal object TelegramInteractionConfigLoader {
             if (mode == TelegramUpdatesMode.WEBHOOK) withWebhook(config, reader) else config
     }
 
-    private fun parseAllowedUsers(raw: String?): Set<Long> {
-        val entries =
-            raw
-                .orEmpty()
-                .split(',')
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-        require(entries.isNotEmpty()) {
-            "TELEGRAM_ALLOWED_USERS is required when $FLAG=true: " +
-                "list the numeric Telegram user IDs allowed to use buttons"
-        }
-        return entries
+    private fun parseUserIds(
+        raw: String?,
+        variable: String
+    ): Set<Long> =
+        raw
+            .orEmpty()
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
             .map { entry ->
                 requireNotNull(entry.toLongOrNull()?.takeIf { it > 0 }) {
-                    "TELEGRAM_ALLOWED_USERS entry '$entry' is not a numeric Telegram user ID. " +
+                    "$variable entry '$entry' is not a numeric Telegram user ID. " +
                         "Usernames are not accepted because they can be changed or reclaimed; send the bot a message " +
                         "and read message.from.id from getUpdates to find yours."
                 }
             }.toSet()
-    }
 
     private fun parsePollTimeout(raw: String?): Int {
         if (raw == null) return TelegramInteractionConfig().pollTimeoutSeconds

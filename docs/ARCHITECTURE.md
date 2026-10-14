@@ -158,6 +158,7 @@ We avoid throwing unchecked runtime exceptions across domain boundaries. All dom
 * **`WebhookError`**: `Unauthorized`, `InvalidPayload`, `UnsupportedEventType`, `MissingTorrentHash`.
 * **`DownloadClientError`**: `ConnectionFailed`, `DownloadNotFound`, `AuthenticationFailed`, `InvalidResponse`.
 * **`NotificationError`**: `RateLimited(retryAfterSeconds)`, `DeliveryFailed`, `ImageFetchFailed`, `ChatNotFound`.
+* **`RequestManagerError`** (Seerr): `ConnectionFailed`, `NotFound(resource, id)`, `Rejected(httpStatus)`.
 
 ---
 

@@ -88,6 +88,8 @@ class SeerrWebhookProviderTest {
             assertEquals("Dune: Part Two (2024)", event.subject)
             assertEquals("movie", event.mediaType)
             assertEquals("tt15239678", event.imdbId)
+            assertEquals(42L, event.requestId)
+            assertEquals(null, event.issueId)
             assertEquals("693134", event.tmdbId)
             assertEquals("12345", event.tvdbId)
             assertEquals("jf-uuid-1", event.jellyfinMediaId)
@@ -151,6 +153,7 @@ class SeerrWebhookProviderTest {
                 val event = queued.payload as MediaPayload.SeerrEvent
                 assertEquals(expectedEventType, event.eventType)
                 assertEquals("Seerr", event.instanceName)
+                assertEquals(10L, event.issueId)
             }
         }
 
@@ -307,5 +310,35 @@ class SeerrWebhookProviderTest {
             assertTrue(result is WebhookProcessResult.Queued)
             val event = (result as WebhookProcessResult.Queued).payload as MediaPayload.SeerrEvent
             assertEquals(false, event.is4k)
+        }
+
+    @Test
+    fun `blank or non-numeric request and issue ids are dropped`() =
+        testApplication {
+            var result: WebhookProcessResult? = null
+
+            routing {
+                post("/webhook-ids") {
+                    result = provider.process(call, null)
+                    call.respondText("OK")
+                }
+            }
+
+            client.post("/webhook-ids") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    """
+                    {
+                        "notification_type": "MEDIA_PENDING",
+                        "request": { "request_id": "" },
+                        "issue": { "issue_id": "abc" }
+                    }
+                    """.trimIndent()
+                )
+            }
+
+            val event = (result as WebhookProcessResult.Queued).payload as MediaPayload.SeerrEvent
+            assertEquals(null, event.requestId)
+            assertEquals(null, event.issueId)
         }
 }

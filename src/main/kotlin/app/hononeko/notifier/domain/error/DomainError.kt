@@ -63,6 +63,25 @@ sealed interface DomainError {
         ) : NotificationError
     }
 
+    /** Failures talking to the media request manager (Seerr / Overseerr / Jellyseerr). */
+    sealed interface RequestManagerError : DomainError {
+        data class ConnectionFailed(
+            val url: String,
+            val cause: Throwable? = null
+        ) : RequestManagerError
+
+        /** The request or issue no longer exists, e.g. it was deleted in Seerr after the card was sent. */
+        data class NotFound(
+            val resource: String,
+            val id: Long
+        ) : RequestManagerError
+
+        data class Rejected(
+            val httpStatus: Int,
+            val details: String
+        ) : RequestManagerError
+    }
+
     sealed interface InteractionError : DomainError {
         data class UnauthorizedUser(
             val userId: String,

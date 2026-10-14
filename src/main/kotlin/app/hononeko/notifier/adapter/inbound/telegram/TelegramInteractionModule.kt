@@ -2,10 +2,14 @@ package app.hononeko.notifier.adapter.inbound.telegram
 
 import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.TelegramUpdatesMode
+import app.hononeko.notifier.domain.port.outbound.MediaRequestManagerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.service.AcknowledgeHandler
+import app.hononeko.notifier.domain.service.BotActionHandler
 import app.hononeko.notifier.domain.service.BotInteractionService
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
+import app.hononeko.notifier.domain.service.SeerrAction
+import app.hononeko.notifier.domain.service.SeerrActionHandler
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -54,16 +58,27 @@ class TelegramInteractionModule private constructor(
             refRegistry: CallbackRefRegistry,
             publisher: NotificationPublisherPort,
             scope: CoroutineScope,
-            engine: HttpClientEngine? = null
+            engine: HttpClientEngine? = null,
+            requestManager: MediaRequestManagerPort? = null
         ): TelegramInteractionModule {
             val interaction = config.telegramInteraction
             val api = TelegramBotApi(config.notifications.botToken, engine)
+            val seerrHandlers: List<BotActionHandler> =
+                requestManager
+                    ?.let { manager ->
+                        SeerrAction.entries.map { SeerrActionHandler(it, manager, publisher, refRegistry) }
+                    }.orEmpty()
             val processor =
                 TelegramCallbackProcessor(
-                    guard = TelegramCallbackGuard(interaction.allowedUserIds, config.notifications.chatId),
+                    guard =
+                        TelegramCallbackGuard(
+                            interaction.allowedUserIds,
+                            config.notifications.chatId,
+                            interaction.adminUserIds
+                        ),
                     useCase =
                         BotInteractionService(
-                            handlers = listOf(AcknowledgeHandler(publisher, refRegistry)),
+                            handlers = listOf(AcknowledgeHandler(publisher, refRegistry)) + seerrHandlers,
                             refRegistry = refRegistry
                         ),
                     api = api,

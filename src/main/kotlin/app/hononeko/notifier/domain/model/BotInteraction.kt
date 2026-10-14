@@ -2,11 +2,15 @@ package app.hononeko.notifier.domain.model
 
 import kotlinx.serialization.Serializable
 
-/** Who triggered a chat-bot interaction. Already authorized by the inbound adapter; used for attribution only. */
+/**
+ * Who triggered a chat-bot interaction. Already authorized by the inbound adapter, which also decides [isAdmin];
+ * handlers marked [app.hononeko.notifier.domain.service.BotActionHandler.requiresAdmin] only run for admins.
+ */
 data class BotActor(
     val platform: String,
     val id: String,
-    val displayName: String
+    val displayName: String,
+    val isAdmin: Boolean = false
 )
 
 /**

@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -90,5 +91,26 @@ class CallbackRefRegistryTest {
             store.set("cb:AAAAAAAAAA", "not-json", null, now)
 
             assertNull(registry.resolve("AAAAAAAAAA"))
+        }
+
+    @Test
+    fun `claim is exclusive until unclaimed or expired`() =
+        runTest {
+            val ref = registry.register(target("x"), ttlSeconds = 60)!!
+
+            assertTrue(registry.claim(ref, ttlSeconds = 30))
+            assertFalse(registry.claim(ref, ttlSeconds = 30))
+
+            registry.unclaim(ref)
+            assertTrue(registry.claim(ref, ttlSeconds = 30))
+
+            now += 31_000
+            assertTrue(registry.claim(ref, ttlSeconds = 30))
+        }
+
+    @Test
+    fun `claim refuses malformed refs`() =
+        runTest {
+            assertFalse(registry.claim("bad ref"))
         }
 }

@@ -9,8 +9,6 @@ import arrow.core.Either
 import arrow.core.raise.either
 import arrow.core.raise.ensureNotNull
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
-import kotlin.time.Instant
 
 /**
  * Marks a card as handled: re-renders the stored card with a "Handled by" footnote and without its callback
@@ -41,15 +39,10 @@ class AcknowledgeHandler(
             val stamped =
                 target.card.copy(
                     interactions = emptyList(),
-                    footnote = "✅ Handled by ${interaction.actor.displayName} · ${localTime()}"
+                    footnote = "✅ Handled by ${interaction.actor.displayName} · ${hourMinute(clock(), timeZone)}"
                 )
             publisher.editCard(origin, stamped).bind()
             refRegistry.release(interaction.ref)
             BotReply(REPLY)
         }
-
-    private fun localTime(): String {
-        val time = Instant.fromEpochMilliseconds(clock()).toLocalDateTime(timeZone)
-        return "${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}"
-    }
 }

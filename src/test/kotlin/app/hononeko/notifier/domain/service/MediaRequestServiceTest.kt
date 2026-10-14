@@ -2,6 +2,7 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.CardInteraction
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
@@ -96,5 +97,63 @@ class MediaRequestServiceTest {
 
             val result = service.announce(payload)
             assertTrue(result.isLeft())
+        }
+
+    private fun event(
+        type: EventType,
+        requestId: Long? = 12,
+        issueId: Long? = 7
+    ) = MediaPayload.SeerrEvent(
+        eventType = type,
+        notificationType = type.name,
+        subject = "Dune",
+        requestId = requestId,
+        issueId = issueId
+    )
+
+    private suspend fun interactionsFor(
+        payload: MediaPayload.SeerrEvent,
+        seerrActions: Boolean = true
+    ): List<CardInteraction> {
+        val publisher = FakeNotificationPublisher()
+        MediaRequestService(publisher, seerrActions).announce(payload)
+        return publisher.sentCards.single().interactions
+    }
+
+    @Test
+    fun `pending request gets Approve and Decline buttons carrying the request id`() =
+        runTest {
+            assertEquals(
+                listOf(
+                    CardInteraction("✅ Approve", "seerr_approve", mapOf("request_id" to "12")),
+                    CardInteraction("❌ Decline", "seerr_decline", mapOf("request_id" to "12"))
+                ),
+                interactionsFor(event(EventType.REQUEST_PENDING))
+            )
+        }
+
+    @Test
+    fun `new issue gets a Resolve button carrying the issue id`() =
+        runTest {
+            assertEquals(
+                listOf(CardInteraction("✔️ Resolve", "seerr_resolve", mapOf("issue_id" to "7"))),
+                interactionsFor(event(EventType.ISSUE_CREATED))
+            )
+        }
+
+    @Test
+    fun `no Seerr buttons when disabled, without an id, or on other events`() =
+        runTest {
+            assertEquals(emptyList(), interactionsFor(event(EventType.REQUEST_PENDING), seerrActions = false))
+            assertEquals(emptyList(), interactionsFor(event(EventType.ISSUE_CREATED), seerrActions = false))
+            assertEquals(emptyList(), interactionsFor(event(EventType.REQUEST_PENDING, requestId = null)))
+            assertEquals(emptyList(), interactionsFor(event(EventType.ISSUE_CREATED, issueId = null)))
+            assertEquals(emptyList(), interactionsFor(event(EventType.REQUEST_APPROVED)))
+        }
+
+    @Test
+    fun `failed request keeps only its Acknowledge button`() =
+        runTest {
+            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), interactionsFor(event(EventType.REQUEST_FAILED)))
         }
 }

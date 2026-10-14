@@ -21,6 +21,7 @@ import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import app.hononeko.notifier.adapter.outbound.downloadclient.DownloadClientFactory
 import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerAdapter
+import app.hononeko.notifier.adapter.outbound.seerr.SeerrClientAdapter
 import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
 import app.hononeko.notifier.adapter.outbound.state.ValkeyStateStore
 import app.hononeko.notifier.adapter.outbound.telegram.TelegramPublisherAdapter
@@ -102,7 +103,8 @@ data class AppDependencies(
     val healthController: HealthController,
     val stateStore: StateStorePort = InMemoryStateStore(),
     val deadLetterPersistence: DeadLetterPersistence? = null,
-    val telegramInteractions: TelegramInteractionModule? = null
+    val telegramInteractions: TelegramInteractionModule? = null,
+    val seerrClient: SeerrClientAdapter? = null
 ) {
     fun close() {
         logger.info("Closing application dependencies and draining queues...")
@@ -114,6 +116,7 @@ data class AppDependencies(
             downloadTracker.stopAll()
         }
         telegramInteractions?.close()
+        seerrClient?.close()
         stateStore.close()
         scope.cancel()
         logger.info("Application dependencies closed")
@@ -126,6 +129,30 @@ private const val LEASE_RETRY_MARGIN_SECONDS = 5L
 private fun trackingOwnerId(): String {
     val suffix = (1..6).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
     return "${System.getenv("HOSTNAME") ?: "mwn"}-$suffix"
+}
+
+/**
+ * The Seerr client behind the admin-only Approve / Decline / Resolve buttons, or `null` when those buttons stay off:
+ * interactions disabled, Seerr not configured, or nobody in `TELEGRAM_ADMIN_USERS` to press them.
+ */
+private fun seerrClientFor(
+    config: AppConfig,
+    interactive: Boolean
+): SeerrClientAdapter? {
+    if (!config.seerr.isConfigured) return null
+    if (!interactive) {
+        logger.info("SEERR_URL is set but Telegram interactions are off; Seerr cards carry no approval buttons")
+        return null
+    }
+    if (config.telegramInteraction.adminUserIds.isEmpty()) {
+        logger.warn(
+            "SEERR_URL is set but TELEGRAM_ADMIN_USERS is empty; Approve, Decline and Resolve buttons stay off " +
+                "until at least one admin is listed"
+        )
+        return null
+    }
+    logger.info("Seerr request buttons enabled for {}", config.seerr.url)
+    return SeerrClientAdapter(config.seerr)
 }
 
 fun buildDependencies(
@@ -237,9 +264,11 @@ fun buildDependencies(
             notificationPublisher = notificationPublisher
         )
 
+    val seerrClient = seerrClientFor(config, interactive = callbackRefs != null)
     val mediaRequestService =
         MediaRequestService(
-            notificationPublisher = notificationPublisher
+            notificationPublisher = notificationPublisher,
+            seerrActions = seerrClient != null
         )
 
     val ingestWebhookService =
@@ -276,7 +305,7 @@ fun buildDependencies(
     val telegramInteractions =
         if (callbackRefs != null) {
             TelegramInteractionModule
-                .create(config, callbackRefs, notificationPublisher, scope, telegramApiEngine)
+                .create(config, callbackRefs, notificationPublisher, scope, telegramApiEngine, seerrClient)
                 .also { it.start(scope) }
         } else {
             null
@@ -304,7 +333,8 @@ fun buildDependencies(
         healthController = healthController,
         stateStore = stateStore,
         deadLetterPersistence = deadLetterPersistence,
-        telegramInteractions = telegramInteractions
+        telegramInteractions = telegramInteractions,
+        seerrClient = seerrClient
     )
 }
 

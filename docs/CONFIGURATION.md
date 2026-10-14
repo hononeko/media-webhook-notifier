@@ -22,12 +22,21 @@ Inline-button handling for Telegram cards, off by default. See [Telegram Interac
 |---|---|---|
 | `TELEGRAM_INTERACTIVE_ENABLED` | `false` | Feature flag for inbound button handling. Needs a Telegram `NOTIFICATION_URL` (or `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`); with another provider it logs a warning and stays off |
 | `TELEGRAM_UPDATES_MODE` | `polling` | How clicks reach the service: `polling` (no public ingress needed) or `webhook` |
-| `TELEGRAM_ALLOWED_USERS` | — | Required. Comma-separated **numeric** Telegram user IDs allowed to press buttons; usernames are rejected at startup |
+| `TELEGRAM_ALLOWED_USERS` | — | Required unless `TELEGRAM_ADMIN_USERS` is set. Comma-separated **numeric** Telegram user IDs allowed to press buttons; usernames are rejected at startup |
+| `TELEGRAM_ADMIN_USERS` | — | Comma-separated **numeric** Telegram user IDs allowed to press admin-only buttons (Seerr **Approve**, **Decline**, **Resolve**). Admins can press every other button too, without being listed in `TELEGRAM_ALLOWED_USERS` |
 | `TELEGRAM_WEBHOOK_URL` | — | Webhook mode: required. Public `https://` base URL of this service; `/api/v1/telegram/webhook` is appended |
 | `TELEGRAM_WEBHOOK_SECRET` | — | Webhook mode: required. 1–256 characters of `A-Z a-z 0-9 _ -`, checked against Telegram's `X-Telegram-Bot-Api-Secret-Token` header. Supports `TELEGRAM_WEBHOOK_SECRET_FILE` |
 | `TELEGRAM_POLL_TIMEOUT_SECONDS` | `25` | Polling mode: long-poll timeout, 1–50 |
 
 With the flag on, cards that need attention carry an **✅ Acknowledge** button; see [Buttons](TELEGRAM_INTERACTIONS.md#buttons). The time in its "Handled by" stamp follows the container's `TZ` (UTC when unset).
+
+### Seerr request buttons
+With Telegram interactions on and at least one `TELEGRAM_ADMIN_USERS` entry, these let admins approve and decline pending Seerr (Overseerr / Jellyseerr) requests and resolve issues from their cards. See [Seerr buttons](TELEGRAM_INTERACTIONS.md#seerr-approve-decline-resolve).
+
+| Variable | Default | Description |
+|---|---|---|
+| `SEERR_URL` | — | Base URL of Seerr as this service reaches it, e.g. `http://jellyseerr:5055`. Set it together with `SEERR_API_KEY`: one without the other fails startup |
+| `SEERR_API_KEY` | — | Seerr API key (*Settings → General → API Key*). Supports `SEERR_API_KEY_FILE` |
 
 ## Download Client & Live Tracking
 Pick the client with `DOWNLOAD_CLIENT_TYPE` or the scheme of `DOWNLOAD_CLIENT_URL`. With neither set, qBittorrent is used, so existing `QBITTORRENT_*` setups keep working unchanged.
