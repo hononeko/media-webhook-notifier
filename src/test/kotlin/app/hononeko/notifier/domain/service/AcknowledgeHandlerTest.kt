@@ -93,4 +93,36 @@ class AcknowledgeHandlerTest {
             )
             coVerify(exactly = 0) { publisher.editCard(any(), any()) }
         }
+
+    @Test
+    fun `stamps every admin's copy of a card sent privately`() =
+        runTest {
+            val clicked = NotificationHandle("telegram", "1", "5")
+            val other = NotificationHandle("telegram", "2", "8", isPhoto = true)
+            val target = CallbackTarget(card, deliveries = listOf(clicked, other))
+            val ref = registry.register(target, ttlSeconds = 60)!!
+
+            val result = handler.handle(BotInteraction(actor, "ack", ref, clicked), target)
+
+            val stamped = card.copy(interactions = emptyList(), footnote = "✅ Handled by @alex · 11:53")
+            coVerify(exactly = 1) { publisher.editCard(clicked, stamped) }
+            coVerify(exactly = 1) { publisher.editCard(other, stamped) }
+            assertEquals(Either.Right(BotReply("✅ Acknowledged")), result)
+        }
+
+    @Test
+    fun `a failed edit of another copy still acknowledges`() =
+        runTest {
+            val clicked = NotificationHandle("telegram", "1", "5")
+            val other = NotificationHandle("telegram", "2", "8")
+            coEvery { publisher.editCard(other, any()) } returns
+                Either.Left(DomainError.NotificationError.DeliveryFailed("telegram", "blocked"))
+            val target = CallbackTarget(card, deliveries = listOf(clicked, other))
+            val ref = registry.register(target, ttlSeconds = 60)!!
+
+            val result = handler.handle(BotInteraction(actor, "ack", ref, clicked), target)
+
+            assertEquals(Either.Right(BotReply("✅ Acknowledged")), result)
+            assertNull(registry.resolve(ref))
+        }
 }

@@ -88,8 +88,7 @@ class SeerrActionHandler(
                 )
             // Every admin got a copy; stamp them all so nobody acts on a decided request. Seerr already has the
             // decision, so a failed edit must not turn into "Action failed" or allow a re-press.
-            val copies = (target.deliveries + origin).distinctBy { it.channelOrChatId to it.messageReferenceId }
-            copies.forEach { copy ->
+            (listOf(origin) + otherCopies(target, origin)).forEach { copy ->
                 publisher.editCard(copy, stamped).onLeft { error ->
                     logger.warn(
                         "Seerr {} {} done, but the copy in chat {} could not be updated: {}",

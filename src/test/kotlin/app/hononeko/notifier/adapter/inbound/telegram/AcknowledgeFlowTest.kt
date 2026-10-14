@@ -132,4 +132,65 @@ class AcknowledgeFlowTest {
             assertEquals(1, calls.count { it.method == "editMessageText" })
             scope.cancel()
         }
+
+    @Test
+    fun `health issue goes to each admin privately and one acknowledgement stamps every copy`() =
+        runBlocking {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val registry = CallbackRefRegistry(InMemoryStateStore())
+            val publisher =
+                TelegramPublisherAdapter(
+                    NotificationConfig(botToken = "1:T", chatId = "-1001", sendPhotos = false),
+                    engine,
+                    registry
+                )
+            val processor =
+                TelegramCallbackProcessor(
+                    guard = TelegramCallbackGuard(setOf(42L), "-1001", adminUserIds = setOf(1L, 2L)),
+                    useCase =
+                        BotInteractionService(
+                            listOf(AcknowledgeHandler(publisher, registry, { 1_760_000_000_000L }, TimeZone.UTC)),
+                            registry
+                        ),
+                    api = TelegramBotApi("1:T", engine),
+                    scope = scope
+                )
+
+            SystemHealthService(publisher, adminRecipients = listOf("1", "2")).announce(
+                MediaPayload.ServarrHealth(source = AppSource.SONARR, level = "error", message = "Disk full")
+            )
+            val sends = calls.filter { it.method == "sendMessage" }
+            assertEquals(listOf("1", "2"), sends.map { it.body["chat_id"]!!.jsonPrimitive.content }, "admins only")
+            val data =
+                sends
+                    .first()
+                    .body["reply_markup"]!!
+                    .jsonObject["inline_keyboard"]!!
+                    .jsonArray
+                    .flatMap { it.jsonArray }
+                    .mapNotNull { it.jsonObject["callback_data"]?.jsonPrimitive?.content }
+                    .single()
+
+            processor.process(
+                TelegramCallbackQuery(
+                    id = "cq1",
+                    from = TelegramUser(id = 2, firstName = "Bo", username = "bo"),
+                    message = TelegramMessage(messageId = 7, chat = TelegramChat(2)),
+                    data = data
+                )
+            )
+
+            assertEquals("✅ Acknowledged", answerTo("cq1"))
+            val edits = calls.filter { it.method == "editMessageText" }
+            assertEquals(setOf("1", "2"), edits.map { it.body["chat_id"]!!.jsonPrimitive.content }.toSet())
+            edits.forEach {
+                assertTrue(
+                    it.body["text"]!!
+                        .jsonPrimitive.content
+                        .endsWith("✅ Handled by @bo · 08:53"),
+                    it.body.toString()
+                )
+            }
+            scope.cancel()
+        }
 }

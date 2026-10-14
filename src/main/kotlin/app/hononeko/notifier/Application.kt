@@ -254,9 +254,14 @@ fun buildDependencies(
             }
         )
 
+    // Cards that need someone to act go privately to the admins, once interactions are on and admins are listed.
+    val adminRecipients =
+        if (callbackRefs != null) config.telegramInteraction.adminUserIds.map { it.toString() } else emptyList()
+
     val systemHealthService =
         SystemHealthService(
-            notificationPublisher = notificationPublisher
+            notificationPublisher = notificationPublisher,
+            adminRecipients = adminRecipients
         )
 
     val manualInteractionService =
@@ -268,8 +273,7 @@ fun buildDependencies(
     val mediaRequestService =
         MediaRequestService(
             notificationPublisher = notificationPublisher,
-            decisionRecipients =
-                if (seerrClient != null) config.telegramInteraction.adminUserIds.map { it.toString() } else emptyList()
+            decisionRecipients = if (seerrClient != null) adminRecipients else emptyList()
         )
 
     val ingestWebhookService =
