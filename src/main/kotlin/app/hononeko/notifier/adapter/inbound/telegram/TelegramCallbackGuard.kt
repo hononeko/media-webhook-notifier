@@ -6,13 +6,18 @@ import arrow.core.Either
 import org.slf4j.LoggerFactory
 
 /**
- * Edge authorization for button clicks: the clicking user must be in `TELEGRAM_ALLOWED_USERS` and the button must sit
- * on a message in the configured chat. Rejected clicks never reach the domain.
+ * Edge authorization for button clicks: the clicking user must be in `TELEGRAM_ALLOWED_USERS` or
+ * `TELEGRAM_ADMIN_USERS`, and the button must sit on a message in the configured chat or, for admins, in their own
+ * private chat with the bot (where admin-only decisions are delivered). Rejected clicks never reach the domain.
+ * Admins are marked on the [BotActor], so the domain can refuse admin-only actions to everyone else.
  */
 internal class TelegramCallbackGuard(
-    private val allowedUserIds: Set<Long>,
-    private val chatId: String
+    allowedUserIds: Set<Long>,
+    private val chatId: String,
+    private val adminUserIds: Set<Long> = emptySet()
 ) {
+    private val authorizedUserIds = allowedUserIds + adminUserIds
+
     private val logger = LoggerFactory.getLogger(TelegramCallbackGuard::class.java)
 
     fun check(query: TelegramCallbackQuery): Either<DomainError.InteractionError.UnauthorizedUser, BotActor> {
@@ -20,9 +25,10 @@ internal class TelegramCallbackGuard(
         val chat = query.message?.chat
         val reason =
             when {
-                userId !in allowedUserIds -> "user is not in TELEGRAM_ALLOWED_USERS"
+                userId !in authorizedUserIds -> "user is not in TELEGRAM_ALLOWED_USERS or TELEGRAM_ADMIN_USERS"
                 chat == null -> "callback has no message (inline-mode buttons are not supported)"
-                !isConfiguredChat(chat) -> "chat ${chat.id} is not the configured TELEGRAM_CHAT_ID"
+                !isConfiguredChat(chat) && !isAdminPrivateChat(chat, userId) ->
+                    "chat ${chat.id} is neither the configured TELEGRAM_CHAT_ID nor the private chat of an admin"
                 else -> null
             }
         if (reason != null) {
@@ -30,8 +36,21 @@ internal class TelegramCallbackGuard(
             return Either.Left(DomainError.InteractionError.UnauthorizedUser(userId.toString(), reason))
         }
         val displayName = query.from.username?.let { "@$it" } ?: query.from.firstName
-        return Either.Right(BotActor(platform = "telegram", id = userId.toString(), displayName = displayName))
+        return Either.Right(
+            BotActor(
+                platform = "telegram",
+                id = userId.toString(),
+                displayName = displayName,
+                isAdmin = userId in adminUserIds
+            )
+        )
     }
+
+    // A private chat's id is the user's id; a former admin's leftover buttons fail here once they're delisted.
+    private fun isAdminPrivateChat(
+        chat: TelegramChat,
+        userId: Long
+    ): Boolean = chat.id == userId && userId in adminUserIds
 
     // TELEGRAM_CHAT_ID may be a numeric id or a public "@channelname"; callbacks always carry the numeric id.
     private fun isConfiguredChat(chat: TelegramChat): Boolean {

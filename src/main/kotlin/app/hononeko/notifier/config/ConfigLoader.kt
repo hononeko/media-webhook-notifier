@@ -4,6 +4,7 @@ import app.hononeko.notifier.adapter.outbound.notification.NotificationUrlParser
 import app.hononeko.notifier.domain.model.EventTemplate
 import app.hononeko.notifier.domain.model.TemplateConfig
 import java.io.File
+import java.net.URI
 
 object ConfigLoader {
     fun load(env: Map<String, String> = System.getenv()): AppConfig {
@@ -21,8 +22,23 @@ object ConfigLoader {
             state = loadStateConfig(reader),
             templates = loadTemplatesConfig(reader),
             features = features,
-            telegramInteraction = telegramInteraction
+            telegramInteraction = telegramInteraction,
+            seerr = loadSeerrConfig(reader)
         )
+    }
+
+    /** Both or neither: a URL without a key (or the reverse) is a half-done setup and fails boot. */
+    private fun loadSeerrConfig(reader: EnvReader): SeerrConfig {
+        val url = reader.get("SEERR_URL", "seerr.url")
+        val apiKey = reader.getSecret("SEERR_API_KEY", "seerr.apiKey")
+        if (url == null && apiKey == null) return SeerrConfig()
+        requireNotNull(url) { "SEERR_URL is required when SEERR_API_KEY is set" }
+        requireNotNull(apiKey) { "SEERR_API_KEY (or SEERR_API_KEY_FILE) is required when SEERR_URL is set" }
+        val uri = runCatching { URI(url) }.getOrNull()
+        require(uri != null && uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()) {
+            "SEERR_URL must be an http:// or https:// URL with a host, got '$url'"
+        }
+        return SeerrConfig(url = url.trimEnd('/'), apiKey = apiKey)
     }
 
     private fun loadServerConfig(reader: EnvReader): ServerConfig =

@@ -170,4 +170,61 @@ class TelegramInteractionConfigTest {
 
         assertFalse(config.features.telegramInteractive)
     }
+
+    @Test
+    fun `admin users load and count as allowed`() {
+        val config = ConfigLoader.load(base + ("TELEGRAM_ADMIN_USERS" to "7, 42"))
+
+        assertEquals(setOf(7L, 42L), config.telegramInteraction.adminUserIds)
+        assertEquals(setOf(42L), config.telegramInteraction.allowedUserIds)
+        assertEquals(setOf(7L, 42L), config.telegramInteraction.authorizedUserIds)
+    }
+
+    @Test
+    fun `admins alone satisfy the allowlist requirement`() {
+        val config = ConfigLoader.load(base - "TELEGRAM_ALLOWED_USERS" + ("TELEGRAM_ADMIN_USERS" to "7"))
+
+        assertTrue(config.features.telegramInteractive)
+        assertEquals(setOf(7L), config.telegramInteraction.authorizedUserIds)
+    }
+
+    @Test
+    fun `admin users default to none and reject usernames`() {
+        assertEquals(emptySet(), ConfigLoader.load(base).telegramInteraction.adminUserIds)
+        assertBootFails(base + ("TELEGRAM_ADMIN_USERS" to "@alice"), "TELEGRAM_ADMIN_USERS")
+    }
+
+    @Test
+    fun `Seerr loads url and api key, including from a file`() {
+        val file = createTempFile("mwn-seerr-key", ".txt")
+        try {
+            file.writeText("filekey\n")
+            val config =
+                ConfigLoader.load(
+                    mapOf(
+                        "SEERR_URL" to "http://seerr:5055/",
+                        "SEERR_API_KEY_FILE" to file.toString()
+                    )
+                )
+
+            assertEquals(SeerrConfig(url = "http://seerr:5055", apiKey = "filekey"), config.seerr)
+            assertTrue(config.seerr.isConfigured)
+        } finally {
+            file.deleteIfExists()
+        }
+    }
+
+    @Test
+    fun `Seerr is off by default and the key never appears in toString`() {
+        assertFalse(ConfigLoader.load(emptyMap()).seerr.isConfigured)
+        assertFalse(SeerrConfig("http://seerr", "s3cr3t").toString().contains("s3cr3t"))
+    }
+
+    @Test
+    fun `half-configured or invalid Seerr fails boot`() {
+        assertBootFails(mapOf("SEERR_URL" to "http://seerr:5055"), "SEERR_API_KEY")
+        assertBootFails(mapOf("SEERR_API_KEY" to "k"), "SEERR_URL")
+        assertBootFails(mapOf("SEERR_URL" to "seerr:5055", "SEERR_API_KEY" to "k"), "SEERR_URL")
+        assertBootFails(mapOf("SEERR_URL" to "ftp://seerr", "SEERR_API_KEY" to "k"), "SEERR_URL")
+    }
 }

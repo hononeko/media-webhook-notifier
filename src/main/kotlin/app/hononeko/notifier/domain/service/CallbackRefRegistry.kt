@@ -20,6 +20,10 @@ class CallbackRefRegistry(
         const val REF_LENGTH = 10
         const val MAX_ATTEMPTS = 5
         const val KEY_PREFIX = "cb:"
+        const val CLAIM_PREFIX = "cb-claim:"
+
+        /** Long enough to outlive one outbound call plus a card edit, short enough that a crashed claim soon frees. */
+        const val CLAIM_TTL_SECONDS = 30L
         private const val ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
         private val REF_PATTERN = Regex("^[A-Za-z0-9]{$REF_LENGTH}$")
     }
@@ -41,6 +45,21 @@ class CallbackRefRegistry(
         return null
     }
 
+    /** Replaces what [ref] points to, e.g. to record where its card was delivered, and restarts its TTL. */
+    suspend fun update(
+        ref: String,
+        target: CallbackTarget,
+        ttlSeconds: Long
+    ) {
+        if (!REF_PATTERN.matches(ref)) return
+        stateStore.set(
+            KEY_PREFIX + ref,
+            json.encodeToString(CallbackTarget.serializer(), target),
+            ttlSeconds,
+            nowMillis = clock()
+        )
+    }
+
     /** Returns the target behind [ref], or `null` if the ref is malformed, unknown, expired or holds unreadable data. */
     suspend fun resolve(ref: String): CallbackTarget? {
         if (!REF_PATTERN.matches(ref)) return null
@@ -51,6 +70,20 @@ class CallbackRefRegistry(
     /** Forgets [ref], so later presses of the same button resolve to nothing. Malformed refs are ignored. */
     suspend fun release(ref: String) {
         if (REF_PATTERN.matches(ref)) stateStore.delete(KEY_PREFIX + ref)
+    }
+
+    /**
+     * Marks [ref] as being acted on so a double-tap, or a second person pressing another button on the same card,
+     * can't run a second action while the first is still in flight. Returns false if someone else holds the claim.
+     */
+    suspend fun claim(
+        ref: String,
+        ttlSeconds: Long = CLAIM_TTL_SECONDS
+    ): Boolean = REF_PATTERN.matches(ref) && stateStore.tryAcquire(CLAIM_PREFIX + ref, ttlSeconds, nowMillis = clock())
+
+    /** Drops a [claim], e.g. after a failed action, so the button can be pressed again. */
+    suspend fun unclaim(ref: String) {
+        if (REF_PATTERN.matches(ref)) stateStore.delete(CLAIM_PREFIX + ref)
     }
 
     private fun newRef(): String =

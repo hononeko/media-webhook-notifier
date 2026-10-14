@@ -12,7 +12,8 @@ data class AppConfig(
     val state: StateConfig = StateConfig(),
     val templates: TemplateConfig = TemplateConfig(),
     val features: FeatureFlags = FeatureFlags(),
-    val telegramInteraction: TelegramInteractionConfig = TelegramInteractionConfig()
+    val telegramInteraction: TelegramInteractionConfig = TelegramInteractionConfig(),
+    val seerr: SeerrConfig = SeerrConfig()
 )
 
 /** Boot-time feature flags. Each one switches a whole feature on or off; nothing is toggled at runtime. */
@@ -35,10 +36,15 @@ enum class TelegramUpdatesMode(
 data class TelegramInteractionConfig(
     val mode: TelegramUpdatesMode = TelegramUpdatesMode.POLLING,
     val allowedUserIds: Set<Long> = emptySet(),
+    val adminUserIds: Set<Long> = emptySet(),
     val webhookUrl: String = "",
     val webhookSecret: String = "",
     val pollTimeoutSeconds: Int = 25
 ) {
+    /** Everyone who may press buttons: admins are allowed implicitly, without being listed twice. */
+    val authorizedUserIds: Set<Long>
+        get() = allowedUserIds + adminUserIds
+
     /** The URL registered with Telegram: [webhookUrl] with the webhook path appended exactly once. */
     val webhookEndpoint: String
         get() = webhookUrl.trimEnd('/').removeSuffix(WEBHOOK_PATH).trimEnd('/') + WEBHOOK_PATH
@@ -46,6 +52,16 @@ data class TelegramInteractionConfig(
     companion object {
         const val WEBHOOK_PATH = "/api/v1/telegram/webhook"
     }
+}
+
+/** The Seerr (Overseerr / Jellyseerr) API used by the admin-only request buttons. Empty when not configured. */
+data class SeerrConfig(
+    val url: String = "",
+    val apiKey: String = ""
+) {
+    val isConfigured: Boolean get() = url.isNotBlank() && apiKey.isNotBlank()
+
+    override fun toString(): String = "SeerrConfig(url=$url, apiKey=${if (apiKey.isBlank()) "" else "***"})"
 }
 
 data class ServerConfig(

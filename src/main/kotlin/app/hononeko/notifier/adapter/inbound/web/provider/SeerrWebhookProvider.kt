@@ -8,6 +8,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveText
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import org.slf4j.LoggerFactory
@@ -125,7 +126,17 @@ class SeerrWebhookProvider : WebhookProviderStrategy {
             commentMessage = dto.comment?.commentMessage,
             extra = extraMap,
             webUrl = webUrl,
-            instanceName = instanceName
+            instanceName = instanceName,
+            requestId = positiveId(dto.request?.requestId),
+            issueId = positiveId(dto.issue?.issueId)
         )
     }
+
+    // Seerr's default template sends ids as strings ("12"), and as "" when the event has none.
+    private fun positiveId(element: JsonElement?): Long? =
+        (element as? JsonPrimitive)
+            ?.content
+            ?.trim()
+            ?.toLongOrNull()
+            ?.takeIf { it > 0 }
 }

@@ -62,4 +62,31 @@ class TelegramCallbackGuardTest {
         assertTrue(channelGuard.check(query(chat = TelegramChat(-1002, "otherchannel"))).isLeft())
         assertTrue(channelGuard.check(query(chat = TelegramChat(-1002))).isLeft())
     }
+
+    @Test
+    fun `admins are allowed without being in the allowlist and are marked as admin`() {
+        val adminGuard = TelegramCallbackGuard(allowedUserIds = setOf(42L), chatId = "-1001", adminUserIds = setOf(7L))
+
+        assertEquals(
+            Either.Right(BotActor("telegram", "7", "@alice", isAdmin = true)),
+            adminGuard.check(query(userId = 7))
+        )
+        assertEquals(Either.Right(BotActor("telegram", "42", "@alice")), adminGuard.check(query()))
+    }
+
+    @Test
+    fun `admin may press buttons in their own private chat`() {
+        val adminGuard = TelegramCallbackGuard(allowedUserIds = setOf(42L), chatId = "-1001", adminUserIds = setOf(7L))
+
+        assertTrue(adminGuard.check(query(userId = 7, chat = TelegramChat(7))).isRight())
+    }
+
+    @Test
+    fun `private chats are refused to non-admins and to anyone else's chat`() {
+        val adminGuard =
+            TelegramCallbackGuard(allowedUserIds = setOf(42L), chatId = "-1001", adminUserIds = setOf(7L, 8L))
+
+        assertEquals("42", rejection(adminGuard.check(query(userId = 42, chat = TelegramChat(42)))).userId)
+        assertEquals("7", rejection(adminGuard.check(query(userId = 7, chat = TelegramChat(8)))).userId)
+    }
 }

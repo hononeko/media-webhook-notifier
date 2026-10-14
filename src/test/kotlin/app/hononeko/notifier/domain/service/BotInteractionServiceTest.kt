@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 
 class BotInteractionServiceTest {
     private fun target(title: String) = CallbackTarget(NotificationCard(title = title))
@@ -102,4 +103,41 @@ class BotInteractionServiceTest {
     fun `duplicate operations are rejected at construction`() {
         assertFailsWith<IllegalArgumentException> { BotInteractionService(listOf(ping, ping), registry) }
     }
+
+    private val adminOnly =
+        object : BotActionHandler {
+            override val operation = "approve"
+            override val requiresAdmin = true
+
+            override suspend fun handle(
+                interaction: BotInteraction,
+                target: CallbackTarget
+            ): Either<DomainError, BotReply> = Either.Right(BotReply("approved"))
+        }
+
+    @Test
+    fun `admin-only operation from a non-admin is UnauthorizedUser and never reads the store`() =
+        runTest {
+            val result =
+                BotInteractionService(
+                    listOf(adminOnly),
+                    registry
+                ).handle(BotInteraction(actor, "approve", "AAAAAAAAAA"))
+
+            val error = assertIs<Either.Left<DomainError.InteractionError.UnauthorizedUser>>(result).value
+            assertEquals("42", error.userId)
+            coVerify(exactly = 0) { store.get(any(), any()) }
+        }
+
+    @Test
+    fun `admin-only operation runs for an admin`() =
+        runTest {
+            val ref = registry.register(target("r1"), 60)!!
+
+            val result =
+                BotInteractionService(listOf(adminOnly), registry)
+                    .handle(BotInteraction(actor.copy(isAdmin = true), "approve", ref))
+
+            assertEquals(Either.Right(BotReply("approved")), result)
+        }
 }
