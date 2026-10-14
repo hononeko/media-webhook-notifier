@@ -2,7 +2,7 @@
 
 Telegram interactions let the notifier react to **inline-button clicks** on its Telegram cards. Each click is checked against an allowlist of Telegram users and answered within Telegram's 3-second window, then handed to the matching action.
 
-Cards that need a person's attention carry an **✅ Acknowledge** button, and Seerr cards can carry admin-only **Approve**, **Decline** and **Resolve** buttons (see [Buttons](#buttons)). The feature is **off by default**: with `TELEGRAM_INTERACTIVE_ENABLED` unset, cards look exactly as before and the service never listens for clicks.
+Cards that need a person's attention carry an **✅ Acknowledge** button, and Seerr requests and issues can go to admins privately with **Approve**, **Decline** and **Resolve** buttons (see [Buttons](#buttons)). The feature is **off by default**: with `TELEGRAM_INTERACTIVE_ENABLED` unset, cards look exactly as before and the service never listens for clicks.
 
 > [!WARNING]
 > **Replica rules.** The service can't detect how many replicas you run, so these rules aren't enforced. Follow them yourself:
@@ -27,9 +27,9 @@ Cards that need a person's attention carry an **✅ Acknowledge** button, and Se
      - TELEGRAM_ALLOWED_USERS=123456789,987654321
    ```
 
-   To let someone approve Seerr requests as well, list them in `TELEGRAM_ADMIN_USERS` instead (see [Seerr buttons](#seerr-approve-decline-resolve)). Admins can press every button, so they don't need to be listed twice.
+   To have someone receive and decide Seerr requests, list them in `TELEGRAM_ADMIN_USERS` instead (see [Seerr buttons](#seerr-approve-decline-resolve)). Admins can press every button, so they don't need to be listed twice.
 
-Startup fails with a message naming the variable if both lists are empty or either contains anything other than positive numeric IDs. Clicks from anyone else, and buttons on messages outside `TELEGRAM_CHAT_ID`, get a "⛔ You're not allowed to control this bot." popup and never reach an action.
+Startup fails with a message naming the variable if both lists are empty or either contains anything other than positive numeric IDs. Clicks from anyone else, and buttons on messages outside `TELEGRAM_CHAT_ID` (other than an admin's own private chat with the bot), get a "⛔ You're not allowed to control this bot." popup and never reach an action.
 
 ## Choose a mode
 
@@ -69,29 +69,33 @@ Each button works **once** and for **30 days**. After that, or after a restart w
 
 ### Seerr: Approve, Decline, Resolve
 
-Lets **admins** act on Seerr (Overseerr / Jellyseerr) cards without opening Seerr:
+Lets **admins** decide Seerr (Overseerr / Jellyseerr) requests and issues without opening Seerr. These cards go **to each admin in a private chat with the bot, not to the channel**, so the channel stays informational: it learns the outcome from Seerr's own *Request Approved*, *Declined* and *Issue Resolved* webhooks.
 
-| Card | Buttons |
-|---|---|
-| New request (pending approval) | **✅ Approve**, **❌ Decline** |
-| New issue | **✔️ Resolve** |
+| Event | Sent to | Buttons |
+|---|---|---|
+| New request (pending approval) | each admin, privately | **✅ Approve**, **❌ Decline** |
+| New issue | each admin, privately | **✔️ Resolve** |
+| Everything else (approved, available, declined, failed, comments…) | the channel, as before | — |
 
 To turn them on, add the Seerr API and at least one admin:
 
 ```yaml
 environment:
   - TELEGRAM_INTERACTIVE_ENABLED=true
-  - TELEGRAM_ALLOWED_USERS=987654321        # may press Acknowledge
-  - TELEGRAM_ADMIN_USERS=123456789          # may also approve, decline and resolve
+  - TELEGRAM_ALLOWED_USERS=987654321        # may press Acknowledge in the channel
+  - TELEGRAM_ADMIN_USERS=123456789          # also receives and decides Seerr requests
   - SEERR_URL=http://jellyseerr:5055
   - SEERR_API_KEY_FILE=/run/secrets/seerr_api_key
 ```
 
-- Only users in `TELEGRAM_ADMIN_USERS` can use these buttons. Anyone else, including the person who made the request, gets "⛔ You're not allowed to control this bot." and nothing changes in Seerr.
-- Pressing a button edits the card: a `✅ Approved by @alex · 14:32` (or `❌ Declined by`, `✔️ Resolved by`) line is added and the buttons are removed. Seerr then sends its own *Request Approved* / *Declined* / *Issue Resolved* webhook as usual.
+**Each admin must open a private chat with the bot and press Start once.** Telegram doesn't let bots message someone first. Until an admin has done this, sending to them fails, and the logs show `Could not send '…' to admin <id>; they may need to start a chat with the bot`.
+
+- Every admin gets their own copy. When one admin decides, **every admin's copy** is edited: a `✅ Approved by @alex · 14:32` (or `❌ Declined by`, `✔️ Resolved by`) line is added and the buttons are removed, so nobody acts on a request that's already been decided.
+- If **no** admin could be reached, the card goes to the channel without buttons, so the request isn't lost, and a warning is logged.
+- Buttons are checked again when pressed: they only work for users still in `TELEGRAM_ADMIN_USERS`, in their own private chat. If you remove someone from the list, the copies they already have stop working.
 - The API key acts as Seerr's admin user, so Seerr records the decision under that account, not the Telegram admin's.
-- Each card's buttons work once, like **Acknowledge**. While one press is being handled, a second press on the same card (a double-tap, or another admin pressing **Decline**) answers "⏳ Someone is already handling this."
-- Without `SEERR_URL` / `SEERR_API_KEY`, or with the flag off, Seerr cards look exactly as before. With Seerr configured but `TELEGRAM_ADMIN_USERS` empty, the buttons stay off and startup logs a warning.
+- Each card's buttons work once, like **Acknowledge**. While one press is being handled, a second press (a double-tap, or another admin pressing **Decline** on their copy) answers "⏳ Someone is already handling this."
+- Without `SEERR_URL` / `SEERR_API_KEY`, or with the flag off, Seerr cards go to the channel exactly as before. With Seerr configured but `TELEGRAM_ADMIN_USERS` empty, they also stay in the channel without buttons, and startup logs a warning.
 
 ## Troubleshooting
 
@@ -103,8 +107,9 @@ environment:
 | A user gets "⛔ You're not allowed to control this bot." | Their numeric ID isn't in `TELEGRAM_ALLOWED_USERS` (or `TELEGRAM_ADMIN_USERS`), or the button sits on a message outside `TELEGRAM_CHAT_ID`. Rejections are logged at INFO with the user ID. |
 | Logs show `TELEGRAM_INTERACTIVE_ENABLED is set but the notification provider is ...` | Interactions need the Telegram notification provider, so the feature stays off. |
 | Acknowledge answers "⚠️ Action failed." | The card was deleted, or the bot can no longer edit it. The reason is logged at WARN. |
-| Seerr cards have no Approve / Decline buttons | Check that `SEERR_URL` and `SEERR_API_KEY` are set and `TELEGRAM_ADMIN_USERS` isn't empty; startup logs which one is missing. Requests that Seerr auto-approves never get the buttons. |
-| An admin gets "⛔ You're not allowed to control this bot." on Approve | Their numeric ID is in `TELEGRAM_ALLOWED_USERS` but not in `TELEGRAM_ADMIN_USERS`. |
+| Admins don't receive Seerr requests | Each admin must start a private chat with the bot once (logs: `they may need to start a chat with the bot`). Also check that `SEERR_URL` and `SEERR_API_KEY` are set and `TELEGRAM_ADMIN_USERS` isn't empty; startup logs which one is missing. Requests that Seerr auto-approves are never sent for a decision. |
+| Pending requests appear in the channel without buttons | No admin could be reached privately, so the card fell back to the channel. See the row above. |
+| Someone gets "⛔ You're not allowed to control this bot." on Approve | They're no longer in `TELEGRAM_ADMIN_USERS`; copies sent while they were an admin stop working. |
 | Approve answers "⚠️ Action failed." | Seerr was unreachable or refused the API key. The HTTP status is logged at WARN. The card is unchanged, so the button can be pressed again. |
 | Approve answers "⚠️ This request no longer exists in Seerr." | The request (or issue) was deleted in Seerr after the card was sent. |
 

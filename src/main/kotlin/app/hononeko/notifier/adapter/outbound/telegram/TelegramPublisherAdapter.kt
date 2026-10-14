@@ -62,7 +62,8 @@ class TelegramPublisherAdapter(
     override val defaultChannelOrChatId: String get() = config.chatId
     private val logger = LoggerFactory.getLogger(TelegramPublisherAdapter::class.java)
 
-    // Tracks if a message was posted as photo or text so edits use the matching endpoint.
+    // Tracks if a message was posted as photo or text so edits use the matching endpoint. Keyed by chat and message
+    // ([photoKey]): message ids are only unique within a chat, and cards also go to admins' private chats.
     // Bounded with LRU eviction to prevent memory leaks during continuous 24/7 uptime.
     private val photoMessageRegistry =
         Collections.synchronizedMap(
@@ -201,6 +202,17 @@ class TelegramPublisherAdapter(
         val callbackData: String? = null
     )
 
+    /** Where a message goes: the configured channel (and forum topic), or a user's private chat. */
+    private data class Destination(
+        val chatId: String,
+        val topicId: Long? = null
+    )
+
+    private val channel: Destination get() = Destination(config.chatId, config.topicId)
+
+    private fun photoKey(handle: NotificationHandle): String =
+        "${handle.channelOrChatId.ifBlank { config.chatId }}:${handle.messageReferenceId}"
+
     override suspend fun sendCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> =
         deliverCard(card)
 
@@ -208,44 +220,81 @@ class TelegramPublisherAdapter(
         initialCard: NotificationCard
     ): Either<DomainError.NotificationError, NotificationHandle> = deliverCard(initialCard)
 
-    private suspend fun deliverCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> {
+    /** One ref for all copies, so a button pressed on one copy can find, and update, every other one. */
+    @Suppress("TooGenericExceptionCaught")
+    override suspend fun sendDirect(
+        card: NotificationCard,
+        recipients: List<String>
+    ): Map<String, Either<DomainError.NotificationError, NotificationHandle>> {
+        val ref = registerRef(card)
+        val markup = keyboardFor(card, ref)
+        val results = recipients.associateWith { deliver(card, markup, Destination(it)) }
+        val registry = callbackRefs
+        if (ref != null && registry != null) {
+            val delivered = results.values.mapNotNull { it.getOrNull() }
+            try {
+                if (delivered.isEmpty()) {
+                    registry.release(ref)
+                } else {
+                    registry.update(
+                        ref,
+                        CallbackTarget(card.copy(artworkBytes = null), delivered),
+                        CALLBACK_TTL_SECONDS
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The buttons still work; a decision then only updates the copy it was made on.
+                logger.warn("Could not record the copies of '{}': {}", card.title, e.message)
+            }
+        }
+        return results
+    }
+
+    private suspend fun deliverCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> =
         // Registered outside the mutex so a slow state store never holds up other deliveries.
-        val markup = keyboardFor(card)
-        return sendMutex.withLock {
+        deliver(card, keyboardFor(card), channel)
+
+    private suspend fun deliver(
+        card: NotificationCard,
+        markup: InlineKeyboardMarkup?,
+        destination: Destination
+    ): Either<DomainError.NotificationError, NotificationHandle> =
+        sendMutex.withLock {
             val textContent = buildCardHtml(card, TEXT_LIMIT)
 
             if (config.sendPhotos) {
                 val caption = buildCardHtml(card, CAPTION_LIMIT)
                 if (card.artworkBytes != null && card.artworkBytes.isNotEmpty()) {
-                    val photoResult = sendPhotoBytes(card.artworkBytes, caption, markup, card.silent)
+                    val photoResult = sendPhotoBytes(destination, card.artworkBytes, caption, markup, card.silent)
                     if (photoResult is Either.Right) {
                         val photoHandle = photoResult.value.copy(isPhoto = true)
-                        photoMessageRegistry[photoHandle.messageReferenceId] = true
+                        photoMessageRegistry[photoKey(photoHandle)] = true
                         return@withLock Either.Right(photoHandle)
                     }
                     logger.warn("Telegram photo binary upload failed, falling back to HTML text message")
                 } else if (!card.artworkUrl.isNullOrBlank() &&
                     (card.artworkUrl.startsWith("http://") || card.artworkUrl.startsWith("https://"))
                 ) {
-                    val photoResult = sendPhoto(card.artworkUrl, caption, markup, card.silent)
+                    val photoResult = sendPhoto(destination, card.artworkUrl, caption, markup, card.silent)
                     if (photoResult is Either.Right) {
                         val photoHandle = photoResult.value.copy(isPhoto = true)
-                        photoMessageRegistry[photoHandle.messageReferenceId] = true
+                        photoMessageRegistry[photoKey(photoHandle)] = true
                         return@withLock Either.Right(photoHandle)
                     }
                     logger.warn("Telegram photo send failed, falling back to HTML text message")
                 }
             }
 
-            val textResult = sendMessage(textContent, markup, card.silent)
+            val textResult = sendMessage(destination, textContent, markup, card.silent)
             if (textResult is Either.Right) {
                 val textHandle = textResult.value.copy(isPhoto = false)
-                photoMessageRegistry[textHandle.messageReferenceId] = false
+                photoMessageRegistry[photoKey(textHandle)] = false
                 return@withLock Either.Right(textHandle)
             }
             textResult
         }
-    }
 
     override suspend fun updateProgress(
         handle: NotificationHandle,
@@ -255,9 +304,9 @@ class TelegramPublisherAdapter(
         val markup = buildKeyboard(update.actions)
         val html = buildProgressHtml(update)
 
-        val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
+        val isPhoto = handle.isPhoto || (photoMessageRegistry[photoKey(handle)] ?: false)
         if (handle.isPhoto) {
-            photoMessageRegistry[handle.messageReferenceId] = true
+            photoMessageRegistry[photoKey(handle)] = true
         }
         val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
 
@@ -272,13 +321,13 @@ class TelegramPublisherAdapter(
         handle: NotificationHandle,
         finalCard: NotificationCard
     ): Either<DomainError.NotificationError, Unit> =
-        editWithCard(handle, finalCard).also { photoMessageRegistry.remove(handle.messageReferenceId) }
+        editWithCard(handle, finalCard).also { photoMessageRegistry.remove(photoKey(handle)) }
 
     override suspend fun cancelProgress(
         handle: NotificationHandle,
         reasonCard: NotificationCard
     ): Either<DomainError.NotificationError, Unit> =
-        editWithCard(handle, reasonCard).also { photoMessageRegistry.remove(handle.messageReferenceId) }
+        editWithCard(handle, reasonCard).also { photoMessageRegistry.remove(photoKey(handle)) }
 
     override suspend fun editCard(
         handle: NotificationHandle,
@@ -299,7 +348,7 @@ class TelegramPublisherAdapter(
         val msgId = handle.messageReferenceId.toLongOrNull() ?: return Either.Right(Unit)
         val markup = keyboardFor(card)
 
-        val isPhoto = handle.isPhoto || (photoMessageRegistry[handle.messageReferenceId] ?: false)
+        val isPhoto = handle.isPhoto || (photoMessageRegistry[photoKey(handle)] ?: false)
         val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }
 
         if (isPhoto) return editCaption(targetChatId, msgId, buildCardHtml(card, CAPTION_LIMIT), markup)
@@ -322,6 +371,7 @@ class TelegramPublisherAdapter(
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
 
     private suspend fun sendPhotoBytes(
+        destination: Destination,
         photoBytes: ByteArray,
         caption: String,
         markup: InlineKeyboardMarkup?,
@@ -333,8 +383,8 @@ class TelegramPublisherAdapter(
                     url = "$apiBaseUrl/sendPhoto",
                     formData =
                         formData {
-                            append("chat_id", config.chatId)
-                            config.topicId?.let { append("message_thread_id", it.toString()) }
+                            append("chat_id", destination.chatId)
+                            destination.topicId?.let { append("message_thread_id", it.toString()) }
                             append("caption", caption)
                             append("parse_mode", "HTML")
                             if (silent) {
@@ -353,12 +403,13 @@ class TelegramPublisherAdapter(
                             )
                         }
                 )
-            handleSendResponse(response)
+            handleSendResponse(response, destination)
         } catch (e: IOException) {
             handleDeliveryException("photo binary", e)
         }
 
     private suspend fun sendPhoto(
+        destination: Destination,
         photoUrl: String,
         caption: String,
         markup: InlineKeyboardMarkup?,
@@ -366,8 +417,8 @@ class TelegramPublisherAdapter(
     ): Either<DomainError.NotificationError, NotificationHandle> {
         val request =
             SendPhotoRequest(
-                chatId = config.chatId,
-                messageThreadId = config.topicId,
+                chatId = destination.chatId,
+                messageThreadId = destination.topicId,
                 photo = photoUrl,
                 caption = caption,
                 disableNotification = if (silent) true else null,
@@ -381,21 +432,22 @@ class TelegramPublisherAdapter(
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }
-            handleSendResponse(response)
+            handleSendResponse(response, destination)
         } catch (e: IOException) {
             handleDeliveryException("photo", e)
         }
     }
 
     private suspend fun sendMessage(
+        destination: Destination,
         text: String,
         markup: InlineKeyboardMarkup?,
         silent: Boolean = false
     ): Either<DomainError.NotificationError, NotificationHandle> {
         val request =
             SendMessageRequest(
-                chatId = config.chatId,
-                messageThreadId = config.topicId,
+                chatId = destination.chatId,
+                messageThreadId = destination.topicId,
                 text = truncateToLimit(text, 4096),
                 disableNotification = if (silent) true else null,
                 replyMarkup = markup
@@ -408,7 +460,7 @@ class TelegramPublisherAdapter(
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }
-            handleSendResponse(response)
+            handleSendResponse(response, destination)
         } catch (e: IOException) {
             handleDeliveryException("text", e)
         }
@@ -482,7 +534,8 @@ class TelegramPublisherAdapter(
     }
 
     private suspend fun handleSendResponse(
-        response: HttpResponse
+        response: HttpResponse,
+        destination: Destination
     ): Either<DomainError.NotificationError, NotificationHandle> {
         val raw: String = response.bodyAsText()
         if (response.status == HttpStatusCode.TooManyRequests) {
@@ -519,7 +572,7 @@ class TelegramPublisherAdapter(
                 ?: return Either.Left(
                     DomainError.NotificationError.DeliveryFailed(providerId, "No messageId in response")
                 )
-        return Either.Right(NotificationHandle(providerId, config.chatId, msgId.toString()))
+        return Either.Right(NotificationHandle(providerId, destination.chatId, msgId.toString()))
     }
 
     private suspend fun handleEditResponse(response: HttpResponse): Either<DomainError.NotificationError, Unit> {
@@ -574,15 +627,22 @@ class TelegramPublisherAdapter(
             .map { action -> InlineKeyboardButton(text = action.label, url = action.url) }
 
     /** URL buttons in the first row, callback buttons in the second. Either row is left out when empty. */
-    private suspend fun keyboardFor(card: NotificationCard): InlineKeyboardMarkup? {
-        val rows = listOf(urlButtons(card.actions), callbackButtons(card)).filter { it.isNotEmpty() }
+    private suspend fun keyboardFor(card: NotificationCard): InlineKeyboardMarkup? =
+        keyboardFor(card, registerRef(card))
+
+    private fun keyboardFor(
+        card: NotificationCard,
+        ref: String?
+    ): InlineKeyboardMarkup? {
+        val rows = listOf(urlButtons(card.actions), callbackButtons(card, ref)).filter { it.isNotEmpty() }
         return rows.takeIf { it.isNotEmpty() }?.let { InlineKeyboardMarkup(inlineKeyboard = it) }
     }
 
+    /** A ref to [card] for its callback buttons, or `null` when it has none or no ref could be stored. */
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun callbackButtons(card: NotificationCard): List<InlineKeyboardButton> {
-        val registry = callbackRefs ?: return emptyList()
-        if (card.interactions.isEmpty()) return emptyList()
+    private suspend fun registerRef(card: NotificationCard): String? {
+        val registry = callbackRefs ?: return null
+        if (card.interactions.isEmpty()) return null
         val ref =
             try {
                 registry.register(CallbackTarget(card.copy(artworkBytes = null)), CALLBACK_TTL_SECONDS)
@@ -590,12 +650,19 @@ class TelegramPublisherAdapter(
                 throw e
             } catch (e: Exception) {
                 logger.warn("Sending '{}' without its callback buttons: {}", card.title, e.message)
-                return emptyList()
+                return null
             }
         if (ref == null) {
             logger.warn("Sending '{}' without its callback buttons: no callback ref available", card.title)
-            return emptyList()
         }
+        return ref
+    }
+
+    private fun callbackButtons(
+        card: NotificationCard,
+        ref: String?
+    ): List<InlineKeyboardButton> {
+        if (ref == null) return emptyList()
         return card.interactions.mapNotNull { interaction ->
             TelegramCallbackData.encode(interaction.operation, ref)?.let { data ->
                 InlineKeyboardButton(text = interaction.label, callbackData = data)

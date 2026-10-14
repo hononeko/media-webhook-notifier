@@ -1,5 +1,8 @@
 package app.hononeko.notifier.domain.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class NotificationHandle(
     val providerId: String,
     val channelOrChatId: String,

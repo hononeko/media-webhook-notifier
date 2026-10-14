@@ -35,8 +35,8 @@ enum class SeerrAction(
 }
 
 /**
- * Runs one [SeerrAction] for an admin: calls Seerr with the id stored on the card, then stamps the card with who did
- * it and removes its callback buttons. The ref is claimed for the duration of the call, so a double-tap can't approve
+ * Runs one [SeerrAction] for an admin: calls Seerr with the id stored on the card, then stamps every admin's copy of
+ * the card with who did it and removes its callback buttons. The ref is claimed for the duration of the call, so a double-tap can't approve
  * twice or approve and decline at once, and released once Seerr has accepted the decision.
  */
 class SeerrActionHandler(
@@ -86,9 +86,19 @@ class SeerrActionHandler(
                     interactions = emptyList(),
                     footnote = "${action.stamp} ${interaction.actor.displayName} · ${hourMinute(clock(), timeZone)}"
                 )
-            // Seerr already has the decision, so a failed edit must not turn into "Action failed" or allow a re-press.
-            publisher.editCard(origin, stamped).onLeft { error ->
-                logger.warn("Seerr {} {} done, but the card could not be updated: {}", action.resource, id, error)
+            // Every admin got a copy; stamp them all so nobody acts on a decided request. Seerr already has the
+            // decision, so a failed edit must not turn into "Action failed" or allow a re-press.
+            val copies = (target.deliveries + origin).distinctBy { it.channelOrChatId to it.messageReferenceId }
+            copies.forEach { copy ->
+                publisher.editCard(copy, stamped).onLeft { error ->
+                    logger.warn(
+                        "Seerr {} {} done, but the copy in chat {} could not be updated: {}",
+                        action.resource,
+                        id,
+                        copy.channelOrChatId,
+                        error
+                    )
+                }
             }
             refRegistry.release(interaction.ref)
             BotReply(action.reply)

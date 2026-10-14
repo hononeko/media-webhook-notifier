@@ -268,7 +268,8 @@ fun buildDependencies(
     val mediaRequestService =
         MediaRequestService(
             notificationPublisher = notificationPublisher,
-            seerrActions = seerrClient != null
+            decisionRecipients =
+                if (seerrClient != null) config.telegramInteraction.adminUserIds.map { it.toString() } else emptyList()
         )
 
     val ingestWebhookService =

@@ -7,19 +7,42 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaRequestUseCase
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import arrow.core.Either
+import org.slf4j.LoggerFactory
 
 /**
- * Sends Seerr cards. With [seerrActions] on (interactions enabled, Seerr credentials and at least one admin
- * configured), pending requests get Approve / Decline buttons and new issues a Resolve button.
+ * Sends Seerr cards. Decisions that only admins may take (pending requests, new issues) go as direct messages to
+ * [decisionRecipients] with Approve / Decline / Resolve buttons, keeping the channel informational: it learns the
+ * outcome from Seerr's own approved / declined / resolved webhooks. If no admin can be reached, the card goes to the
+ * channel without buttons so the request isn't lost. With no recipients (interactions off, Seerr not configured or
+ * no admins), every card goes to the channel as before.
  */
 class MediaRequestService(
     private val notificationPublisher: NotificationPublisherPort,
-    private val seerrActions: Boolean = false
+    private val decisionRecipients: List<String> = emptyList()
 ) : AnnounceMediaRequestUseCase {
+    private val logger = LoggerFactory.getLogger(MediaRequestService::class.java)
+
     override suspend fun announce(payload: MediaPayload.SeerrEvent): Either<DomainError, Unit> {
         val card = CardFormatterService.buildSeerrCard(payload)
-        val buttons = if (seerrActions) seerrButtons(payload) else emptyList()
-        return notificationPublisher.sendCard(card.copy(interactions = buttons + card.interactions)).map { }
+        val buttons = if (decisionRecipients.isNotEmpty()) seerrButtons(payload) else emptyList()
+        if (buttons.isEmpty()) return notificationPublisher.sendCard(card).map { }
+
+        val results =
+            notificationPublisher.sendDirect(card.copy(interactions = buttons + card.interactions), decisionRecipients)
+        results.forEach { (recipient, result) ->
+            result.onLeft { error ->
+                logger.warn(
+                    "Could not send '{}' to admin {}; they may need to start a chat with the bot: {}",
+                    card.title,
+                    recipient,
+                    error
+                )
+            }
+        }
+        if (results.values.any { it.isRight() }) return Either.Right(Unit)
+
+        logger.warn("No admin could be reached; posting '{}' to the channel without decision buttons", card.title)
+        return notificationPublisher.sendCard(card).map { }
     }
 
     private fun seerrButtons(payload: MediaPayload.SeerrEvent): List<CardInteraction> =

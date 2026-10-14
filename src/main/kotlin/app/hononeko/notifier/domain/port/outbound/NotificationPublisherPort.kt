@@ -41,6 +41,23 @@ interface NotificationPublisherPort {
         return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
     }
 
+    /**
+     * Sends [card] privately to each of [recipients] (for Telegram, user ids; each must have started a chat with the
+     * bot). The copies share one callback ref whose target lists every delivered copy, so pressing a button on one
+     * copy can update all of them. Returns each recipient's result.
+     */
+    suspend fun sendDirect(
+        card: NotificationCard,
+        recipients: List<String>
+    ): Map<String, Either<DomainError.NotificationError, NotificationHandle>> {
+        val failure =
+            DomainError.NotificationError.DeliveryFailed(
+                providerId,
+                "direct messages are not supported by $providerId"
+            )
+        return recipients.associateWith { Either.Left(failure) }
+    }
+
     suspend fun cancelProgress(
         handle: NotificationHandle,
         reasonCard: NotificationCard

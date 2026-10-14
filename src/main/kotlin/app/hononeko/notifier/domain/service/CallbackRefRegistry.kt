@@ -45,6 +45,21 @@ class CallbackRefRegistry(
         return null
     }
 
+    /** Replaces what [ref] points to, e.g. to record where its card was delivered, and restarts its TTL. */
+    suspend fun update(
+        ref: String,
+        target: CallbackTarget,
+        ttlSeconds: Long
+    ) {
+        if (!REF_PATTERN.matches(ref)) return
+        stateStore.set(
+            KEY_PREFIX + ref,
+            json.encodeToString(CallbackTarget.serializer(), target),
+            ttlSeconds,
+            nowMillis = clock()
+        )
+    }
+
     /** Returns the target behind [ref], or `null` if the ref is malformed, unknown, expired or holds unreadable data. */
     suspend fun resolve(ref: String): CallbackTarget? {
         if (!REF_PATTERN.matches(ref)) return null

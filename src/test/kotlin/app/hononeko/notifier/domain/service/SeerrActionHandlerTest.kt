@@ -185,4 +185,20 @@ class SeerrActionHandlerTest {
             assertTrue(result.isLeft())
             coVerify(exactly = 0) { seerr.approveRequest(any()) }
         }
+
+    @Test
+    fun `a decision stamps every admin's copy of the card`() =
+        runTest {
+            val otherAdmin = NotificationHandle("telegram", "2", "9", isPhoto = true)
+            val clicked = NotificationHandle("telegram", "1", "5")
+            val target = CallbackTarget(requestCard, deliveries = listOf(clicked, otherAdmin))
+            val ref = registry.register(target, ttlSeconds = 60)!!
+
+            handler(SeerrAction.APPROVE).handle(BotInteraction(admin, "seerr_approve", ref, clicked), target)
+
+            coVerify(exactly = 1) { publisher.editCard(clicked, any()) }
+            coVerify(
+                exactly = 1
+            ) { publisher.editCard(otherAdmin, match { it.footnote!!.startsWith("✅ Approved by @alex") }) }
+        }
 }

@@ -3,6 +3,7 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
 import app.hononeko.notifier.domain.model.CallbackTarget
 import app.hononeko.notifier.domain.model.NotificationCard
+import app.hononeko.notifier.domain.model.NotificationHandle
 import io.mockk.coVerify
 import io.mockk.spyk
 import kotlinx.coroutines.test.runTest
@@ -112,5 +113,18 @@ class CallbackRefRegistryTest {
     fun `claim refuses malformed refs`() =
         runTest {
             assertFalse(registry.claim("bad ref"))
+        }
+
+    @Test
+    fun `update replaces the target and restarts its ttl`() =
+        runTest {
+            val ref = registry.register(target("x"), ttlSeconds = 60)!!
+            val updated = target("x").copy(deliveries = listOf(NotificationHandle("telegram", "1", "5")))
+
+            now += 50_000
+            registry.update(ref, updated, ttlSeconds = 60)
+            now += 50_000
+
+            assertEquals(updated, registry.resolve(ref))
         }
 }

@@ -32,9 +32,12 @@ data class BotReply(
 
 /**
  * What a callback ref resolves to: the card the buttons were sent on, so a handler can re-render it.
+ * [deliveries] lists every copy sharing the ref when one card went to several chats (e.g. a direct message to each
+ * admin), so a handler can update all of them; it is empty for a card sent once.
  * Stored as JSON, so fields can be added without changing existing refs.
  */
 @Serializable
 data class CallbackTarget(
-    val card: NotificationCard
+    val card: NotificationCard,
+    val deliveries: List<NotificationHandle> = emptyList()
 )
