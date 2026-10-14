@@ -131,14 +131,37 @@ class SystemHealthServiceTest {
         }
 
     @Test
-    fun `health restored goes to the channel`() =
+    fun `health restored goes only to admins, without buttons`() =
         runTest {
             val publisher = FakeNotificationPublisher()
 
             SystemHealthService(publisher, admins).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
 
-            assertEquals(emptyList(), publisher.directSends)
+            assertEquals(emptyList(), publisher.sentCards, "the channel must not get health cards")
+            val (card, recipients) = publisher.directSends.single()
+            assertEquals(admins, recipients)
+            assertEquals(emptyList(), card.interactions)
+        }
+
+    @Test
+    fun `health restored falls back to the channel when no admin can be reached`() =
+        runTest {
+            val publisher = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
+
+            SystemHealthService(publisher, admins).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
+
             assertEquals(emptyList(), publisher.sentCards.single().interactions)
+        }
+
+    @Test
+    fun `without admins health restored goes to the channel as before`() =
+        runTest {
+            val publisher = FakeNotificationPublisher()
+
+            SystemHealthService(publisher).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
+
+            assertEquals(emptyList(), publisher.directSends)
+            assertEquals(1, publisher.sentCards.size)
         }
 
     @Test
