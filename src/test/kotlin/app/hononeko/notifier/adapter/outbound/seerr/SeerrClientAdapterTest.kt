@@ -205,4 +205,24 @@ class SeerrClientAdapterTest {
             assertIs<Either.Left<DomainError.RequestManagerError.Rejected>>(seerr.approveRequest(1))
             assertEquals(1, requests.size)
         }
+
+    @Test
+    fun `Seerr's 500 Issue not found is NotFound`() =
+        runTest {
+            assertEquals(
+                Either.Left(DomainError.RequestManagerError.NotFound("issue", 999999)),
+                adapter(HttpStatusCode.InternalServerError, """{"message":"Issue not found."}""").resolveIssue(999999)
+            )
+        }
+
+    @Test
+    fun `any other 500 stays Rejected`() =
+        runTest {
+            for (body in listOf("""{"message":"Something else broke"}""", "not json", "")) {
+                assertIs<Either.Left<DomainError.RequestManagerError.Rejected>>(
+                    adapter(HttpStatusCode.InternalServerError, body).resolveIssue(7),
+                    body
+                )
+            }
+        }
 }
