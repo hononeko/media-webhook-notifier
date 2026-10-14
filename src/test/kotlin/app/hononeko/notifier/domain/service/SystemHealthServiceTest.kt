@@ -21,6 +21,22 @@ class SystemHealthServiceTest {
     ) : NotificationPublisherPort {
         override val providerId: String = "fake"
         val sentCards = Collections.synchronizedList(mutableListOf<NotificationCard>())
+        val directSends = Collections.synchronizedList(mutableListOf<Pair<NotificationCard, List<String>>>())
+        var unreachable: Set<String> = emptySet()
+
+        override suspend fun sendDirect(
+            card: NotificationCard,
+            recipients: List<String>
+        ): Map<String, Either<DomainError.NotificationError, NotificationHandle>> {
+            directSends.add(card to recipients)
+            return recipients.associateWith {
+                if (it in unreachable) {
+                    Either.Left(DomainError.NotificationError.DeliveryFailed("fake", "Forbidden: bot can't initiate"))
+                } else {
+                    Either.Right(NotificationHandle("fake", it, "dm-$it"))
+                }
+            }
+        }
 
         override suspend fun sendCard(
             card: NotificationCard
@@ -91,5 +107,59 @@ class SystemHealthServiceTest {
 
             val result = service.announce(payload)
             assertTrue(result.isLeft())
+        }
+
+    private val admins = listOf("1", "2")
+
+    private fun health(
+        level: String = "warning",
+        type: EventType = EventType.HEALTH_ISSUE
+    ) = MediaPayload.ServarrHealth(source = AppSource.SONARR, eventType = type, level = level, message = "Indexer down")
+
+    @Test
+    fun `health issue goes only to admins, with Acknowledge`() =
+        runTest {
+            val publisher = FakeNotificationPublisher()
+
+            val result = SystemHealthService(publisher, admins).announce(health())
+
+            assertTrue(result.isRight())
+            assertEquals(emptyList(), publisher.sentCards, "the channel must not get health issues")
+            val (card, recipients) = publisher.directSends.single()
+            assertEquals(admins, recipients)
+            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), card.interactions)
+        }
+
+    @Test
+    fun `health restored goes to the channel`() =
+        runTest {
+            val publisher = FakeNotificationPublisher()
+
+            SystemHealthService(publisher, admins).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
+
+            assertEquals(emptyList(), publisher.directSends)
+            assertEquals(emptyList(), publisher.sentCards.single().interactions)
+        }
+
+    @Test
+    fun `no reachable admin falls back to an informational channel card without buttons`() =
+        runTest {
+            val publisher = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
+
+            val result = SystemHealthService(publisher, admins).announce(health(level = "error"))
+
+            assertTrue(result.isRight())
+            assertEquals(emptyList(), publisher.sentCards.single().interactions)
+        }
+
+    @Test
+    fun `without admins health issues go to the channel as before`() =
+        runTest {
+            val publisher = FakeNotificationPublisher()
+
+            SystemHealthService(publisher).announce(health())
+
+            assertEquals(emptyList(), publisher.directSends)
+            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), publisher.sentCards.single().interactions)
         }
 }

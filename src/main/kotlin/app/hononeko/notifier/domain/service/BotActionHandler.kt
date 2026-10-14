@@ -4,6 +4,7 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.BotInteraction
 import app.hononeko.notifier.domain.model.BotReply
 import app.hononeko.notifier.domain.model.CallbackTarget
+import app.hononeko.notifier.domain.model.NotificationHandle
 import arrow.core.Either
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -22,6 +23,18 @@ interface BotActionHandler {
         target: CallbackTarget
     ): Either<DomainError, BotReply>
 }
+
+/**
+ * The other copies of a card delivered to several chats (e.g. one per admin), so a handler can update them along
+ * with [origin], the copy that was pressed.
+ */
+internal fun otherCopies(
+    target: CallbackTarget,
+    origin: NotificationHandle
+): List<NotificationHandle> =
+    target.deliveries.filterNot {
+        it.channelOrChatId == origin.channelOrChatId && it.messageReferenceId == origin.messageReferenceId
+    }
 
 /** `HH:mm` of [epochMillis] in [timeZone], for the "Handled by" / "Approved by" stamps on edited cards. */
 internal fun hourMinute(

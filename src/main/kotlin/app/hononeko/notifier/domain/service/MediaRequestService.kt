@@ -27,22 +27,13 @@ class MediaRequestService(
         val buttons = if (decisionRecipients.isNotEmpty()) seerrButtons(payload) else emptyList()
         if (buttons.isEmpty()) return notificationPublisher.sendCard(card).map { }
 
-        val results =
-            notificationPublisher.sendDirect(card.copy(interactions = buttons + card.interactions), decisionRecipients)
-        results.forEach { (recipient, result) ->
-            result.onLeft { error ->
-                logger.warn(
-                    "Could not send '{}' to admin {}; they may need to start a chat with the bot: {}",
-                    card.title,
-                    recipient,
-                    error
-                )
-            }
-        }
-        if (results.values.any { it.isRight() }) return Either.Right(Unit)
-
-        logger.warn("No admin could be reached; posting '{}' to the channel without decision buttons", card.title)
-        return notificationPublisher.sendCard(card).map { }
+        // The fallback leaves the buttons off: in the channel, anyone could see them.
+        return notificationPublisher.sendPrivatelyOrToChannel(
+            card.copy(interactions = buttons + card.interactions),
+            decisionRecipients,
+            fallback = card,
+            logger = logger
+        )
     }
 
     private fun seerrButtons(payload: MediaPayload.SeerrEvent): List<CardInteraction> =
