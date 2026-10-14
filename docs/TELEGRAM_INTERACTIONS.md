@@ -96,6 +96,7 @@ environment:
 - If **no** admin could be reached, the card goes to the channel without buttons, so the request isn't lost, and a warning is logged.
 - Buttons are checked again when pressed: they only work for users still in `TELEGRAM_ADMIN_USERS`, in their own private chat. If you remove someone from the list, the copies they already have stop working.
 - The API key acts as Seerr's admin user, so Seerr records the decision under that account, not the Telegram admin's.
+- Seerr's *Settings → Network → CSRF Protection* can stay on: the service fetches Seerr's CSRF token when Seerr asks for one.
 - Each card's buttons work once, like **Acknowledge**. While one press is being handled, a second press (a double-tap, or another admin pressing **Decline** on their copy) answers "⏳ Someone is already handling this."
 - Without `SEERR_URL` / `SEERR_API_KEY`, or with the flag off, Seerr cards go to the channel exactly as before. With Seerr configured but `TELEGRAM_ADMIN_USERS` empty, they also stay in the channel without buttons, and startup logs a warning.
 
