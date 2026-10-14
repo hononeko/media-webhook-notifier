@@ -19,6 +19,9 @@ import io.ktor.http.decodeURLPart
 import io.ktor.http.isSuccess
 import io.ktor.http.parseServerSetCookieHeader
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicReference
 
@@ -38,6 +41,7 @@ class SeerrClientAdapter(
     companion object {
         private const val MAX_DETAILS = 200
         private const val CSRF_COOKIE = "_csrf"
+        private const val ISSUE_NOT_FOUND = "Issue not found."
         private const val TOKEN_COOKIE = "XSRF-TOKEN"
         private const val CSRF_HEADER = "X-XSRF-TOKEN"
     }
@@ -87,8 +91,7 @@ class SeerrClientAdapter(
                 logger.info("Seerr {} {} set to {}", resource, id, status)
                 Either.Right(Unit)
             }
-            reply.status == HttpStatusCode.NotFound ->
-                Either.Left(DomainError.RequestManagerError.NotFound(resource, id))
+            reply.isNotFound() -> Either.Left(DomainError.RequestManagerError.NotFound(resource, id))
             else ->
                 Either.Left(
                     DomainError.RequestManagerError.Rejected(reply.status.value, reply.body.take(MAX_DETAILS))
@@ -100,6 +103,20 @@ class SeerrClientAdapter(
         val status: HttpStatusCode,
         val body: String
     ) {
+        // Seerr's issue status route answers every failure, a missing issue included, with 500 "Issue not found.".
+        fun isNotFound(): Boolean =
+            status == HttpStatusCode.NotFound ||
+                (status == HttpStatusCode.InternalServerError && message() == ISSUE_NOT_FOUND)
+
+        private fun message(): String? =
+            runCatching {
+                Json
+                    .parseToJsonElement(body)
+                    .jsonObject["message"]
+                    ?.jsonPrimitive
+                    ?.content
+            }.getOrNull()
+
         fun isCsrfRejection(): Boolean = status == HttpStatusCode.Forbidden && body.contains("csrf", ignoreCase = true)
     }
 
