@@ -65,7 +65,7 @@ Lets everyone see that someone is dealing with a card. It appears on:
 
 Pressing it edits the card in place: a `✅ Handled by @alex · 14:32` line is added at the bottom and the button is removed. For a health issue sent to the admins, **every admin's copy** is marked handled.
 
-**Health issues** go privately to the admins, the people who can fix them, and keep the channel informational. "Health restored" cards still go to the channel. As with Seerr requests, each admin must have started a private chat with the bot once (see [Seerr: Approve, Decline, Resolve](#seerr-approve-decline-resolve)). If no admin can be reached, the health issue goes to the channel as before, with its **Acknowledge** button, which anyone in `TELEGRAM_ALLOWED_USERS` can press. Link buttons such as **Wiki** stay. The time follows the container's `TZ` variable (UTC when unset), for example `TZ=Europe/Bucharest`.
+**Health issues** go privately to the admins, the people who can fix them, and keep the channel informational. "Health restored" cards still go to the channel. As with Seerr requests, each admin must have started a private chat with the bot once (see [Seerr: Approve, Decline, Resolve](#seerr-approve-decline-resolve)). If no admin can be reached, the channel gets an informational copy of the health issue without buttons, as with Seerr requests, and a warning is logged. Link buttons such as **Wiki** stay. The time follows the container's `TZ` variable (UTC when unset), for example `TZ=Europe/Bucharest`.
 
 Each button works **once** and for **30 days**. After that, or after a restart with the in-memory state store, pressing it answers "⌛ This button has expired." Use the Valkey / Redis state store to keep buttons working across restarts.
 
@@ -110,7 +110,7 @@ environment:
 | Logs show `TELEGRAM_INTERACTIVE_ENABLED is set but the notification provider is ...` | Interactions need the Telegram notification provider, so the feature stays off. |
 | Acknowledge answers "⚠️ Action failed." | The card was deleted, or the bot can no longer edit it. The reason is logged at WARN. |
 | Admins don't receive Seerr requests or health issues | Each admin must start a private chat with the bot once (logs: `they may need to start a chat with the bot`). For Seerr requests, also check that `SEERR_URL` and `SEERR_API_KEY` are set and `TELEGRAM_ADMIN_USERS` isn't empty; startup logs which one is missing. Requests that Seerr auto-approves are never sent for a decision. |
-| Pending requests appear in the channel without buttons, or health issues appear in the channel | No admin could be reached privately, so the card fell back to the channel. See the row above. |
+| Pending requests or health issues appear in the channel without buttons | No admin could be reached privately, so the card fell back to the channel. See the row above. |
 | Someone gets "⛔ You're not allowed to control this bot." on Approve | They're no longer in `TELEGRAM_ADMIN_USERS`; copies sent while they were an admin stop working. |
 | Approve answers "⚠️ Action failed." | Seerr was unreachable or refused the API key. The HTTP status is logged at WARN. The card is unchanged, so the button can be pressed again. |
 | Approve answers "⚠️ This request no longer exists in Seerr." | The request (or issue) was deleted in Seerr after the card was sent. |

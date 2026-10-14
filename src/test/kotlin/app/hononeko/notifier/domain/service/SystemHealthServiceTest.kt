@@ -142,14 +142,14 @@ class SystemHealthServiceTest {
         }
 
     @Test
-    fun `no reachable admin falls back to the channel with Acknowledge`() =
+    fun `no reachable admin falls back to an informational channel card without buttons`() =
         runTest {
             val publisher = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
 
             val result = SystemHealthService(publisher, admins).announce(health(level = "error"))
 
             assertTrue(result.isRight())
-            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), publisher.sentCards.single().interactions)
+            assertEquals(emptyList(), publisher.sentCards.single().interactions)
         }
 
     @Test

@@ -10,8 +10,8 @@ import org.slf4j.LoggerFactory
 
 /**
  * Sends Sonarr / Radarr health cards. Health issues need someone to act, so with [adminRecipients] set (interactions
- * on and admins configured) they go privately to the admins with their Acknowledge button, falling back to the
- * channel if no admin can be reached. "Health restored" cards are informational and always go to the channel.
+ * on and admins configured) they go privately to the admins with their Acknowledge button. If no admin can be
+ * reached, the channel gets an informational copy without buttons. "Health restored" cards are informational and always go to the channel.
  */
 class SystemHealthService(
     private val notificationPublisher: NotificationPublisherPort,
@@ -26,8 +26,9 @@ class SystemHealthService(
             val needsAction = CardFormatterService.ACKNOWLEDGE in card.interactions
             if (needsAction && adminRecipients.isNotEmpty()) {
                 logger.info("Sending system health card to admins: {} [{}]", card.title, card.level)
-                // Acknowledge isn't admin-only, so the channel fallback keeps it for allowlisted users.
-                notificationPublisher.sendPrivatelyOrToChannel(card, adminRecipients, fallback = card, logger).bind()
+                // Like Seerr decisions, the channel fallback is informational only: no buttons.
+                val fallback = card.copy(interactions = emptyList())
+                notificationPublisher.sendPrivatelyOrToChannel(card, adminRecipients, fallback, logger).bind()
             } else {
                 logger.info("Publishing system health card: {} [{}]", card.title, card.level)
                 notificationPublisher.sendCard(card).bind()
