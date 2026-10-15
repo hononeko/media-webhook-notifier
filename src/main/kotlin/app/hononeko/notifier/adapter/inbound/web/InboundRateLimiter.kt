@@ -5,6 +5,9 @@ import io.ktor.server.plugins.origin
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
+/** Above this many tracked clients, buckets from past minutes are evicted. */
+private const val EVICTION_THRESHOLD = 2000
+
 class InboundRateLimiter(
     val limitPerMinute: Int = 120
 ) {
@@ -34,7 +37,7 @@ class InboundRateLimiter(
             }
 
         // Periodically evict expired entries to prevent memory leak
-        if (clientBuckets.size > 2000) {
+        if (clientBuckets.size > EVICTION_THRESHOLD) {
             clientBuckets.entries.removeIf { it.value.windowStartMinute < currentMinute - 1 }
         }
 

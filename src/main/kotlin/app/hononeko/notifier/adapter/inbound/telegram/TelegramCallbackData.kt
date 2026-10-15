@@ -16,7 +16,10 @@ internal object TelegramCallbackData {
         val ref: String
     )
 
-    /** Returns the payload for a button, or `null` if [operation] or [ref] is invalid or the result exceeds 64 bytes. */
+    /**
+     * Returns the payload for a button, or `null` if [operation] or [ref] is invalid or the result exceeds 64
+     * bytes.
+     */
     fun encode(
         operation: String,
         ref: String

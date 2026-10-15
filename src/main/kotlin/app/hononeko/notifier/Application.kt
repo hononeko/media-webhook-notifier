@@ -318,11 +318,14 @@ fun buildDependencies(
                 .create(
                     config,
                     callbackRefs,
-                    notificationPublisher,
+                    TelegramInteractionModule.actionHandlers(
+                        notificationPublisher,
+                        callbackRefs,
+                        seerrClient,
+                        healthSnoozes
+                    ),
                     scope,
-                    telegramApiEngine,
-                    seerrClient,
-                    healthSnoozes
+                    telegramApiEngine
                 ).also { it.start(scope) }
         } else {
             null

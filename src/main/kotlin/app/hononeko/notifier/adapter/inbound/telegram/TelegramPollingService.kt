@@ -1,6 +1,7 @@
 package app.hononeko.notifier.adapter.inbound.telegram
 
 import app.hononeko.notifier.domain.error.DomainError
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -71,17 +72,24 @@ internal class TelegramPollingService(
         val wait =
             when {
                 error is DomainError.NotificationError.RateLimited -> error.retryAfterSeconds.seconds
-                status == 409 -> CONFLICT_BACKOFF
-                status == 401 || status == 404 -> rejectedTokenBackoff.next()
+                status == HttpStatusCode.Conflict.value -> CONFLICT_BACKOFF
+                status == HttpStatusCode.Unauthorized.value || status == HttpStatusCode.NotFound.value ->
+                    rejectedTokenBackoff.next()
                 else -> networkBackoff.next()
             }
         when (status) {
-            409 ->
+            HttpStatusCode.Conflict.value ->
                 logger.warn(
-                    "getUpdates returned 409: another instance is polling this bot, or a webhook is registered. Retrying in {}",
+                    "getUpdates returned 409: another instance is polling this bot, or a webhook is registered. " +
+                        "Retrying in {}",
                     wait
                 )
-            401, 404 -> logger.error("getUpdates rejected the bot token (HTTP {}). Retrying in {}", status, wait)
+            HttpStatusCode.Unauthorized.value, HttpStatusCode.NotFound.value ->
+                logger.error(
+                    "getUpdates rejected the bot token (HTTP {}). Retrying in {}",
+                    status,
+                    wait
+                )
             else -> logger.warn("getUpdates failed, retrying in {}: {}", wait, error)
         }
         return wait

@@ -56,30 +56,36 @@ class TelegramInteractionModule private constructor(
     }
 
     companion object {
+        /**
+         * The bot's button handlers: Acknowledge always, the Seerr buttons with a [requestManager], Snooze / Unsnooze
+         * with [snoozes].
+         */
+        fun actionHandlers(
+            publisher: NotificationPublisherPort,
+            refRegistry: CallbackRefRegistry,
+            requestManager: MediaRequestManagerPort? = null,
+            snoozes: HealthSnoozes? = null
+        ): List<BotActionHandler> {
+            val seerr =
+                requestManager?.let { manager ->
+                    SeerrAction.entries.map { SeerrActionHandler(it, manager, publisher, refRegistry) }
+                }
+            val snooze =
+                snoozes?.let {
+                    listOf(SnoozeHandler(it, publisher, refRegistry), UnsnoozeHandler(it, publisher, refRegistry))
+                }
+            return listOf(AcknowledgeHandler(publisher, refRegistry)) + seerr.orEmpty() + snooze.orEmpty()
+        }
+
         fun create(
             config: AppConfig,
             refRegistry: CallbackRefRegistry,
-            publisher: NotificationPublisherPort,
+            handlers: List<BotActionHandler>,
             scope: CoroutineScope,
-            engine: HttpClientEngine? = null,
-            requestManager: MediaRequestManagerPort? = null,
-            snoozes: HealthSnoozes? = null
+            engine: HttpClientEngine? = null
         ): TelegramInteractionModule {
             val interaction = config.telegramInteraction
             val api = TelegramBotApi(config.notifications.botToken, engine)
-            val seerrHandlers: List<BotActionHandler> =
-                requestManager
-                    ?.let { manager ->
-                        SeerrAction.entries.map { SeerrActionHandler(it, manager, publisher, refRegistry) }
-                    }.orEmpty()
-            val snoozeHandlers: List<BotActionHandler> =
-                snoozes
-                    ?.let {
-                        listOf(
-                            SnoozeHandler(it, publisher, refRegistry),
-                            UnsnoozeHandler(it, publisher, refRegistry)
-                        )
-                    }.orEmpty()
             val processor =
                 TelegramCallbackProcessor(
                     guard =
@@ -89,11 +95,7 @@ class TelegramInteractionModule private constructor(
                             interaction.adminUserIds
                         ),
                     useCase =
-                        BotInteractionService(
-                            handlers =
-                                listOf(AcknowledgeHandler(publisher, refRegistry)) + seerrHandlers + snoozeHandlers,
-                            refRegistry = refRegistry
-                        ),
+                        BotInteractionService(handlers = handlers, refRegistry = refRegistry),
                     api = api,
                     scope = scope
                 )
