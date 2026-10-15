@@ -95,11 +95,11 @@ This repository enforces the [Conventional Commits](https://www.conventionalcomm
 * `refactor:`, `perf:`, `chore:`, `ci:`, `build:` and any other type &rarr; **Patch Bump**
 * `docs:`, `test:` &rarr; **No version bump** (still included in the next release's changelog)
 
-### Automated Release Pipeline (`.github/workflows/cd.yml`):
-1. Runs full validation (`ktlintCheck`, `test`, `build-scan`).
-2. Calculates semantic version from git history, ignoring `docs:` and `test:` commits. If no other commits landed since the last tag, the release is skipped.
-3. Builds and pushes multi-stage distroless container image to `ghcr.io/hononeko/media-webhook-notifier`.
-4. Tags git commit and creates GitHub Release with auto-generated changelog.
+### Release Pipeline
+Versions are calculated from git history (`version.yml`), ignoring `docs:` and `test:` commits.
+
+1. **Every push to `main` (`main.yml`):** lint and tests run, then native images for `linux/amd64` and `linux/arm64` are built on their own runners and smoke-tested (`native-image.yml`). If there's something to release, both are published as one multi-arch **release candidate**: `X.Y.Z-rc.N`, `sha-<commit>` and `edge`, attested.
+2. **Stable release (`cd.yml`, dispatched manually from `main`):** promotes the release candidate of the dispatched commit by re-tagging it as `X.Y.Z` and `latest` (same digest, no rebuild). It then tags the git commit, creates the GitHub Release with an auto-generated changelog, and prunes that version's other release candidates from GHCR. Dispatch with `dry_run` to check without changing anything.
 
 ---
 
@@ -111,8 +111,10 @@ This repository enforces the [Conventional Commits](https://www.conventionalcomm
 │   └── workflows/
 │       ├── validate.yml          # Reusable validation (lint, test, build scan)
 │       ├── pr.yml                # PR validation workflow
-│       ├── main.yml              # Main branch push validation
-│       ├── cd.yml                # SemVer calculation, container publish & GitHub release
+│       ├── main.yml              # Main push: validation, native images, release candidate
+│       ├── cd.yml                # Stable release: promote the release candidate, git tag & GitHub release
+│       ├── version.yml           # Reusable SemVer + release-candidate version calculation
+│       ├── native-image.yml      # Reusable multi-arch native image build + smoke test
 │       ├── sonar.yml             # SonarQube / SonarCloud code quality analysis
 │       └── codeql.yml            # GitHub CodeQL Static Analysis (manual build mode)
 
