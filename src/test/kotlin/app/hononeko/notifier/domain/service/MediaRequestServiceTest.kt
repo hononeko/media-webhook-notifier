@@ -1,79 +1,20 @@
 package app.hononeko.notifier.domain.service
 
-import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.CardInteraction
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
-import app.hononeko.notifier.domain.model.NotificationCard
-import app.hononeko.notifier.domain.model.NotificationHandle
-import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import arrow.core.Either
+import app.hononeko.notifier.testing.RecordingPublisher
 import kotlinx.coroutines.test.runTest
-import java.util.Collections
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class MediaRequestServiceTest {
-    private class FakeNotificationPublisher(
-        private val shouldFail: Boolean = false
-    ) : NotificationPublisherPort {
-        override val providerId: String = "fake"
-        val sentCards = Collections.synchronizedList(mutableListOf<NotificationCard>())
-        val directSends = Collections.synchronizedList(mutableListOf<Pair<NotificationCard, List<String>>>())
-        var unreachable: Set<String> = emptySet()
-
-        override suspend fun sendDirect(
-            card: NotificationCard,
-            recipients: List<String>
-        ): Map<String, Either<DomainError.NotificationError, NotificationHandle>> {
-            directSends.add(card to recipients)
-            return recipients.associateWith {
-                if (it in unreachable) {
-                    Either.Left(DomainError.NotificationError.DeliveryFailed("fake", "Forbidden: bot can't initiate"))
-                } else {
-                    Either.Right(NotificationHandle("fake", it, "dm-$it"))
-                }
-            }
-        }
-
-        override suspend fun sendCard(
-            card: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> =
-            if (shouldFail) {
-                Either.Left(DomainError.NotificationError.DeliveryFailed("fake", "Delivery error"))
-            } else {
-                sentCards.add(card)
-                Either.Right(NotificationHandle("fake", "chat1", "msg1"))
-            }
-
-        override suspend fun startLiveProgress(
-            initialCard: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> =
-            Either.Right(NotificationHandle("fake", "chat1", "msg1"))
-
-        override suspend fun updateProgress(
-            handle: NotificationHandle,
-            update: ProgressUpdate
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-
-        override suspend fun completeProgress(
-            handle: NotificationHandle,
-            finalCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-
-        override suspend fun cancelProgress(
-            handle: NotificationHandle,
-            reasonCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-    }
-
     @Test
     fun `should publish media request notification cards successfully`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
             val service = MediaRequestService(publisher)
 
             val payload =
@@ -100,7 +41,7 @@ class MediaRequestServiceTest {
     @Test
     fun `should return error when publisher fails`() =
         runTest {
-            val failingPublisher = FakeNotificationPublisher(shouldFail = true)
+            val failingPublisher = RecordingPublisher(shouldFail = true)
             val service = MediaRequestService(failingPublisher)
 
             val payload =
@@ -132,7 +73,7 @@ class MediaRequestServiceTest {
     @Test
     fun `pending request goes only to admins, with Approve and Decline carrying the request id`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             val result = MediaRequestService(publisher, admins).announce(event(EventType.REQUEST_PENDING))
 
@@ -152,7 +93,7 @@ class MediaRequestServiceTest {
     @Test
     fun `new issue goes only to admins, with Resolve carrying the issue id`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             MediaRequestService(publisher, admins).announce(event(EventType.ISSUE_CREATED))
 
@@ -168,7 +109,7 @@ class MediaRequestServiceTest {
     @Test
     fun `one reachable admin is enough`() =
         runTest {
-            val publisher = FakeNotificationPublisher().apply { unreachable = setOf("1") }
+            val publisher = RecordingPublisher().apply { unreachable = setOf("1") }
 
             val result = MediaRequestService(publisher, admins).announce(event(EventType.REQUEST_PENDING))
 
@@ -179,7 +120,7 @@ class MediaRequestServiceTest {
     @Test
     fun `no reachable admin falls back to the channel without buttons`() =
         runTest {
-            val publisher = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
+            val publisher = RecordingPublisher().apply { unreachable = admins.toSet() }
 
             val result = MediaRequestService(publisher, admins).announce(event(EventType.REQUEST_PENDING))
 
@@ -199,7 +140,7 @@ class MediaRequestServiceTest {
                     admins to event(EventType.REQUEST_APPROVED)
                 )
             for ((recipients, payload) in cases) {
-                val publisher = FakeNotificationPublisher()
+                val publisher = RecordingPublisher()
 
                 MediaRequestService(publisher, recipients).announce(payload)
 
@@ -211,7 +152,7 @@ class MediaRequestServiceTest {
     @Test
     fun `failed request stays in the channel with only its Acknowledge button`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             MediaRequestService(publisher, admins).announce(event(EventType.REQUEST_FAILED))
 
