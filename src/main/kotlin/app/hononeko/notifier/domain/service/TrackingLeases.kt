@@ -2,6 +2,7 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import org.slf4j.LoggerFactory
 
 private const val MIN_LEASE_TTL_SECONDS = 30L
 private const val LEASE_TTL_POLL_INTERVALS = 3L
@@ -60,3 +61,27 @@ class TrackingLeases(
         const val KEY_PREFIX = "lock:track:"
     }
 }
+
+// Logged under the tracker's name, where these checks used to live.
+private val trackerLogger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
+
+/** Takes [hash]'s leases before tracking starts; always true without leases (a single instance). */
+internal suspend fun TrackingLeases?.acquireOrSkip(hash: String): Boolean {
+    if (this == null || acquire(hash)) return true
+    trackerLogger.info("Download {} is tracked by another instance; not starting a second tracker", hash)
+    return false
+}
+
+/** Renews [hash]'s leases each tick; false only when another instance owns the download now. */
+internal suspend fun TrackingLeases?.stillOwns(hash: String): Boolean =
+    when (this?.renew(hash)) {
+        LockRenewal.LOST -> {
+            trackerLogger.warn("Another instance owns {} now; stopping without touching its card", hash)
+            false
+        }
+        LockRenewal.STORE_UNAVAILABLE -> {
+            trackerLogger.debug("Couldn't renew the tracking lease for {}; state store unavailable, carrying on", hash)
+            true
+        }
+        LockRenewal.RENEWED, null -> true
+    }

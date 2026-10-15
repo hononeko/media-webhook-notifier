@@ -98,7 +98,7 @@ class SeasonDebouncerTest {
 
             assertEquals(0, received.size)
             assertEquals(1, debouncer.activeBufferCount())
-            assertEquals(1, debouncer.activeGrabBufferCount())
+            assertEquals(1, debouncer.activeGrabBufferCount)
 
             testScope.advanceTimeBy(2100L)
 
@@ -215,7 +215,7 @@ class SeasonDebouncerTest {
             // Before debounce window expires, no notifications emitted and 1 buffer active
             assertEquals(0, received.size)
             assertEquals(1, debouncer.activeBufferCount())
-            assertEquals(1, debouncer.activeDownloadBufferCount())
+            assertEquals(1, debouncer.activeDownloadBufferCount)
 
             // Advance time past debounce window
             testScope.advanceTimeBy(2100L)
@@ -332,8 +332,8 @@ class SeasonDebouncerTest {
             debouncer.submit(download)
 
             assertEquals(2, debouncer.activeBufferCount())
-            assertEquals(1, debouncer.activeGrabBufferCount())
-            assertEquals(1, debouncer.activeDownloadBufferCount())
+            assertEquals(1, debouncer.activeGrabBufferCount)
+            assertEquals(1, debouncer.activeDownloadBufferCount)
 
             debouncer.flushAll()
 
@@ -505,7 +505,7 @@ class SeasonDebouncerTest {
 
             assertEquals(0, available.size)
             assertEquals(1, debouncer.activeBufferCount())
-            assertEquals(1, debouncer.activeAvailableBufferCount())
+            assertEquals(1, debouncer.activeAvailableBufferCount)
 
             testScope.advanceTimeBy(2100L)
 
@@ -725,7 +725,7 @@ class SeasonDebouncerTest {
 
             debouncer.submit(plexMovie)
             assertEquals(1, debouncer.activeBufferCount())
-            assertEquals(1, debouncer.activeAvailableBufferCount())
+            assertEquals(1, debouncer.activeAvailableBufferCount)
 
             debouncer.flush("plex:plex:movie:interstellar:2014")
             assertEquals(1, available.size)

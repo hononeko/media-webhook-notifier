@@ -10,7 +10,6 @@ import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
-import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import arrow.core.Either
 import kotlinx.coroutines.CancellationException
@@ -56,9 +55,9 @@ class DownloadTrackerEngine(
     private val stalledTimeoutMinutes: Long get() = config.stalledTimeoutMinutes
     private val missingGraceAttempts: Int get() = config.missingGraceAttempts
     private val webuiPublicUrl: String? get() = config.webuiPublicUrl
-    private val tagPrefix: String get() = config.tagPrefix
 
     private val logger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
+    private val trackingTags = TrackingTags(downloadClient, config.tagPrefix)
     private val trackingLocks = ConcurrentHashMap<String, Mutex>()
 
     override suspend fun track(
@@ -76,7 +75,7 @@ class DownloadTrackerEngine(
                 logger.info("Download tracker already running for hash: {}", normalizedHash)
                 return@withLock Either.Right(TrackingStart.ALREADY_TRACKED)
             }
-            if (!acquireLeases(normalizedHash)) {
+            if (!leases.acquireOrSkip(normalizedHash)) {
                 return@withLock Either.Right(TrackingStart.TRACKED_ELSEWHERE)
             }
 
@@ -95,16 +94,8 @@ class DownloadTrackerEngine(
 
             val isPhoto = initialCard.artworkBytes != null || !initialCard.artworkUrl.isNullOrBlank()
 
-            // Tag torrent in qBittorrent so it can be resumed after container restart
-            val tags =
-                buildList {
-                    add("${tagPrefix}msg:${handle.messageReferenceId}")
-                    add("${tagPrefix}photo:${if (isPhoto) 1 else 0}")
-                    if (handle.channelOrChatId.isNotBlank()) {
-                        add("${tagPrefix}chat:${handle.channelOrChatId}")
-                    }
-                }
-            downloadClient.addTags(normalizedHash, tags)
+            // Tag the download so its card can be resumed after a restart.
+            trackingTags.attach(normalizedHash, handle, isPhoto)
 
             lateinit var trackingJob: Job
             trackingJob =
@@ -148,7 +139,7 @@ class DownloadTrackerEngine(
                 logger.info("Download tracker already running for restored hash: {}", normalizedHash)
                 return@withLock Either.Right(TrackingStart.ALREADY_TRACKED)
             }
-            if (!acquireLeases(normalizedHash)) {
+            if (!leases.acquireOrSkip(normalizedHash)) {
                 return@withLock Either.Right(TrackingStart.TRACKED_ELSEWHERE)
             }
 
@@ -206,7 +197,7 @@ class DownloadTrackerEngine(
                 delay(pollIntervalSeconds * 1000)
                 elapsedSeconds += pollIntervalSeconds
 
-                if (!stillOwned(hash)) return
+                if (!leases.stillOwns(hash)) return
 
                 isRunning = processTrackingTick(hash, payload, handle, state)
             }
@@ -220,7 +211,7 @@ class DownloadTrackerEngine(
                         webuiPublicUrl
                     )
                 notificationPublisher.cancelProgress(handle, stalledCard)
-                cleanupTags(hash, handle)
+                trackingTags.cleanup(hash, handle)
                 activeTrackerStore.cancel(hash)
             }
         } catch (e: CancellationException) {
@@ -294,7 +285,7 @@ class DownloadTrackerEngine(
         logger.warn("Torrent {} missing after {} attempts. Halting.", hash, missingCount)
         val stalledCard = DownloadCards.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
         notificationPublisher.cancelProgress(handle, stalledCard)
-        cleanupTags(hash, handle)
+        trackingTags.cleanup(hash, handle)
         activeTrackerStore.cancel(hash)
         return true
     }
@@ -310,7 +301,7 @@ class DownloadTrackerEngine(
             logger.info("Torrent {} reached 100%. Dispatching completion card.", hash)
             val completionCard = DownloadCards.buildCompletionCard(payload, progress, webuiPublicUrl)
             notificationPublisher.completeProgress(handle, completionCard)
-            cleanupTags(hash, handle)
+            trackingTags.cleanup(hash, handle)
             activeTrackerStore.complete(hash)
             state.stalledDurationSeconds = 0L
             state.lastDownloadedBytes = progress.downloadedBytes
@@ -330,7 +321,7 @@ class DownloadTrackerEngine(
             logger.warn("Torrent {} stalled for {}s. Halting.", hash, updatedStalledSeconds)
             val stalledCard = DownloadCards.buildStalledCard(payload, progress, webuiPublicUrl)
             notificationPublisher.cancelProgress(handle, stalledCard)
-            cleanupTags(hash, handle)
+            trackingTags.cleanup(hash, handle)
             activeTrackerStore.cancel(hash)
             return true
         }
@@ -353,46 +344,6 @@ class DownloadTrackerEngine(
         }
     }
 
-    private suspend fun cleanupTags(
-        hash: String,
-        handle: NotificationHandle
-    ) {
-        val currentProgress = downloadClient.getProgress(hash)
-        val currentTags =
-            when (currentProgress) {
-                is Either.Right -> currentProgress.value?.tags ?: emptyList()
-                is Either.Left -> emptyList()
-            }
-
-        val mwnTagsOnTorrent = currentTags.filter { it.startsWith(tagPrefix) }
-        val tagsToRemove =
-            buildSet {
-                addAll(mwnTagsOnTorrent)
-                if (handle.messageReferenceId.isNotBlank()) {
-                    add("${tagPrefix}msg:${handle.messageReferenceId}")
-                }
-                add("${tagPrefix}photo:0")
-                add("${tagPrefix}photo:1")
-                if (handle.channelOrChatId.isNotBlank()) {
-                    add("${tagPrefix}chat:${handle.channelOrChatId}")
-                }
-            }.toList()
-
-        downloadClient.removeTags(hash, tagsToRemove)
-
-        val tagsToDelete =
-            buildSet {
-                if (handle.messageReferenceId.isNotBlank()) {
-                    add("${tagPrefix}msg:${handle.messageReferenceId}")
-                }
-                addAll(mwnTagsOnTorrent.filter { it.startsWith("${tagPrefix}msg:") })
-            }.toList()
-
-        if (tagsToDelete.isNotEmpty()) {
-            downloadClient.deleteTags(tagsToDelete)
-        }
-    }
-
     /** Cancels every tracking loop and waits up to [timeout] for them to release their leases. */
     suspend fun stopAll(timeout: Duration = 3.seconds) {
         logger.info("Stopping all active download trackers (count: {})", activeTrackerStore.activeCount())
@@ -401,27 +352,6 @@ class DownloadTrackerEngine(
             logger.warn("Some download trackers didn't stop within {}", timeout)
         }
     }
-
-    private suspend fun acquireLeases(hash: String): Boolean {
-        val leases = leases ?: return true
-        if (leases.acquire(hash)) return true
-        logger.info("Download {} is tracked by another instance; not starting a second tracker", hash)
-        return false
-    }
-
-    /** Renews the leases; false only when another instance owns the download now. */
-    private suspend fun stillOwned(hash: String): Boolean =
-        when (leases?.renew(hash)) {
-            LockRenewal.LOST -> {
-                logger.warn("Another instance owns {} now; stopping without touching its card", hash)
-                false
-            }
-            LockRenewal.STORE_UNAVAILABLE -> {
-                logger.debug("Couldn't renew the tracking lease for {}; state store unavailable, carrying on", hash)
-                true
-            }
-            LockRenewal.RENEWED, null -> true
-        }
 
     fun activeTrackerCount(): Int = activeTrackerStore.activeCount()
 
