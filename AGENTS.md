@@ -91,16 +91,16 @@ This repository enforces the [Conventional Commits](https://www.conventionalcomm
 ### Commit Types & Version Bumping Rules:
 * `fix:` Patches a bug &rarr; **Patch Bump** (`0.1.0` &rarr; `0.1.1`)
 * `feat:` Adds a new feature &rarr; **Minor Bump** (`0.1.0` &rarr; `0.2.0`)
-* `feat!:` or `fix!:` or commit body with `BREAKING CHANGE:` &rarr; **Major Bump** (`0.1.0` &rarr; `1.0.0`)
+* `feat!:` or `fix!:` (a `!` in the header), or a footer line starting `BREAKING CHANGE:` &rarr; **Major Bump** (`0.1.0` &rarr; `1.0.0`). A body that merely mentions them doesn't count.
 * `refactor:`, `perf:`, `chore:`, `ci:`, `build:` and any other type &rarr; **Patch Bump**
 * `docs:`, `test:` &rarr; **No version bump** (still included in the next release's changelog)
 
 ### Release Pipeline
-Versions are calculated from git history (`version.yml`), ignoring `docs:` and `test:` commits.
+Versions are calculated from git history (`version.yml`), ignoring `docs:` and `test:` commits. The rules, release notes and image smoke test are shared by all my repositories in [`vehkiya/actions`](https://github.com/vehkiya/actions).
 
 1. **Every push to `main` (`main.yml`):** lint and tests run, then native images for `linux/amd64` and `linux/arm64` are built on their own runners and smoke-tested (`native-image.yml`). If there's something to release, both are published as one multi-arch **release candidate**: `X.Y.Z-rc.N`, `sha-<commit>` and `edge`, attested.
 2. **Stable release (`cd.yml`, dispatched manually from `main`):** promotes the release candidate of the dispatched commit by re-tagging it as `X.Y.Z` and `latest` (same digest, no rebuild). It then tags the git commit, creates the GitHub Release, and prunes that version's other release candidates from GHCR. Dispatch with `dry_run` to check without changing anything; the release notes are shown in the run summary either way.
-3. **Release notes (`.github/scripts/release-notes.sh`):** the commits since the last release are grouped by type: 💥 Breaking changes (`type!:` or a `BREAKING CHANGE:` footer), 🚀 Features (`feat`), 🐛 Bug fixes (`fix`), 👷 CI (`ci`) and 📦 Others (every other type, including `docs:` and `test:`). Each entry is `type(scope): subject #PR`. Commit subjects are the release notes, so write them for a reader of the release.
+3. **Release notes (`vehkiya/actions/release-notes`):** the commits since the last release are grouped by type: 💥 Breaking changes (`type!:` or a `BREAKING CHANGE:` footer), 🚀 Features (`feat`), 🐛 Bug fixes (`fix`), 👷 CI (`ci`) and 📦 Others (every other type, including `docs:` and `test:`). Each entry is `type(scope): subject #PR`. Commit subjects are the release notes, so write them for a reader of the release.
 
 ---
 
