@@ -33,7 +33,7 @@ class SnoozeHandlersTest {
     private val registry = CallbackRefRegistry(InMemoryStateStore()) { now }
     private val snoozes = HealthSnoozes(InMemoryStateStore()) { now }
     private val zone = TimeZone.of("Europe/Bucharest")
-    private val snooze = SnoozeHandler(snoozes, publisher, registry, zone)
+    private val snooze = SnoozeHandler(snoozes, publisher, registry, timeZone = zone)
     private val unsnooze = UnsnoozeHandler(snoozes, publisher, registry, { now }, zone)
 
     private val alex = BotActor("telegram", "1", "@alex", isAdmin = true)

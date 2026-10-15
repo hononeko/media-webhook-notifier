@@ -89,7 +89,7 @@ class AcknowledgeHandlerTest {
             val (_, result) = click(origin = null)
 
             assertEquals(
-                Either.Left(DomainError.NotificationError.DeliveryFailed("telegram", "no message to acknowledge")),
+                Either.Left(DomainError.NotificationError.DeliveryFailed("telegram", "no message to update")),
                 result
             )
             coVerify(exactly = 0) { publisher.editCard(any(), any()) }

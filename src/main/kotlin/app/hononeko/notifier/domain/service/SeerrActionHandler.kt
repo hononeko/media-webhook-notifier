@@ -8,10 +8,9 @@ import app.hononeko.notifier.domain.model.CardInteraction
 import app.hononeko.notifier.domain.port.outbound.MediaRequestManagerPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import arrow.core.Either
-import arrow.core.raise.either
+import arrow.core.raise.Raise
 import arrow.core.raise.ensureNotNull
 import kotlinx.datetime.TimeZone
-import org.slf4j.LoggerFactory
 
 /** [CardInteraction.params] keys holding the Seerr ids the buttons act on. */
 const val SEERR_REQUEST_ID = "request_id"
@@ -35,79 +34,46 @@ enum class SeerrAction(
 }
 
 /**
- * Runs one [SeerrAction] for an admin: calls Seerr with the id stored on the card, then stamps every admin's copy of
- * the card with who did it and removes its callback buttons. The ref is claimed for the duration of the call, so a double-tap can't approve
- * twice or approve and decline at once, and released once Seerr has accepted the decision.
+ * Runs one [SeerrAction] for an admin: calls Seerr with the id stored on the card, then stamps every admin's copy with
+ * who did it and removes the buttons. The claim on the card's ref (see [CardActionHandler]) means a double-tap can't
+ * approve twice, nor two admins approve and decline at once.
  */
 class SeerrActionHandler(
     private val action: SeerrAction,
     private val requestManager: MediaRequestManagerPort,
-    private val publisher: NotificationPublisherPort,
-    private val refRegistry: CallbackRefRegistry,
-    private val clock: () -> Long = System::currentTimeMillis,
-    private val timeZone: TimeZone = TimeZone.currentSystemDefault()
-) : BotActionHandler {
+    publisher: NotificationPublisherPort,
+    refRegistry: CallbackRefRegistry,
+    clock: () -> Long = System::currentTimeMillis,
+    timeZone: TimeZone = TimeZone.currentSystemDefault()
+) : CardActionHandler(publisher, refRegistry, clock, timeZone) {
     companion object {
         const val BUSY = ALREADY_HANDLING
 
         fun notFound(resource: String) = "⚠️ This $resource no longer exists in Seerr."
     }
 
-    private val logger = LoggerFactory.getLogger(SeerrActionHandler::class.java)
-
     override val operation: String = action.operation
     override val requiresAdmin: Boolean = true
 
-    override suspend fun handle(
+    override suspend fun Raise<DomainError>.act(
         interaction: BotInteraction,
         target: CallbackTarget
-    ): Either<DomainError, BotReply> =
-        either {
-            val origin =
-                ensureNotNull(interaction.origin) {
-                    DomainError.NotificationError.DeliveryFailed(publisher.providerId, "no message to update")
-                }
-            val id =
-                ensureNotNull(idOn(target)) {
-                    logger.warn("Card '{}' has no {} for '{}'", target.card.title, action.param, operation)
-                    DomainError.InteractionError.UnknownAction(operation)
-                }
-            if (!refRegistry.claim(interaction.ref)) return@either BotReply(BUSY, alert = true)
-
-            val decided = call(id)
-            decided.onLeft { refRegistry.unclaim(interaction.ref) }
-            if (decided.leftOrNull() is DomainError.RequestManagerError.NotFound) {
-                return@either BotReply(notFound(action.resource), alert = true)
+    ): Outcome {
+        val id =
+            ensureNotNull(paramOn(target, action.param)?.toLongOrNull()?.takeIf { it > 0 }) {
+                logger.warn("Card '{}' has no {} for '{}'", target.card.title, action.param, operation)
+                DomainError.InteractionError.UnknownAction(operation)
             }
-            decided.bind()
-
-            val stamped =
-                target.card.copy(
-                    interactions = emptyList(),
-                    footnote = "${action.stamp} ${interaction.actor.displayName} · ${hourMinute(clock(), timeZone)}"
-                )
-            // Every admin got a copy; stamp them all so nobody acts on a decided request. Seerr already has the
-            // decision, so a failed edit must not turn into "Action failed" or allow a re-press.
-            publisher.editCard(origin, stamped).onLeft { error ->
-                logger.warn(
-                    "Seerr {} {} done, but the pressed card could not be updated: {}",
-                    action.resource,
-                    id,
-                    error
-                )
-            }
-            publisher.editOtherCopies(target, origin, stamped, logger)
-            refRegistry.release(interaction.ref)
-            BotReply(action.reply)
+        val decided = call(id)
+        if (decided.leftOrNull() is DomainError.RequestManagerError.NotFound) {
+            return Outcome.Answer(BotReply(notFound(action.resource), alert = true))
         }
-
-    private fun idOn(target: CallbackTarget): Long? =
-        target.card.interactions
-            .firstOrNull { it.operation == operation }
-            ?.params
-            ?.get(action.param)
-            ?.toLongOrNull()
-            ?.takeIf { it > 0 }
+        decided.bind()
+        return Outcome.Stamp(
+            target.card.copy(interactions = emptyList(), footnote = byline(action.stamp, interaction)),
+            BotReply(action.reply)
+        )
+    }
 
     private suspend fun call(id: Long): Either<DomainError.RequestManagerError, Unit> =
         when (action) {
