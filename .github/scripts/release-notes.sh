@@ -4,27 +4,28 @@
 #   💥 Breaking changes   type!: subjects, or a BREAKING CHANGE: / BREAKING: footer (version.yml's major rule)
 #   🚀 Features           feat
 #   🐛 Bug fixes          fix
+#   👷 CI                 ci
 #   📦 Others             every other type, docs: and test: included
 #
-# Each entry reads "type(scope): subject #PR by @author", oldest first; empty sections are left out. The PR and its
-# author come from the GitHub API (gh), falling back to the commit when it didn't come from a PR.
+# Each entry reads "type(scope): subject #PR", oldest first, taking the PR from the " (#N)" a squash merge ends its
+# subject with; a commit pushed without a PR links itself instead. Empty sections are left out.
 #
 # Usage: release-notes.sh <previous-tag> [ref] [tag]
 #   previous-tag  the last release's tag; empty for the first release (every commit up to ref)
 #   ref           the commit being released (default HEAD)
 #   tag           the release's own tag, for the Full Changelog link (default: ref's short commit)
-#   GITHUB_REPOSITORY  owner/repo for the API and links (default: the current repository, via gh)
+#   GITHUB_REPOSITORY  owner/repo for the Full Changelog link (default: from the origin remote)
 set -euo pipefail
 
 prev_tag=${1-}
 ref=${2:-HEAD}
 to=${3:-$(git rev-parse --short "$ref")}
-repo=${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}
+repo=${GITHUB_REPOSITORY:-$(git remote get-url origin | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##')}
 
 range=$ref
 if [ -n "$prev_tag" ]; then range="$prev_tag..$ref"; fi
 
-breaking=() features=() fixes=() others=()
+breaking=() features=() fixes=() ci=() others=()
 
 # Listed first, so a bad range fails the script instead of giving empty notes.
 commits=$(git rev-list --reverse "$range")
@@ -32,22 +33,11 @@ for sha in $commits; do
   subject=$(git log -1 --format=%s "$sha")
   message=$(git log -1 --format=%B "$sha")
 
-  # The PR this commit was merged by (a squash merge's own commit), else any PR that contains it.
-  pr=$(gh api "repos/$repo/commits/$sha/pulls" \
-    --jq "(map(select(.merge_commit_sha == \"$sha\")) + .)[0] // empty | \"\(.number) \(.user.login)\"" \
-    2>/dev/null || true)
-  if [ -n "$pr" ]; then
-    number=${pr%% *}
-    by="@${pr#* }"
-    link="#$number"
-    # Squash merges end the subject with " (#N)"; the link is added back after it.
-    subject=${subject% (#"$number")}
+  if [[ $subject =~ ^(.*)\ \(#([0-9]+)\)$ ]]; then
+    entry="* ${BASH_REMATCH[1]} #${BASH_REMATCH[2]}"
   else
-    login=$(gh api "repos/$repo/commits/$sha" --jq '.author.login // empty' 2>/dev/null || true)
-    if [ -n "$login" ]; then by="@$login"; else by=$(git log -1 --format=%an "$sha"); fi
-    link=${sha::7}
+    entry="* $subject ${sha::7}"
   fi
-  entry="* $subject $link by $by"
 
   if grep -qE '!:|BREAKING CHANGE:|BREAKING:' <<<"$message"; then
     breaking+=("$entry")
@@ -55,6 +45,8 @@ for sha in $commits; do
     features+=("$entry")
   elif [[ $subject =~ ^fix(\(.*\))?: ]]; then
     fixes+=("$entry")
+  elif [[ $subject =~ ^ci(\(.*\))?: ]]; then
+    ci+=("$entry")
   else
     others+=("$entry")
   fi
@@ -73,6 +65,7 @@ section() {
 section "💥 Breaking changes" "${breaking[@]}"
 section "🚀 Features" "${features[@]}"
 section "🐛 Bug fixes" "${fixes[@]}"
+section "👷 CI" "${ci[@]}"
 section "📦 Others" "${others[@]}"
 
 if [ -n "$prev_tag" ]; then

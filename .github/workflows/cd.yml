@@ -33,7 +33,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-      pull-requests: read # release notes link each commit to its PR and author
     env:
       VERSION: ${{ needs.version.outputs.version }}
       COMMIT_TAG: ${{ needs.version.outputs.commit_tag }}
@@ -53,7 +52,6 @@ jobs:
 
       - name: Generate release notes
         env:
-          GH_TOKEN: ${{ github.token }}
           LAST_TAG: ${{ needs.version.outputs.last_tag }}
           VERSION_TAG: ${{ needs.version.outputs.version_tag }}
         run: |
