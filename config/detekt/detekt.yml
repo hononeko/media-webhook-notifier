@@ -25,6 +25,11 @@ style:
   MagicNumber:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/*.kts']
+    # A literal assigned to a named property or local val is already explained by its name.
+    ignorePropertyDeclaration: true
+    ignoreLocalVariableDeclaration: true
+    # Defaults plus common unit conversions (seconds, KiB, hours, days).
+    ignoreNumbers: ['-1', '0', '1', '2', '3', '4', '10', '60', '100', '1000', '1024', '3600', '86400']
   ReturnCount:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**']
