@@ -25,7 +25,7 @@ Compiled ahead-of-time (AOT) with **GraalVM Native Image** into a static, distro
 
 ## 🚀 Quick Start
 
-Images are published for **`linux/amd64`** and **`linux/arm64`** (Raspberry Pi 4 and newer, Apple Silicon, Ampere) under the same tag; Docker picks the right one.
+Images are published for **`linux/amd64`** and **`linux/arm64`** (Raspberry Pi 4 and newer, Apple Silicon, Ampere) under the same tag; Docker picks the right one. Use a version tag such as `2.14.0`, or `latest`. Every change on `main` is also published as a release candidate (`2.14.0-rc.3`, `edge`) for trying it out early; see [Image tags and release channels](docs/GRAALVM_AND_RUNTIME.md#32-image-tags-and-release-channels).
 
 ### 1. Run with Docker Compose
 

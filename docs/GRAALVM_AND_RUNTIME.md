@@ -34,17 +34,31 @@ Every release tag is a **multi-arch image** for `linux/amd64` and `linux/arm64`:
 ### 3.1 How it's built
 * **Native on each architecture:** `.github/workflows/native-image.yml` compiles the binary on an `ubuntu-24.04` (amd64) and an `ubuntu-24.04-arm` (arm64) runner, in parallel and without QEMU. The Dockerfile only copies that binary into the runtime image.
 * **Smoke test:** each image is started with no configuration. It must answer `/livez` within 10 s and stay under 64 MiB, and the timings are written to the job summary (`.github/scripts/smoke-test.sh`).
-* **Release:** `cd.yml` pushes each architecture's image by digest, joins them under the version and `latest` tags with `docker buildx imagetools create`, and attests the resulting manifest. Dispatching it with `dry_run` builds and smoke-tests both architectures without pushing anything. Only `main` can publish.
-* **On every push to `main`:** `main.yml` runs the same build and smoke test, without pushing.
+* **Release candidate on every push to `main`:** when there's something to release, `main.yml` pushes each architecture's image by digest, then joins them into one multi-arch release candidate with `docker buildx imagetools create` and attests it (see 3.2). With nothing to release (only `docs:` / `test:` since the last version), it only builds and tests.
+* **Stable release:** dispatching `cd.yml` **promotes** the release candidate built from that commit. It re-tags the exact tested image as `X.Y.Z` and `latest` (same digest, no rebuild, so the candidate's attestation still applies), then creates the git tag and the GitHub release. It stops if that commit has no release candidate. Afterwards it prunes that version's other release candidates from GHCR. Dispatching with `dry_run` checks the candidate and lists what would be tagged and pruned, without changing anything. Only `main` can publish.
 
-### 3.2 Linking and CPU baseline
+### 3.2 Image tags and release channels
+
+| Tag | Example | Moves? | Published by |
+|---|---|---|---|
+| `X.Y.Z` | `2.14.0` | no | a stable release (CD dispatch) |
+| `latest` | | to each stable release | a stable release |
+| `X.Y.Z-rc.N` | `2.14.0-rc.3` | no | every push to `main` with something to release; N counts the commits since the last release |
+| `sha-<commit>` | `sha-1a2b3c4` | no | every release candidate; CD uses it to find the candidate to promote |
+| `edge` | | to each release candidate | every release candidate |
+
+* **Stable** (`X.Y.Z` / `latest`): for production. Renovate's default `ignoreUnstable` never offers a release candidate to a deployment pinned to a stable tag.
+* **Release candidates** (`X.Y.Z-rc.N` / `edge`): to try a change from `main` before it's released. Pin an `-rc` tag by hand, and Renovate then follows newer candidates. A candidate disappears when its version is released, except the one that became the release, which lives on as `X.Y.Z`.
+* Git tags and GitHub releases exist only for stable versions.
+
+### 3.3 Linking and CPU baseline
 The binary is built with `./gradlew nativeCompile -PcontainerImage`, which adds:
 * **`--static-nolibc` (mostly static):** everything is linked statically except glibc, which the distroless base image provides. Fully static musl binaries aren't possible on `linux/aarch64` ([oracle/graal#5872](https://github.com/oracle/graal/issues/5872)), so both architectures use the same mode.
 * **`-march=compatibility`:** GraalVM's defaults (`x86-64-v3` on amd64, `armv8.1-a` on arm64) don't run on CPUs common in home servers, such as Celerons and Atoms without AVX2, or the Raspberry Pi 4 (ARMv8.0).
 
 Because glibc is linked dynamically, the binary must be built against a glibc **no newer than the base image's** (Debian 13: 2.41). That's why the runners are pinned to Ubuntu 24.04 (glibc 2.39), and why CI checks the newest `GLIBC_*` symbol the binary requires.
 
-### 3.3 Dockerfile
+### 3.4 Dockerfile
 
 ```dockerfile
 FROM gcr.io/distroless/base-debian13:nonroot

@@ -1,10 +1,13 @@
 name: Continuous Delivery & Release
 
+# Promotes the release candidate that main.yml published for this commit to the stable version: the exact tested
+# image is re-tagged as X.Y.Z and `latest` (same digest, no rebuild), then git-tagged and released. Afterwards, that
+# version's other release candidates are pruned from GHCR.
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Build and smoke-test both architectures without pushing, tagging or releasing
+        description: Check the release candidate and list what would be tagged and pruned, without changing anything
         type: boolean
         default: false
 
@@ -14,80 +17,38 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: media-webhook-notifier
+  IMAGE: ghcr.io/${{ github.repository_owner }}/media-webhook-notifier
 
 jobs:
   version:
-    name: Calculate Version
-    runs-on: ubuntu-24.04
+    uses: ./.github/workflows/version.yml
     permissions:
       contents: read
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      version_tag: ${{ steps.version.outputs.version_tag }}
-      version_type: ${{ steps.version.outputs.version_type }}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-
-      - name: Calculate Semantic Version
-        id: version
-        uses: PaulHatch/semantic-version@4d6da96a9bc3116da3613309a11ff75fba58eb8d # v6.0.4
-        with:
-          change_path: "."
-          bump_each_commit: false
-          search_commit_body: true
-          tag_prefix: ""
-          major_pattern: "/!:|BREAKING CHANGE:|BREAKING:/"
-          minor_pattern: "/feat(\\(.+\\))?:/"
-          # docs: and test: commits never bump the version; every other type bumps at least the patch.
-          ignore_commits_pattern: "/^(docs|test)(\\(.+\\))?:/"
-          version_format: "${major}.${minor}.${patch}"
-
-      # version_type is "none" when every commit since the last tag was ignored, or HEAD is already tagged.
-      - name: Report skipped release
-        if: steps.version.outputs.version_type == 'none'
-        run: echo "::notice title=Release skipped::No version-bumping commits since the last tag (only docs:/test:, or HEAD is already tagged)."
-
-  # Both architectures, compiled natively on their own runners and smoke tested. Real releases push each image by
-  # digest; the release job then joins them under one multi-arch tag.
-  native:
+  promote:
+    name: Promote, Tag & Release
     needs: version
-    if: inputs.dry_run || needs.version.outputs.version_type != 'none'
-    uses: ./.github/workflows/native-image.yml
-    with:
-      push: ${{ !inputs.dry_run }}
-    permissions:
-      contents: read
-      packages: write
-
-  release:
-    name: Publish, Tag & Release
-    needs: [version, native]
-    # Only main publishes: a dispatch on another branch can still dry-run the build.
-    if: ${{ !inputs.dry_run && needs.version.outputs.version_type != 'none' && github.ref == 'refs/heads/main' }}
+    if: needs.version.outputs.version_type != 'none'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: write
-      attestations: write
-      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      COMMIT_TAG: ${{ needs.version.outputs.commit_tag }}
+      DRY_RUN: ${{ inputs.dry_run }}
 
     steps:
+      - name: Only main publishes
+        if: ${{ !inputs.dry_run && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Releases are published from main only; dispatch with dry_run to check another branch."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-
-      - name: Download digests
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-        with:
-          path: digests
-          pattern: digests-*
-          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
@@ -99,40 +60,40 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=raw,value=${{ needs.version.outputs.version }}
-
-      - name: Create multi-arch manifest
-        id: manifest
-        working-directory: digests
-        env:
-          IMAGE: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+      - name: Find the release candidate
+        id: rc
         run: |
-          sources=()
-          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
-          if [ "${#sources[@]}" -ne 2 ]; then
-            echo "::error::Expected 2 architecture digests (amd64, arm64), got ${#sources[@]}"
+          if ! docker buildx imagetools inspect "$IMAGE:$COMMIT_TAG" > /dev/null 2>&1; then
+            echo "::error::No release candidate for this commit: $IMAGE:$COMMIT_TAG doesn't exist. Main Validation publishes it; check that its run passed for ${GITHUB_SHA::7}."
             exit 1
           fi
-          tags=()
-          while read -r tag; do tags+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
-          docker buildx imagetools inspect "$IMAGE:${{ needs.version.outputs.version }}"
-          digest=$(docker buildx imagetools inspect "$IMAGE:${{ needs.version.outputs.version }}" --format '{{json .Manifest}}' | jq -r .digest)
+          docker buildx imagetools inspect "$IMAGE:$COMMIT_TAG"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$COMMIT_TAG" --format '{{json .Manifest}}' | jq -r .digest)
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Release $VERSION"
+            echo "Release candidate \`$IMAGE:$COMMIT_TAG\`, digest \`$digest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Generate Build Attestation
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
-          push-to-registry: true
+      - name: Promote to stable
+        env:
+          DIGEST: ${{ steps.rc.outputs.digest }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: would tag $IMAGE@$DIGEST as $VERSION and latest"
+            echo "Dry run: would tag \`$DIGEST\` as \`$VERSION\` and \`latest\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          docker buildx imagetools create -t "$IMAGE:$VERSION" -t "$IMAGE:latest" "$IMAGE@$DIGEST"
+          # Re-tagging keeps the digest, so the release is byte-for-byte the tested candidate and keeps its attestation.
+          for tag in "$VERSION" latest; do
+            got=$(docker buildx imagetools inspect "$IMAGE:$tag" --format '{{json .Manifest}}' | jq -r .digest)
+            if [ "$got" != "$DIGEST" ]; then
+              echo "::error::$IMAGE:$tag is $got, expected the release candidate's $DIGEST"
+              exit 1
+            fi
+          done
+          echo "Tagged as \`$VERSION\` and \`latest\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Generate Changelog
         run: |
@@ -140,10 +101,12 @@ jobs:
           if [ -z "$PREV_TAG" ]; then
             git log --pretty=format:"* %s (%h)" > changelog.txt
           else
-            git log ${PREV_TAG}..HEAD --pretty=format:"* %s (%h)" > changelog.txt
+            git log "${PREV_TAG}..HEAD" --pretty=format:"* %s (%h)" > changelog.txt
           fi
+          cat changelog.txt
 
       - name: Push Git Tag
+        if: ${{ !inputs.dry_run }}
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
@@ -151,7 +114,48 @@ jobs:
           git push origin ${{ needs.version.outputs.version_tag }}
 
       - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: ${{ needs.version.outputs.version_tag }}
           body_path: changelog.txt
+
+  # Removes this version's release candidates now that one of them is the release. Tags are unlinked rather than
+  # images deleted when an image keeps other tags, so the promoted image survives as X.Y.Z / latest, and so does a
+  # newer candidate still tagged `edge`. A separate job: a pruning failure never undoes the release.
+  prune:
+    name: Prune Release Candidates
+    needs: [version, promote]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # The candidates of this version: its X.Y.Z-rc.N tags, and the commit tags of every commit since the last release.
+      - name: Select release candidate tags
+        id: select
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          LAST_TAG: ${{ needs.version.outputs.last_tag }}
+        run: |
+          range=HEAD
+          if [ -n "$LAST_TAG" ]; then range="$LAST_TAG..HEAD"; fi
+          commits=$(git rev-list "$range" | cut -c1-7 | paste -sd'|' -)
+          pattern="^(${VERSION//./\\.}-rc\.[0-9]+|sha-($commits))$"
+          echo "pattern=$pattern" >> "$GITHUB_OUTPUT"
+          echo "Pruning tags matching: $pattern"
+
+      - name: Prune
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          package: media-webhook-notifier
+          use-regex: true
+          delete-tags: ${{ steps.select.outputs.pattern }}
+          exclude-tags: ^(latest|edge|[0-9]+\.[0-9]+\.[0-9]+)$
+          validate: true
+          dry-run: ${{ inputs.dry_run }}
