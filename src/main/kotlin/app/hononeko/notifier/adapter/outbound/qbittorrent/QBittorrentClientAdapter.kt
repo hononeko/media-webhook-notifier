@@ -8,6 +8,8 @@ import app.hononeko.notifier.domain.model.SwarmStats
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.service.DownloadProgressAggregator
 import arrow.core.Either
+import arrow.core.raise.either
+import arrow.core.raise.ensure
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
@@ -21,6 +23,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -236,37 +239,27 @@ class QBittorrentClientAdapter(
     private suspend fun parseTorrentResponse(
         response: HttpResponse,
         hash: String
-    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> {
-        if (!response.status.value
-                .toString()
-                .startsWith("2")
-        ) {
-            return Either.Left(
+    ): Either<DomainError.DownloadClientError, DownloadItemProgress?> =
+        either {
+            ensure(response.status.isSuccess()) {
                 DomainError.DownloadClientError.InvalidResponse(
                     "HTTP ${response.status.value}: ${response.status.description}"
                 )
-            )
-        }
-
-        val rawBody: String = response.bodyAsText()
-        val torrentList: List<QBitTorrentDto> =
-            try {
-                jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
-            } catch (e: SerializationException) {
-                logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
-                return Either.Left(DomainError.DownloadClientError.InvalidResponse(e.message ?: "Invalid JSON"))
             }
-
-        if (torrentList.isEmpty()) {
-            return Either.Right(null)
+            val rawBody = response.bodyAsText()
+            val torrents =
+                try {
+                    jsonConfig.decodeFromString(ListSerializer(QBitTorrentDto.serializer()), rawBody)
+                } catch (e: SerializationException) {
+                    logger.error("Failed to parse qBittorrent JSON response: {}", rawBody, e)
+                    raise(DomainError.DownloadClientError.InvalidResponse(e.message ?: "Invalid JSON"))
+                }
+            when {
+                torrents.isEmpty() -> null
+                torrents.size == 1 && !hash.contains("|") -> torrents.first().toDownloadItemProgress()
+                else -> DownloadProgressAggregator.aggregate(hash, torrents.map { it.toDownloadItemProgress() })
+            }
         }
-
-        if (torrentList.size == 1 && !hash.contains("|")) {
-            return Either.Right(torrentList.first().toDownloadItemProgress())
-        }
-
-        return Either.Right(DownloadProgressAggregator.aggregate(hash, torrentList.map { it.toDownloadItemProgress() }))
-    }
 
     private suspend fun ensureAuthenticated(force: Boolean = false) {
         if (config.username.isNullOrBlank() || config.password.isNullOrBlank()) {

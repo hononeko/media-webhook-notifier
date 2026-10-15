@@ -33,3 +33,6 @@ style:
   ReturnCount:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**']
+    # Early-return guard clauses and short first-match lookups are idiomatic Kotlin; longer chains of returns are not.
+    excludeGuardClauses: true
+    max: 3

@@ -21,6 +21,9 @@ object CardFormatterService {
     /** qBittorrent reports an unknown ETA as 8640000 s (100 days). */
     private const val UNKNOWN_ETA_SECONDS = 8_640_000L
 
+    /** Units above bytes with their number format: one decimal for KB / MB, two for GB / TB. */
+    private val SIZE_UNITS = listOf("KB" to "%.1f", "MB" to "%.1f", "GB" to "%.2f", "TB" to "%.2f")
+
     var templateEngine: TemplateEngine = TemplateEngine()
 
     /** Added to cards that need a human (health issues, blocked imports, stalls, failed requests). */
@@ -83,14 +86,14 @@ object CardFormatterService {
 
     fun formatBytes(bytes: Long): String {
         if (bytes < 1024) return "$bytes B"
-        val kb = bytes / 1024.0
-        if (kb < 1024) return String.format(Locale.US, "%.1f KB", kb)
-        val mb = kb / 1024.0
-        if (mb < 1024) return String.format(Locale.US, "%.1f MB", mb)
-        val gb = mb / 1024.0
-        if (gb < 1024) return String.format(Locale.US, "%.2f GB", gb)
-        val tb = gb / 1024.0
-        return String.format(Locale.US, "%.2f TB", tb)
+        var size = bytes / 1024.0
+        var unit = 0
+        while (size >= 1024 && unit < SIZE_UNITS.lastIndex) {
+            size /= 1024.0
+            unit++
+        }
+        val (name, format) = SIZE_UNITS[unit]
+        return String.format(Locale.US, "$format $name", size)
     }
 
     fun formatSpeed(bytesPerSec: Long): String = "${formatBytes(bytesPerSec)}/s"

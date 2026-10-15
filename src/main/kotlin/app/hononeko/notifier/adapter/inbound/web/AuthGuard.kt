@@ -35,36 +35,27 @@ object AuthGuard {
     }
 
     fun extractCandidateToken(call: ApplicationCall): String? {
+        // A present Authorization header wins even if only "Bearer " is left after the prefix.
         val authHeader = call.request.header("Authorization")
         if (!authHeader.isNullOrBlank()) {
-            return if (authHeader.startsWith(BEARER_PREFIX, ignoreCase = true)) {
-                authHeader.substring(BEARER_PREFIX.length).trim()
-            } else {
-                authHeader.trim()
-            }
+            val token =
+                if (authHeader.startsWith(
+                        BEARER_PREFIX,
+                        ignoreCase = true
+                    )
+                ) {
+                    authHeader.substring(BEARER_PREFIX.length)
+                } else {
+                    authHeader
+                }
+            return token.trim()
         }
-
-        val apiKeyHeader = call.request.header("X-Api-Key")
-        if (!apiKeyHeader.isNullOrBlank()) {
-            return apiKeyHeader.trim()
-        }
-
-        val tokenQuery = call.request.queryParameters["token"]
-        if (!tokenQuery.isNullOrBlank()) {
-            return tokenQuery.trim()
-        }
-
-        val apiKeyQuery = call.request.queryParameters["apikey"]
-        if (!apiKeyQuery.isNullOrBlank()) {
-            return apiKeyQuery.trim()
-        }
-
-        val pathToken = call.parameters["token"]
-        if (!pathToken.isNullOrBlank()) {
-            return pathToken.trim()
-        }
-
-        return null
+        return listOf(
+            call.request.header("X-Api-Key"),
+            call.request.queryParameters["token"],
+            call.request.queryParameters["apikey"],
+            call.parameters["token"]
+        ).firstOrNull { !it.isNullOrBlank() }?.trim()
     }
 
     fun extractCallerName(call: ApplicationCall): String? {

@@ -42,6 +42,8 @@ object ConfigLoader {
     }
 
     private val serverDefaults = ServerConfig()
+    private val DEFAULT_TEMPLATE_PATHS =
+        listOf("templates.yaml", "templates.yml", "/config/templates.yaml", "/config/templates.yml")
 
     private fun loadServerConfig(reader: EnvReader): ServerConfig =
         ServerConfig(
@@ -67,16 +69,27 @@ object ConfigLoader {
         val defaultStream =
             ConfigLoader::class.java.classLoader.getResourceAsStream("templates.default.yaml")
                 ?: error("Default templates resource 'templates.default.yaml' not found on classpath!")
-        val defaultContent = defaultStream.bufferedReader().use { it.readText() }
-        val defaultConfig = YamlParser.parseTemplateConfig(defaultContent)
+        val defaultConfig = YamlParser.parseTemplateConfig(defaultStream.bufferedReader().use { it.readText() })
+        val userYaml = userTemplatesYaml(reader) ?: return defaultConfig
+        return mergeTemplates(
+            defaultConfig,
+            YamlParser.parseTemplateConfig(userYaml, defaultTheme = defaultConfig.theme)
+        )
+    }
 
-        val directYaml = reader.get("TEMPLATES_YAML", "templates.yaml")
-        if (!directYaml.isNullOrBlank()) {
-            val userConfig = YamlParser.parseTemplateConfig(directYaml, defaultTheme = defaultConfig.theme)
-            return mergeTemplates(defaultConfig, userConfig)
-        }
+    /**
+     * The user's templates YAML from the first source that has it: inline (`TEMPLATES_YAML`), a configured file
+     * (`TEMPLATES_FILE` and aliases), the `TEMPLATES` value, or a templates file in a default location.
+     */
+    private fun userTemplatesYaml(reader: EnvReader): String? =
+        reader.get("TEMPLATES_YAML", "templates.yaml")
+            ?: configuredTemplatesFile(reader)?.readText()
+            ?: reader.getSecret("TEMPLATES")?.ifBlank { null }
+            ?: DEFAULT_TEMPLATE_PATHS.map(::File).firstOrNull { it.exists() && it.canRead() }?.readText()
 
-        val filePath =
+    /** The templates file named by the environment, which must exist when it's named. */
+    private fun configuredTemplatesFile(reader: EnvReader): File? {
+        val path =
             reader.get(
                 "TEMPLATES_FILE",
                 "TEMPLATES_FILE_PATH",
@@ -84,31 +97,10 @@ object ConfigLoader {
                 "templates.file",
                 "templates.path"
             )
-        if (!filePath.isNullOrBlank()) {
-            val file = File(filePath)
-            check(file.exists() && file.canRead()) {
-                "Configured templates file '$filePath' does not exist or is not readable"
-            }
-            val userConfig = YamlParser.parseTemplateConfig(file.readText(), defaultTheme = defaultConfig.theme)
-            return mergeTemplates(defaultConfig, userConfig)
-        }
-
-        val secretFile = reader.getSecret("TEMPLATES")
-        if (!secretFile.isNullOrBlank()) {
-            val userConfig = YamlParser.parseTemplateConfig(secretFile, defaultTheme = defaultConfig.theme)
-            return mergeTemplates(defaultConfig, userConfig)
-        }
-
-        val defaultFiles = listOf("templates.yaml", "templates.yml", "/config/templates.yaml", "/config/templates.yml")
-        for (defaultPath in defaultFiles) {
-            val file = File(defaultPath)
-            if (file.exists() && file.canRead()) {
-                val userConfig = YamlParser.parseTemplateConfig(file.readText(), defaultTheme = defaultConfig.theme)
-                return mergeTemplates(defaultConfig, userConfig)
-            }
-        }
-
-        return defaultConfig
+                ?: return null
+        val file = File(path)
+        check(file.exists() && file.canRead()) { "Configured templates file '$path' does not exist or is not readable" }
+        return file
     }
 
     private fun mergeTemplates(

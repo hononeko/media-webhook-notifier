@@ -3,7 +3,6 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import org.slf4j.LoggerFactory
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.days
 
 class MediaAvailableDeduplicator(
@@ -13,7 +12,7 @@ class MediaAvailableDeduplicator(
     private val maxAgeSeconds: Long = 86_400L
 ) {
     private val logger = LoggerFactory.getLogger(MediaAvailableDeduplicator::class.java)
-    private val fallbackCache = ConcurrentHashMap<String, Long>()
+    private val fallback = TtlCache(ttlMillis, maxCapacity)
 
     fun computeKeys(payload: MediaPayload): List<String> =
         when (payload) {
@@ -103,68 +102,34 @@ class MediaAvailableDeduplicator(
         if (isStale(payload, now)) return true
         val keys = computeKeys(payload)
         if (keys.isEmpty()) return false
-
-        val store = stateStore
-        if (store != null) {
-            for (key in keys) {
-                if (store.exists(key, nowMillis = now)) {
-                    return true
-                }
-            }
-            return false
-        }
-
-        for (key in keys) {
-            val timestamp = fallbackCache[key] ?: continue
-            if (now - timestamp > ttlMillis) {
-                fallbackCache.remove(key)
-            } else {
-                return true
-            }
-        }
-        return false
+        val store = stateStore ?: return keys.any { fallback.isFresh(it, now) }
+        return keys.any { store.exists(it, nowMillis = now) }
     }
 
     suspend fun tryAcquire(
         payload: MediaPayload,
         now: Long = System.currentTimeMillis()
     ): Boolean {
-        if (isStale(payload, now)) {
-            return false
-        }
+        if (isStale(payload, now)) return false
         val keys = computeKeys(payload)
         if (keys.isEmpty()) return true
+        val store = stateStore ?: return fallback.tryRecord(keys, now)
+        return tryAcquireInStore(store, keys, now)
+    }
 
-        val store = stateStore
-        if (store != null) {
-            for (key in keys) {
-                if (store.exists(key, nowMillis = now)) {
-                    return false
-                }
-            }
-            val ttlSeconds = (ttlMillis / 1000L).coerceAtLeast(1L)
-            val primaryAcquired =
-                store.tryAcquire(keys.first(), ttlSeconds = ttlSeconds, value = now.toString(), nowMillis = now)
-            if (!primaryAcquired) {
-                return false
-            }
-            for (i in 1 until keys.size) {
-                store.set(keys[i], value = now.toString(), ttlSeconds = ttlSeconds, nowMillis = now)
-            }
-            return true
+    /** Claims the first key atomically and records the others, unless any key was already seen. */
+    private suspend fun tryAcquireInStore(
+        store: StateStorePort,
+        keys: List<String>,
+        now: Long
+    ): Boolean {
+        if (keys.any { store.exists(it, nowMillis = now) }) return false
+        val ttlSeconds = (ttlMillis / 1000L).coerceAtLeast(1L)
+        val acquired = store.tryAcquire(keys.first(), ttlSeconds = ttlSeconds, value = now.toString(), nowMillis = now)
+        if (acquired) {
+            keys.drop(1).forEach { store.set(it, value = now.toString(), ttlSeconds = ttlSeconds, nowMillis = now) }
         }
-
-        pruneIfNecessary(now)
-        for (key in keys) {
-            val existing = fallbackCache[key]
-            if (existing != null && (now - existing) <= ttlMillis) {
-                return false
-            }
-        }
-        for (key in keys) {
-            fallbackCache[key] = now
-        }
-        return true
+        return acquired
     }
 
     suspend fun release(payload: MediaPayload) {
@@ -172,38 +137,14 @@ class MediaAvailableDeduplicator(
         val store = stateStore
         for (key in keys) {
             store?.delete(key)
-            fallbackCache.remove(key)
+            fallback.remove(key)
         }
     }
 
     suspend fun clear() {
         stateStore?.clear()
-        fallbackCache.clear()
+        fallback.clear()
     }
 
-    fun size(): Int = fallbackCache.size
-
-    private fun pruneIfNecessary(now: Long) {
-        if (fallbackCache.size >= maxCapacity) {
-            val iterator = fallbackCache.entries.iterator()
-            while (iterator.hasNext()) {
-                val entry = iterator.next()
-                if (now - entry.value > ttlMillis) {
-                    iterator.remove()
-                }
-            }
-            if (fallbackCache.size >= maxCapacity) {
-                val targetSize = (maxCapacity * 3 / 4).coerceAtLeast(1).coerceAtMost(maxCapacity - 1)
-                val toRemoveCount = (fallbackCache.size - targetSize).coerceAtLeast(1)
-                val keysToRemove =
-                    fallbackCache.entries
-                        .sortedBy { it.value }
-                        .take(toRemoveCount)
-                        .map { it.key }
-                for (k in keysToRemove) {
-                    fallbackCache.remove(k)
-                }
-            }
-        }
-    }
+    fun size(): Int = fallback.size
 }
