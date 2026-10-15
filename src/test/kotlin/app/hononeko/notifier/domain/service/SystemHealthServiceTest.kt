@@ -185,4 +185,68 @@ class SystemHealthServiceTest {
             assertEquals(emptyList(), publisher.directSends)
             assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), publisher.sentCards.single().interactions)
         }
+
+    private fun snoozes() =
+        HealthSnoozes(
+            app.hononeko.notifier.adapter.outbound.state
+                .InMemoryStateStore()
+        )
+
+    @Test
+    fun `admins' issue cards get Snooze next to Acknowledge, keyed on the check`() =
+        runTest {
+            val publisher = FakeNotificationPublisher()
+
+            SystemHealthService(publisher, admins, snoozes()).announce(health())
+
+            val check = HealthSnoozes.checkOf(health())
+            assertEquals(
+                listOf(CardFormatterService.ACKNOWLEDGE, SnoozeHandler.button(check)),
+                publisher.directSends
+                    .single()
+                    .first.interactions
+            )
+        }
+
+    @Test
+    fun `restored cards, channel fallback and no-admin cards never carry Snooze`() =
+        runTest {
+            val restored = FakeNotificationPublisher()
+            SystemHealthService(
+                restored,
+                admins,
+                snoozes()
+            ).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
+            assertEquals(
+                emptyList(),
+                restored.directSends
+                    .single()
+                    .first.interactions
+            )
+
+            val unreachable = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
+            SystemHealthService(unreachable, admins, snoozes()).announce(health())
+            assertEquals(emptyList(), unreachable.sentCards.single().interactions)
+
+            val noAdmins = FakeNotificationPublisher()
+            SystemHealthService(noAdmins, emptyList(), snoozes()).announce(health())
+            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), noAdmins.sentCards.single().interactions)
+        }
+
+    @Test
+    fun `a snoozed check drops issue and restored cards, other checks still arrive`() =
+        runTest {
+            val publisher = FakeNotificationPublisher()
+            val snoozes = snoozes()
+            snoozes.snooze(HealthSnoozes.checkOf(health()), "@alex")
+            val service = SystemHealthService(publisher, admins, snoozes)
+
+            assertTrue(service.announce(health()).isRight())
+            assertTrue(service.announce(health(level = "ok", type = EventType.HEALTH_RESTORED)).isRight())
+            assertEquals(emptyList(), publisher.directSends)
+            assertEquals(emptyList(), publisher.sentCards)
+
+            service.announce(health().copy(type = "DownloadClientCheck"))
+            assertEquals(1, publisher.directSends.size)
+        }
 }

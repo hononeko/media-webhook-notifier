@@ -40,6 +40,7 @@ import app.hononeko.notifier.domain.service.CardFormatterService
 import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
+import app.hononeko.notifier.domain.service.HealthSnoozes
 import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
 import app.hononeko.notifier.domain.service.MediaAvailableDeduplicator
@@ -258,10 +259,14 @@ fun buildDependencies(
     val adminRecipients =
         if (callbackRefs != null) config.telegramInteraction.adminUserIds.map { it.toString() } else emptyList()
 
+    // Snoozes only exist with interactions on: they're created by a button press.
+    val healthSnoozes = if (callbackRefs != null) HealthSnoozes(stateStore) else null
+
     val systemHealthService =
         SystemHealthService(
             notificationPublisher = notificationPublisher,
-            adminRecipients = adminRecipients
+            adminRecipients = adminRecipients,
+            snoozes = healthSnoozes
         )
 
     val manualInteractionService =
@@ -310,8 +315,15 @@ fun buildDependencies(
     val telegramInteractions =
         if (callbackRefs != null) {
             TelegramInteractionModule
-                .create(config, callbackRefs, notificationPublisher, scope, telegramApiEngine, seerrClient)
-                .also { it.start(scope) }
+                .create(
+                    config,
+                    callbackRefs,
+                    notificationPublisher,
+                    scope,
+                    telegramApiEngine,
+                    seerrClient,
+                    healthSnoozes
+                ).also { it.start(scope) }
         } else {
             null
         }

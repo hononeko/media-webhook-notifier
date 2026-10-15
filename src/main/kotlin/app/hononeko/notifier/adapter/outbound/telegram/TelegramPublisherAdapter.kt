@@ -54,8 +54,7 @@ class TelegramPublisherAdapter(
         private const val CAPTION_LIMIT = 1024
         private const val TEXT_LIMIT = 4096
 
-        /** Buttons stay usable for 30 days; a health card may be acknowledged long after it was sent. */
-        const val CALLBACK_TTL_SECONDS = 2_592_000L
+        const val CALLBACK_TTL_SECONDS = CallbackRefRegistry.DEFAULT_TTL_SECONDS
     }
 
     override val providerId: String = "telegram"
@@ -331,22 +330,24 @@ class TelegramPublisherAdapter(
 
     override suspend fun editCard(
         handle: NotificationHandle,
-        card: NotificationCard
+        card: NotificationCard,
+        callbackRef: String?
     ): Either<DomainError.NotificationError, Unit> {
         // Unlike the progress paths, a requested edit that can't happen must not read as done.
         if (handle.messageReferenceId.toLongOrNull() == null) {
             val reason = "cannot edit '${handle.messageReferenceId}': not a Telegram message id"
             return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
         }
-        return editWithCard(handle, card)
+        return editWithCard(handle, card, callbackRef)
     }
 
     private suspend fun editWithCard(
         handle: NotificationHandle,
-        card: NotificationCard
+        card: NotificationCard,
+        callbackRef: String? = null
     ): Either<DomainError.NotificationError, Unit> {
         val msgId = handle.messageReferenceId.toLongOrNull() ?: return Either.Right(Unit)
-        val markup = keyboardFor(card)
+        val markup = if (callbackRef != null) keyboardFor(card, callbackRef) else keyboardFor(card)
 
         val isPhoto = handle.isPhoto || (photoMessageRegistry[photoKey(handle)] ?: false)
         val targetChatId = handle.channelOrChatId.ifBlank { config.chatId }

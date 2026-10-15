@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AcknowledgeHandlerTest {
     private val publisher =
@@ -88,7 +89,7 @@ class AcknowledgeHandlerTest {
             val (_, result) = click(origin = null)
 
             assertEquals(
-                Either.Left(DomainError.NotificationError.DeliveryFailed("telegram", "no message to acknowledge")),
+                Either.Left(DomainError.NotificationError.DeliveryFailed("telegram", "no message to update")),
                 result
             )
             coVerify(exactly = 0) { publisher.editCard(any(), any()) }
@@ -124,5 +125,27 @@ class AcknowledgeHandlerTest {
 
             assertEquals(Either.Right(BotReply("✅ Acknowledged")), result)
             assertNull(registry.resolve(ref))
+        }
+
+    @Test
+    fun `a press while another action holds the card is refused without editing`() =
+        runTest {
+            val ref = registry.register(CallbackTarget(card), ttlSeconds = 60)!!
+            registry.claim(ref)
+
+            val result = handler.handle(BotInteraction(actor, "ack", ref, origin), CallbackTarget(card))
+
+            assertEquals(Either.Right(BotReply("⏳ Someone is already handling this.", alert = true)), result)
+            coVerify(exactly = 0) { publisher.editCard(any(), any()) }
+        }
+
+    @Test
+    fun `a failed edit drops the claim so Acknowledge can be pressed again`() =
+        runTest {
+            coEvery { publisher.editCard(any(), any()) } returns
+                Either.Left(DomainError.NotificationError.DeliveryFailed("telegram", "boom"))
+            val (ref, _) = click()
+
+            assertTrue(registry.claim(ref))
         }
 }

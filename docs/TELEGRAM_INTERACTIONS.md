@@ -69,6 +69,17 @@ Pressing it edits the card in place: a `✅ Handled by @alex · 14:32` line is a
 
 Each button works **once** and for **30 days**. After that, or after a restart with the in-memory state store, pressing it answers "⌛ This button has expired." Use the Valkey / Redis state store to keep buttons working across restarts.
 
+### 🔕 Snooze health checks
+
+Health issue cards sent privately to admins also carry **🔕 Snooze 24h**, so a flapping check (an indexer going unavailable and back, a download client timing out) stops pinging you without changing Sonarr / Radarr settings.
+
+- A snooze silences **one check** for 24 hours: the same Sonarr / Radarr instance and check type (for example `IndexerStatusCheck` on `Sonarr-TV`). Both its issue and its "Health restored" cards are dropped, and other checks and instances still arrive.
+- Pressing it stamps **every admin's copy** `🔕 Snoozed until tomorrow 14:32 by @alex` and replaces the buttons with **🔔 Unsnooze**.
+- **🔔 Unsnooze** ends the snooze early and stamps every copy `🔔 Unsnoozed by @bo · 15:10`. Pressed after the 24 hours ran out, it says the snooze had already ended.
+- Only admins can snooze. The button only appears on their private copies, never in the channel (not even when no admin could be reached), and a press from someone no longer in `TELEGRAM_ADMIN_USERS` is refused.
+- Snoozes are kept in the state store: with Valkey / Redis they survive restarts and are shared across replicas.
+- Sonarr and Radarr only notify when a check changes state. If a snoozed check is still failing when the snooze ends, it isn't announced again until it changes state.
+
 ### Seerr: Approve, Decline, Resolve
 
 Lets **admins** decide Seerr (Overseerr / Jellyseerr) requests and issues without opening Seerr. These cards go **to each admin in a private chat with the bot, not to the channel**, so the channel stays informational: it learns the outcome from Seerr's own *Request Approved*, *Declined* and *Issue Resolved* webhooks.
@@ -112,6 +123,7 @@ environment:
 | Acknowledge answers "⚠️ Action failed." | The card was deleted, or the bot can no longer edit it. The reason is logged at WARN. |
 | Admins don't receive Seerr requests or health issues | Each admin must start a private chat with the bot once (logs: `they may need to start a chat with the bot`). For Seerr requests, also check that `SEERR_URL` and `SEERR_API_KEY` are set and `TELEGRAM_ADMIN_USERS` isn't empty; startup logs which one is missing. Requests that Seerr auto-approves are never sent for a decision. |
 | Pending requests or health issues appear in the channel without buttons | No admin could be reached privately, so the card fell back to the channel. See the row above. |
+| A health check stays silent | It was snoozed: look for `Dropping … card for snoozed health check` in the logs. Press **🔔 Unsnooze** on any admin's copy, or wait for the 24 hours to end. |
 | Someone gets "⛔ You're not allowed to control this bot." on Approve | They're no longer in `TELEGRAM_ADMIN_USERS`; copies sent while they were an admin stop working. |
 | Approve answers "⚠️ Action failed." | Seerr was unreachable or refused the API key. The HTTP status is logged at WARN. The card is unchanged, so the button can be pressed again. |
 | Approve answers "⚠️ This request no longer exists in Seerr." | The request (or issue) was deleted in Seerr after the card was sent. |

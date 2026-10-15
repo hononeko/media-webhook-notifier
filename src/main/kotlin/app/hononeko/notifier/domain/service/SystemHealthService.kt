@@ -10,18 +10,34 @@ import org.slf4j.LoggerFactory
 
 /**
  * Sends Sonarr / Radarr health cards. With [adminRecipients] set (interactions on and admins configured), every health
- * card goes privately to the admins: issues with their Acknowledge button, "health restored" as the outcome next to
- * them. If no admin can be reached, the channel gets an informational copy without buttons.
+ * card goes privately to the admins: issues with their Acknowledge and Snooze buttons, "health restored" as the outcome
+ * next to them. If no admin can be reached, the channel gets an informational copy without buttons.
+ *
+ * Cards for a check an admin snoozed ([snoozes]) are dropped, issue and restored alike, until the snooze ends.
  */
 class SystemHealthService(
     private val notificationPublisher: NotificationPublisherPort,
-    private val adminRecipients: List<String> = emptyList()
+    private val adminRecipients: List<String> = emptyList(),
+    private val snoozes: HealthSnoozes? = null
 ) : AnnounceSystemHealthUseCase {
     private val logger = LoggerFactory.getLogger(SystemHealthService::class.java)
 
     override suspend fun announce(payload: MediaPayload.ServarrHealth): Either<DomainError, Unit> =
         either {
-            val card = CardFormatterService.buildHealthCard(payload)
+            val check = HealthSnoozes.checkOf(payload)
+            if (snoozes?.isSnoozed(check) == true) {
+                logger.info("Dropping {} card for snoozed health check '{}'", payload.eventType, check)
+                return@either
+            }
+            val built = CardFormatterService.buildHealthCard(payload)
+            // Snooze rides along with Acknowledge on issues, and only on the admins' private copies.
+            val needsAction = CardFormatterService.ACKNOWLEDGE in built.interactions
+            val card =
+                if (snoozes != null && needsAction && adminRecipients.isNotEmpty()) {
+                    built.copy(interactions = built.interactions + SnoozeHandler.button(check))
+                } else {
+                    built
+                }
             if (adminRecipients.isNotEmpty()) {
                 logger.info("Sending system health card to admins: {} [{}]", card.title, card.level)
                 // Like Seerr decisions, the channel fallback is informational only: no buttons.
