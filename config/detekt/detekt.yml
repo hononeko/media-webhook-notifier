@@ -17,6 +17,8 @@ complexity:
   TooManyFunctions:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**']
+    # Functions a class must implement for its interface (e.g. the StateStorePort stores) don't count.
+    ignoreOverridden: true
 
 style:
   LoopWithTooManyJumpStatements:
