@@ -7,9 +7,7 @@ import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.MediaPayload
-import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
-import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.model.SwarmStats
 import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
@@ -17,6 +15,7 @@ import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import app.hononeko.notifier.testing.RecordingPublisher
 import arrow.core.Either
 import io.mockk.coEvery
 import io.mockk.every
@@ -42,6 +41,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
+/** The publisher these tests expect: Telegram-like ids the resume tags are checked against. */
+private fun newPublisher(shouldFailStart: Boolean = false) =
+    RecordingPublisher(
+        providerId = "fake",
+        chatId = "chat123",
+        sentMessageId = "msg_send",
+        liveMessageId = "msg_live",
+        shouldFailStart = shouldFailStart
+    )
+
 class DownloadTrackerEngineTest {
     private fun createEngine(
         downloadClient: DownloadClientPort,
@@ -56,58 +65,6 @@ class DownloadTrackerEngineTest {
         config = config,
         scope = scope
     )
-
-    private class FakeNotificationPublisher(
-        private val shouldFailStart: Boolean = false
-    ) : NotificationPublisherPort {
-        override val providerId: String = "fake"
-
-        val sentCards = Collections.synchronizedList(mutableListOf<NotificationCard>())
-        val progressUpdates = Collections.synchronizedList(mutableListOf<ProgressUpdate>())
-        val completedCards = Collections.synchronizedList(mutableListOf<NotificationCard>())
-        val cancelledCards = Collections.synchronizedList(mutableListOf<NotificationCard>())
-
-        override suspend fun sendCard(
-            card: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> {
-            sentCards.add(card)
-            return Either.Right(NotificationHandle("fake", "chat123", "msg_send"))
-        }
-
-        override suspend fun startLiveProgress(
-            initialCard: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> {
-            if (shouldFailStart) {
-                return Either.Left(DomainError.NotificationError.RateLimited("fake", 30))
-            }
-            sentCards.add(initialCard)
-            return Either.Right(NotificationHandle("fake", "chat123", "msg_live"))
-        }
-
-        override suspend fun updateProgress(
-            handle: NotificationHandle,
-            update: ProgressUpdate
-        ): Either<DomainError.NotificationError, Unit> {
-            progressUpdates.add(update)
-            return Either.Right(Unit)
-        }
-
-        override suspend fun completeProgress(
-            handle: NotificationHandle,
-            finalCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> {
-            completedCards.add(finalCard)
-            return Either.Right(Unit)
-        }
-
-        override suspend fun cancelProgress(
-            handle: NotificationHandle,
-            reasonCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> {
-            cancelledCards.add(reasonCard)
-            return Either.Right(Unit)
-        }
-    }
 
     private class FakeTorrentClient(
         private val progressProvider: (String) -> Either<DomainError.DownloadClientError, DownloadItemProgress?> = {
@@ -149,7 +106,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val downloadClient = DownloadClientPort { Either.Right(null) }
 
             val engine =
@@ -178,7 +135,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val callCount = AtomicInteger(0)
 
             val downloadClient =
@@ -260,7 +217,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val downloadClient =
                 DownloadClientPort {
                     Either.Right(null)
@@ -298,7 +255,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val failingPublisher = FakeNotificationPublisher(shouldFailStart = true)
+            val failingPublisher = newPublisher(shouldFailStart = true)
             val downloadClient = DownloadClientPort { Either.Right(null) }
 
             val engine =
@@ -327,7 +284,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val downloadClient = DownloadClientPort { Either.Right(null) }
 
             val engine =
@@ -360,7 +317,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val progress =
                 DownloadItemProgress(
                     id = "hashMaxPoll",
@@ -413,7 +370,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val stalledProgress =
                 DownloadItemProgress(
                     id = "hashStalled",
@@ -465,7 +422,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val downloadClient =
                 DownloadClientPort {
                     Either.Left(DomainError.DownloadClientError.ConnectionFailed("http://localhost:8080"))
@@ -503,7 +460,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             var callCount = 0
             val downloadClient =
                 DownloadClientPort {
@@ -576,7 +533,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val client = FakeTorrentClient()
 
             val engine =
@@ -618,7 +575,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val client =
                 FakeTorrentClient { hash ->
                     Either.Right(
@@ -684,7 +641,7 @@ class DownloadTrackerEngineTest {
             val testDispatcher = StandardTestDispatcher(testScheduler)
             val testScope = TestScope(testDispatcher)
 
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
             val client =
                 FakeTorrentClient {
                     Either.Right(
@@ -767,7 +724,7 @@ class DownloadTrackerEngineTest {
         progress: (String) -> Either<DomainError.DownloadClientError, DownloadItemProgress?> = { Either.Right(null) },
         client: DownloadClientPort? = null
     ) {
-        val publisher = FakeNotificationPublisher(shouldFailStart = failStart)
+        val publisher = newPublisher(shouldFailStart = failStart)
         val torrents = FakeTorrentClient(progress)
         val engine =
             DownloadTrackerEngine(
@@ -948,7 +905,7 @@ class DownloadTrackerEngineTest {
             val engine =
                 createEngine(
                     downloadClient = FakeTorrentClient(),
-                    notificationPublisher = FakeNotificationPublisher(),
+                    notificationPublisher = newPublisher(),
                     activeTrackerStore = store,
                     scope = testScope
                 )

@@ -11,12 +11,8 @@ import app.hononeko.notifier.config.ServerConfig
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.MediaPayload
-import app.hononeko.notifier.domain.model.NotificationCard
-import app.hononeko.notifier.domain.model.NotificationHandle
-import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.MediaServerPort
-import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.service.AlertUseCases
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
@@ -27,6 +23,7 @@ import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.MediaRequestService
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
+import app.hononeko.notifier.testing.RecordingPublisher
 import arrow.core.Either
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -41,56 +38,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class EndToEndIntegrationTest {
-    private class MockPublisher : NotificationPublisherPort {
-        override val providerId: String = "mock-telegram"
-        val sentCards = CopyOnWriteArrayList<NotificationCard>()
-        val liveProgressHandles = CopyOnWriteArrayList<NotificationHandle>()
-        val progressUpdates = CopyOnWriteArrayList<Pair<NotificationHandle, ProgressUpdate>>()
-
-        override suspend fun sendCard(
-            card: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> {
-            sentCards.add(card)
-            return Either.Right(NotificationHandle("mock", "test-chat", System.currentTimeMillis().toString()))
-        }
-
-        override suspend fun startLiveProgress(
-            initialCard: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> {
-            val handle = NotificationHandle("mock", "test-chat", System.currentTimeMillis().toString())
-            liveProgressHandles.add(handle)
-            sentCards.add(initialCard)
-            return Either.Right(handle)
-        }
-
-        override suspend fun updateProgress(
-            handle: NotificationHandle,
-            update: ProgressUpdate
-        ): Either<DomainError.NotificationError, Unit> {
-            progressUpdates.add(handle to update)
-            return Either.Right(Unit)
-        }
-
-        override suspend fun completeProgress(
-            handle: NotificationHandle,
-            finalCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> {
-            sentCards.add(finalCard)
-            return Either.Right(Unit)
-        }
-
-        override suspend fun cancelProgress(
-            handle: NotificationHandle,
-            reasonCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-    }
-
     private class MockTorrentClient : DownloadClientPort {
         override suspend fun getProgress(hash: String): Either<DomainError.DownloadClientError, DownloadItemProgress?> =
             Either.Right(null)
@@ -104,7 +56,7 @@ class EndToEndIntegrationTest {
     fun `full end-to-end flow from sonarr grab and import to plex media available`() =
         testApplication {
             val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            val mockPublisher = MockPublisher()
+            val mockPublisher = RecordingPublisher(providerId = "mock-telegram")
             val mockTorrentClient = MockTorrentClient()
             val mockMediaServer = MockMediaServer()
 
@@ -324,9 +276,9 @@ class EndToEndIntegrationTest {
             runBlocking { delay(250) }
 
             // Assert that cards were published to mock publisher
-            assertTrue(mockPublisher.sentCards.isNotEmpty())
-            assertTrue(mockPublisher.sentCards.any { it.title.contains("Frieren") })
-            assertTrue(mockPublisher.sentCards.any { it.title.contains("Severance") })
+            assertTrue(mockPublisher.allCards.isNotEmpty())
+            assertTrue(mockPublisher.allCards.any { it.title.contains("Frieren") })
+            assertTrue(mockPublisher.allCards.any { it.title.contains("Severance") })
 
             // 6. Verify Metrics Telemetry
             val metricsRes = client.get("/metrics")

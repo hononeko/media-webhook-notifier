@@ -6,13 +6,11 @@ import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.MediaPayload
-import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
-import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.TrackDownloadUseCase
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
-import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.testing.RecordingPublisher
 import arrow.core.Either
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -27,42 +25,22 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
+/** The publisher these tests expect: Telegram-like ids the resume tags are checked against. */
+private fun newPublisher(shouldFailStart: Boolean = false) =
+    RecordingPublisher(
+        providerId = "telegram",
+        chatId = "chat123",
+        sentMessageId = "msg_send",
+        liveMessageId = "msg_live",
+        shouldFailStart = shouldFailStart
+    )
+
 class DownloadReconciliationServiceTest {
-    private class FakeNotificationPublisher : NotificationPublisherPort {
-        override val providerId: String = "telegram"
-        override val defaultChannelOrChatId: String = "chat123"
-
-        override suspend fun sendCard(
-            card: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> =
-            Either.Right(NotificationHandle("telegram", "chat123", "msg_send"))
-
-        override suspend fun startLiveProgress(
-            initialCard: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> =
-            Either.Right(NotificationHandle("telegram", "chat123", "msg_live"))
-
-        override suspend fun updateProgress(
-            handle: NotificationHandle,
-            update: ProgressUpdate
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-
-        override suspend fun completeProgress(
-            handle: NotificationHandle,
-            finalCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-
-        override suspend fun cancelProgress(
-            handle: NotificationHandle,
-            reasonCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-    }
-
     @Test
     fun `should resume existing tracked torrent without sending duplicate initial card`() =
         runTest {
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             val resumedExistingCalls = Collections.synchronizedList(mutableListOf<Pair<String, NotificationHandle>>())
             val newTrackCalls = Collections.synchronizedList(mutableListOf<String>())
@@ -138,7 +116,7 @@ class DownloadReconciliationServiceTest {
     fun `should prioritize mwn_chat tag over default channel when present`() =
         runTest {
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             val resumedExistingCalls = Collections.synchronizedList(mutableListOf<Pair<String, NotificationHandle>>())
 
@@ -206,7 +184,7 @@ class DownloadReconciliationServiceTest {
     fun `should start new track for active download missing mwn tags`() =
         runTest {
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             val newTrackCalls = Collections.synchronizedList(mutableListOf<String>())
             val trackUseCase =
@@ -265,7 +243,7 @@ class DownloadReconciliationServiceTest {
     fun `should skip torrents already tracked in store or with blank hashes`() =
         runTest {
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             val trackCalls = Collections.synchronizedList(mutableListOf<String>())
             val trackUseCase =
@@ -352,7 +330,7 @@ class DownloadReconciliationServiceTest {
     fun `should handle disabled state, client errors, and use case failures gracefully`() =
         runTest {
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             // 1. Disabled state
             val disabledService =
@@ -446,7 +424,7 @@ class DownloadReconciliationServiceTest {
             val testScope = TestScope(testDispatcher)
 
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             val torrent =
                 DownloadItemProgress(
@@ -501,7 +479,7 @@ class DownloadReconciliationServiceTest {
     fun `should group untracked torrents with same mwn_msg tag into a single trackExisting call`() =
         runTest {
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             val resumedCalls = Collections.synchronizedList(mutableListOf<Pair<String, MediaPayload.ArrGrab>>())
             val trackUseCase =
@@ -586,7 +564,7 @@ class DownloadReconciliationServiceTest {
     fun `should skip torrents if their hash is part of an active multi-torrent session`() =
         runTest {
             val store = InMemoryActiveTrackerStore()
-            val publisher = FakeNotificationPublisher()
+            val publisher = newPublisher()
 
             val resumedCalls = Collections.synchronizedList(mutableListOf<String>())
             val trackUseCase =
@@ -719,7 +697,7 @@ class DownloadReconciliationServiceTest {
                 downloadClient = client,
                 trackDownloadUseCase = tracker,
                 activeTrackerStore = InMemoryActiveTrackerStore(),
-                notificationPublisher = FakeNotificationPublisher(),
+                notificationPublisher = newPublisher(),
                 config = ReconciliationConfig(intervalMinutes = 5, leaseRetrySeconds = leaseRetrySeconds)
             )
         val job = service.start(testScope)
@@ -834,7 +812,7 @@ class DownloadReconciliationServiceTest {
                     downloadClient = client,
                     trackDownloadUseCase = tracker,
                     activeTrackerStore = InMemoryActiveTrackerStore(),
-                    notificationPublisher = FakeNotificationPublisher()
+                    notificationPublisher = newPublisher()
                 )
 
             service.reconcile()

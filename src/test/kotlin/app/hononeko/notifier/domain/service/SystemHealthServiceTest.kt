@@ -1,78 +1,19 @@
 package app.hononeko.notifier.domain.service
 
-import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
-import app.hononeko.notifier.domain.model.NotificationCard
-import app.hononeko.notifier.domain.model.NotificationHandle
-import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import arrow.core.Either
+import app.hononeko.notifier.testing.RecordingPublisher
 import kotlinx.coroutines.test.runTest
-import java.util.Collections
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SystemHealthServiceTest {
-    private class FakeNotificationPublisher(
-        private val shouldFail: Boolean = false
-    ) : NotificationPublisherPort {
-        override val providerId: String = "fake"
-        val sentCards = Collections.synchronizedList(mutableListOf<NotificationCard>())
-        val directSends = Collections.synchronizedList(mutableListOf<Pair<NotificationCard, List<String>>>())
-        var unreachable: Set<String> = emptySet()
-
-        override suspend fun sendDirect(
-            card: NotificationCard,
-            recipients: List<String>
-        ): Map<String, Either<DomainError.NotificationError, NotificationHandle>> {
-            directSends.add(card to recipients)
-            return recipients.associateWith {
-                if (it in unreachable) {
-                    Either.Left(DomainError.NotificationError.DeliveryFailed("fake", "Forbidden: bot can't initiate"))
-                } else {
-                    Either.Right(NotificationHandle("fake", it, "dm-$it"))
-                }
-            }
-        }
-
-        override suspend fun sendCard(
-            card: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> =
-            if (shouldFail) {
-                Either.Left(DomainError.NotificationError.DeliveryFailed("fake", "Delivery error"))
-            } else {
-                sentCards.add(card)
-                Either.Right(NotificationHandle("fake", "chat1", "msg1"))
-            }
-
-        override suspend fun startLiveProgress(
-            initialCard: NotificationCard
-        ): Either<DomainError.NotificationError, NotificationHandle> =
-            Either.Right(NotificationHandle("fake", "chat1", "msg1"))
-
-        override suspend fun updateProgress(
-            handle: NotificationHandle,
-            update: ProgressUpdate
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-
-        override suspend fun completeProgress(
-            handle: NotificationHandle,
-            finalCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-
-        override suspend fun cancelProgress(
-            handle: NotificationHandle,
-            reasonCard: NotificationCard
-        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
-    }
-
     @Test
     fun `should announce system health warnings successfully`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
             val service = SystemHealthService(publisher)
 
             val payload =
@@ -94,7 +35,7 @@ class SystemHealthServiceTest {
     @Test
     fun `should return error when notification publisher fails`() =
         runTest {
-            val publisher = FakeNotificationPublisher(shouldFail = true)
+            val publisher = RecordingPublisher(shouldFail = true)
             val service = SystemHealthService(publisher)
 
             val payload =
@@ -119,7 +60,7 @@ class SystemHealthServiceTest {
     @Test
     fun `health issue goes only to admins, with Acknowledge`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             val result = SystemHealthService(publisher, admins).announce(health())
 
@@ -133,7 +74,7 @@ class SystemHealthServiceTest {
     @Test
     fun `health restored goes only to admins, without buttons`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             SystemHealthService(publisher, admins).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
 
@@ -146,7 +87,7 @@ class SystemHealthServiceTest {
     @Test
     fun `health restored falls back to the channel when no admin can be reached`() =
         runTest {
-            val publisher = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
+            val publisher = RecordingPublisher().apply { unreachable = admins.toSet() }
 
             SystemHealthService(publisher, admins).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
 
@@ -156,7 +97,7 @@ class SystemHealthServiceTest {
     @Test
     fun `without admins health restored goes to the channel as before`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             SystemHealthService(publisher).announce(health(level = "ok", type = EventType.HEALTH_RESTORED))
 
@@ -167,7 +108,7 @@ class SystemHealthServiceTest {
     @Test
     fun `no reachable admin falls back to an informational channel card without buttons`() =
         runTest {
-            val publisher = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
+            val publisher = RecordingPublisher().apply { unreachable = admins.toSet() }
 
             val result = SystemHealthService(publisher, admins).announce(health(level = "error"))
 
@@ -178,7 +119,7 @@ class SystemHealthServiceTest {
     @Test
     fun `without admins health issues go to the channel as before`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             SystemHealthService(publisher).announce(health())
 
@@ -195,7 +136,7 @@ class SystemHealthServiceTest {
     @Test
     fun `admins' issue cards get Snooze next to Acknowledge, keyed on the check`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
 
             SystemHealthService(publisher, admins, snoozes()).announce(health())
 
@@ -211,7 +152,7 @@ class SystemHealthServiceTest {
     @Test
     fun `restored cards, channel fallback and no-admin cards never carry Snooze`() =
         runTest {
-            val restored = FakeNotificationPublisher()
+            val restored = RecordingPublisher()
             SystemHealthService(
                 restored,
                 admins,
@@ -224,11 +165,11 @@ class SystemHealthServiceTest {
                     .first.interactions
             )
 
-            val unreachable = FakeNotificationPublisher().apply { unreachable = admins.toSet() }
+            val unreachable = RecordingPublisher().apply { unreachable = admins.toSet() }
             SystemHealthService(unreachable, admins, snoozes()).announce(health())
             assertEquals(emptyList(), unreachable.sentCards.single().interactions)
 
-            val noAdmins = FakeNotificationPublisher()
+            val noAdmins = RecordingPublisher()
             SystemHealthService(noAdmins, emptyList(), snoozes()).announce(health())
             assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), noAdmins.sentCards.single().interactions)
         }
@@ -236,7 +177,7 @@ class SystemHealthServiceTest {
     @Test
     fun `a snoozed check drops issue and restored cards, other checks still arrive`() =
         runTest {
-            val publisher = FakeNotificationPublisher()
+            val publisher = RecordingPublisher()
             val snoozes = snoozes()
             snoozes.snooze(HealthSnoozes.checkOf(health()), "@alex")
             val service = SystemHealthService(publisher, admins, snoozes)
