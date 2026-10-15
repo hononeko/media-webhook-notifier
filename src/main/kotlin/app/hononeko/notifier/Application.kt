@@ -36,7 +36,7 @@ import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.service.AlertUseCases
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
-import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.CardTemplates
 import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
@@ -161,7 +161,7 @@ fun buildDependencies(
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     telegramApiEngine: HttpClientEngine? = null
 ): AppDependencies {
-    CardFormatterService.templateEngine = TemplateEngine(config.templates)
+    CardTemplates.templateEngine = TemplateEngine(config.templates)
 
     val downloadClient = DownloadClientFactory.create(config)
     val stateStore: StateStorePort =

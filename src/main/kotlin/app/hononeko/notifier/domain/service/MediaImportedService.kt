@@ -21,7 +21,7 @@ class MediaImportedService(
                 payload.source,
                 payload.isUpgrade
             )
-            val card = CardFormatterService.buildImportCard(payload)
+            val card = ServarrCards.buildImportCard(payload)
             val sendResult = notificationPublisher.sendCard(card)
 
             when (sendResult) {

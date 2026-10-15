@@ -15,7 +15,7 @@ class ManualInteractionService(
 
     override suspend fun announce(payload: MediaPayload.ServarrManualInteraction): Either<DomainError, Unit> =
         either {
-            val card = CardFormatterService.buildManualInteractionCard(payload)
+            val card = ServarrCards.buildManualInteractionCard(payload)
             logger.info("Publishing manual interaction required card: {}", card.title)
             notificationPublisher.sendCard(card).bind()
         }

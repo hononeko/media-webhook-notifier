@@ -6,7 +6,7 @@ import app.hononeko.notifier.config.NotificationConfig
 import app.hononeko.notifier.config.TelegramInteractionConfig
 import app.hononeko.notifier.config.TelegramUpdatesMode
 import app.hononeko.notifier.domain.model.NotificationCard
-import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.CardTemplates
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
@@ -193,7 +193,7 @@ class TelegramInteractionBootstrapTest {
 
     private fun sentBodies() = calls.filter { it.method == "sendMessage" }.map { it.body }
 
-    private val ackCard = NotificationCard(title = "t", interactions = listOf(CardFormatterService.ACKNOWLEDGE))
+    private val ackCard = NotificationCard(title = "t", interactions = listOf(CardTemplates.ACKNOWLEDGE))
 
     @Test
     fun `flag on - publisher renders the acknowledge row`() =

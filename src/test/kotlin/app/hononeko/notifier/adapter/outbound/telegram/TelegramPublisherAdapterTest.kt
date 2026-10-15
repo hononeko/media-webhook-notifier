@@ -13,7 +13,7 @@ import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.NotificationLevel
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
-import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.CardTemplates
 import arrow.core.Either
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -958,7 +958,7 @@ class TelegramPublisherAdapterTest {
             val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent))
             val card = NotificationCard(title = "Health", actions = listOf(wiki))
 
-            adapter.sendCard(card.copy(interactions = listOf(CardFormatterService.ACKNOWLEDGE)))
+            adapter.sendCard(card.copy(interactions = listOf(CardTemplates.ACKNOWLEDGE)))
             adapter.sendCard(card)
 
             assertFalse(sent[0].body.contains("callback_data"))
@@ -975,7 +975,7 @@ class TelegramPublisherAdapterTest {
                 NotificationCard(
                     title = "Health",
                     actions = listOf(wiki),
-                    interactions = listOf(CardFormatterService.ACKNOWLEDGE)
+                    interactions = listOf(CardTemplates.ACKNOWLEDGE)
                 )
 
             adapter.sendCard(card)
@@ -1008,7 +1008,7 @@ class TelegramPublisherAdapterTest {
                     NotificationCard(
                         title = "Health",
                         actions = listOf(wiki),
-                        interactions = listOf(CardFormatterService.ACKNOWLEDGE)
+                        interactions = listOf(CardTemplates.ACKNOWLEDGE)
                     )
                 )
 
@@ -1030,7 +1030,7 @@ class TelegramPublisherAdapterTest {
 
             adapter.cancelProgress(
                 NotificationHandle("telegram", "-1001", "5"),
-                NotificationCard(title = "Stalled", interactions = listOf(CardFormatterService.ACKNOWLEDGE))
+                NotificationCard(title = "Stalled", interactions = listOf(CardTemplates.ACKNOWLEDGE))
             )
 
             assertTrue(sent.single().path.endsWith("/editMessageText"), sent.single().path)

@@ -29,9 +29,9 @@ class SystemHealthService(
                 logger.info("Dropping {} card for snoozed health check '{}'", payload.eventType, check)
                 return@either
             }
-            val built = CardFormatterService.buildHealthCard(payload)
+            val built = ServarrCards.buildHealthCard(payload)
             // Snooze rides along with Acknowledge on issues, and only on the admins' private copies.
-            val needsAction = CardFormatterService.ACKNOWLEDGE in built.interactions
+            val needsAction = CardTemplates.ACKNOWLEDGE in built.interactions
             val card =
                 if (snoozes != null && needsAction && adminRecipients.isNotEmpty()) {
                     built.copy(interactions = built.interactions + SnoozeHandler.button(check))

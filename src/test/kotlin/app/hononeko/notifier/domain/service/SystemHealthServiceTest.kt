@@ -68,7 +68,7 @@ class SystemHealthServiceTest {
             assertEquals(emptyList(), publisher.sentCards, "the channel must not get health issues")
             val (card, recipients) = publisher.directSends.single()
             assertEquals(admins, recipients)
-            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), card.interactions)
+            assertEquals(listOf(CardTemplates.ACKNOWLEDGE), card.interactions)
         }
 
     @Test
@@ -124,7 +124,7 @@ class SystemHealthServiceTest {
             SystemHealthService(publisher).announce(health())
 
             assertEquals(emptyList(), publisher.directSends)
-            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), publisher.sentCards.single().interactions)
+            assertEquals(listOf(CardTemplates.ACKNOWLEDGE), publisher.sentCards.single().interactions)
         }
 
     private fun snoozes() =
@@ -142,7 +142,7 @@ class SystemHealthServiceTest {
 
             val check = HealthSnoozes.checkOf(health())
             assertEquals(
-                listOf(CardFormatterService.ACKNOWLEDGE, SnoozeHandler.button(check)),
+                listOf(CardTemplates.ACKNOWLEDGE, SnoozeHandler.button(check)),
                 publisher.directSends
                     .single()
                     .first.interactions
@@ -171,7 +171,7 @@ class SystemHealthServiceTest {
 
             val noAdmins = RecordingPublisher()
             SystemHealthService(noAdmins, emptyList(), snoozes()).announce(health())
-            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), noAdmins.sentCards.single().interactions)
+            assertEquals(listOf(CardTemplates.ACKNOWLEDGE), noAdmins.sentCards.single().interactions)
         }
 
     @Test

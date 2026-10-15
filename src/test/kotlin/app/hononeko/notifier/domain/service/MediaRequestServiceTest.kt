@@ -156,6 +156,6 @@ class MediaRequestServiceTest {
 
             MediaRequestService(publisher, admins).announce(event(EventType.REQUEST_FAILED))
 
-            assertEquals(listOf(CardFormatterService.ACKNOWLEDGE), publisher.sentCards.single().interactions)
+            assertEquals(listOf(CardTemplates.ACKNOWLEDGE), publisher.sentCards.single().interactions)
         }
 }
