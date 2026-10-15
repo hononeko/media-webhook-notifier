@@ -47,15 +47,13 @@ internal class TelegramCallbackProcessor(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private suspend fun replyFor(query: TelegramCallbackQuery): BotReply {
         val actor = guard.check(query).getOrElse { return BotReply(UNAUTHORIZED, alert = true) }
-        val decoded =
-            TelegramCallbackData.decode(query.data) ?: run {
-                logger.debug("Ignoring Telegram callback {} with foreign data '{}'", query.id, query.data)
-                return BotReply("")
-            }
-
+        val decoded = TelegramCallbackData.decode(query.data)
+        if (decoded == null) {
+            logger.debug("Ignoring Telegram callback {} with foreign data '{}'", query.id, query.data)
+            return BotReply("")
+        }
         val origin =
             query.message?.let {
                 NotificationHandle(
@@ -66,7 +64,15 @@ internal class TelegramCallbackProcessor(
                         it.photo != null
                 )
             }
-        val interaction = BotInteraction(actor, decoded.operation, decoded.ref, origin)
+        return awaitReply(BotInteraction(actor, decoded.operation, decoded.ref, origin))
+    }
+
+    /**
+     * Runs [interaction] and waits up to the answer budget. A slow action keeps running in [scope] after the
+     * "Working on it…" answer.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun awaitReply(interaction: BotInteraction): BotReply {
         val pending = scope.async { useCase.handle(interaction) }
         val result =
             try {
@@ -77,7 +83,6 @@ internal class TelegramCallbackProcessor(
                 logger.warn("Bot action '{}' threw: {}", interaction.operation, e.message, e)
                 return BotReply(FAILED, alert = true)
             }
-
         if (result == null) {
             scope.launch {
                 val late = runCatching { pending.await() }

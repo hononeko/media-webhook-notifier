@@ -462,22 +462,28 @@ object YamlParser {
 
         private fun parseScalar(value: String): Any? {
             val trimmed = value.trim()
-            if (trimmed.isEmpty() || trimmed == "null" || trimmed == "~") return null
-            if (trimmed.equals("true", ignoreCase = true)) return true
-            if (trimmed.equals("false", ignoreCase = true)) return false
-
-            trimmed.toLongOrNull()?.let { return it }
-            trimmed.toDoubleOrNull()?.let { return it }
-
-            val isQuoted =
-                (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
-                    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-            if (isQuoted && trimmed.length >= 2) {
-                val inner = trimmed.substring(1, trimmed.length - 1)
-                return inner.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
+            return when {
+                trimmed.isEmpty() || trimmed == "null" || trimmed == "~" -> null
+                trimmed.equals("true", ignoreCase = true) -> true
+                trimmed.equals("false", ignoreCase = true) -> false
+                else -> trimmed.toLongOrNull() ?: trimmed.toDoubleOrNull() ?: unquote(trimmed)
             }
+        }
 
+        /** Strips matching single or double quotes and unescapes `\n`, `\"` and `\\` in a quoted scalar. */
+        private fun unquote(trimmed: String): String {
+            val isQuoted =
+                trimmed.length >= 2 &&
+                    (
+                        (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+                            (trimmed.startsWith("'") && trimmed.endsWith("'"))
+                    )
+            if (!isQuoted) return trimmed
             return trimmed
+                .substring(1, trimmed.length - 1)
+                .replace("\\n", "\n")
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\")
         }
     }
 }

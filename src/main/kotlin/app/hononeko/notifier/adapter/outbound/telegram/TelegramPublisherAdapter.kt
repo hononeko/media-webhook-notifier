@@ -11,6 +11,10 @@ import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
 import arrow.core.Either
+import arrow.core.raise.Raise
+import arrow.core.raise.either
+import arrow.core.raise.ensure
+import arrow.core.raise.ensureNotNull
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
@@ -27,6 +31,7 @@ import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -55,6 +60,8 @@ class TelegramPublisherAdapter(
         private const val TEXT_LIMIT = 4096
 
         const val CALLBACK_TTL_SECONDS = CallbackRefRegistry.DEFAULT_TTL_SECONDS
+        private const val SEND_RETRY_AFTER_SECONDS = 30
+        private const val EDIT_RETRY_AFTER_SECONDS = 5
     }
 
     override val providerId: String = "telegram"
@@ -537,71 +544,57 @@ class TelegramPublisherAdapter(
     private suspend fun handleSendResponse(
         response: HttpResponse,
         destination: Destination
-    ): Either<DomainError.NotificationError, NotificationHandle> {
-        val raw: String = response.bodyAsText()
-        if (response.status == HttpStatusCode.TooManyRequests) {
-            val parsed: TelegramResponse<MessageResult>? =
-                runCatching {
-                    jsonConfig.decodeFromString(telegramResponseSerializer, raw)
-                }.getOrNull()
-            val retryAfter = parsed?.parameters?.retryAfter ?: 30
-            return Either.Left(DomainError.NotificationError.RateLimited(providerId, retryAfter))
-        }
-
-        if (!response.status.value
-                .toString()
-                .startsWith("2")
-        ) {
-            return Either.Left(
-                DomainError.NotificationError.DeliveryFailed(providerId, "HTTP ${response.status.value}: $raw")
-            )
-        }
-
-        val parsed: TelegramResponse<MessageResult> =
-            runCatching {
-                jsonConfig.decodeFromString(telegramResponseSerializer, raw)
-            }.getOrElse { e ->
-                return Either.Left(
-                    DomainError.NotificationError.DeliveryFailed(
-                        providerId,
-                        "Failed to parse Telegram response: ${e.message}"
-                    )
-                )
-            }
-        val msgId =
-            parsed.result?.messageId
-                ?: return Either.Left(
+    ): Either<DomainError.NotificationError, NotificationHandle> =
+        either {
+            val raw = response.bodyAsText()
+            ensureSuccess(response.status, raw, SEND_RETRY_AFTER_SECONDS)
+            val parsed =
+                Either
+                    .catch { jsonConfig.decodeFromString(telegramResponseSerializer, raw) }
+                    .mapLeft {
+                        DomainError.NotificationError.DeliveryFailed(
+                            providerId,
+                            "Failed to parse Telegram response: ${it.message}"
+                        )
+                    }.bind()
+            val msgId =
+                ensureNotNull(parsed.result?.messageId) {
                     DomainError.NotificationError.DeliveryFailed(providerId, "No messageId in response")
-                )
-        return Either.Right(NotificationHandle(providerId, destination.chatId, msgId.toString()))
-    }
-
-    private suspend fun handleEditResponse(response: HttpResponse): Either<DomainError.NotificationError, Unit> {
-        val raw: String = response.bodyAsText()
-        if (response.status == HttpStatusCode.TooManyRequests) {
-            val parsed: TelegramResponse<MessageResult>? =
-                runCatching {
-                    jsonConfig.decodeFromString(telegramResponseSerializer, raw)
-                }.getOrNull()
-            val retryAfter = parsed?.parameters?.retryAfter ?: 5
-            return Either.Left(DomainError.NotificationError.RateLimited(providerId, retryAfter))
+                }
+            NotificationHandle(providerId, destination.chatId, msgId.toString())
         }
 
-        if (!response.status.value
-                .toString()
-                .startsWith("2")
-        ) {
-            // If message was not modified, Telegram returns 400 Bad Request
-            // ("message is not modified"), which is safe to ignore
-            if (raw.contains("message is not modified", ignoreCase = true)) {
-                return Either.Right(Unit)
-            }
-            return Either.Left(
-                DomainError.NotificationError.DeliveryFailed(providerId, "HTTP ${response.status.value}: $raw")
+    private suspend fun handleEditResponse(response: HttpResponse): Either<DomainError.NotificationError, Unit> =
+        either {
+            val raw = response.bodyAsText()
+            // An edit that changes nothing gets 400 "message is not modified", which is fine.
+            val unchanged =
+                response.status != HttpStatusCode.TooManyRequests &&
+                    raw.contains("message is not modified", ignoreCase = true)
+            if (!unchanged) ensureSuccess(response.status, raw, EDIT_RETRY_AFTER_SECONDS)
+        }
+
+    /**
+     * Raises `RateLimited` for 429 (Telegram's `retry_after`, else [defaultRetryAfter]) and `DeliveryFailed` for any
+     * other non-2xx status.
+     */
+    private fun Raise<DomainError.NotificationError>.ensureSuccess(
+        status: HttpStatusCode,
+        raw: String,
+        defaultRetryAfter: Int
+    ) {
+        if (status == HttpStatusCode.TooManyRequests) {
+            val parsed = runCatching { jsonConfig.decodeFromString(telegramResponseSerializer, raw) }.getOrNull()
+            raise(
+                DomainError.NotificationError.RateLimited(
+                    providerId,
+                    parsed?.parameters?.retryAfter ?: defaultRetryAfter
+                )
             )
         }
-
-        return Either.Right(Unit)
+        ensure(
+            status.isSuccess()
+        ) { DomainError.NotificationError.DeliveryFailed(providerId, "HTTP ${status.value}: $raw") }
     }
 
     private fun buildCardHtml(

@@ -2,6 +2,7 @@ package app.hononeko.notifier.adapter.inbound.telegram
 
 import app.hononeko.notifier.domain.error.DomainError
 import arrow.core.Either
+import arrow.core.raise.either
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.HttpClientEngine
@@ -182,51 +183,56 @@ internal class TelegramBotApi(
         body: String,
         resultSerializer: KSerializer<T>,
         configure: HttpRequestBuilder.() -> Unit = {}
-    ): Either<DomainError.NotificationError, T?> {
-        val (status, raw) =
-            try {
-                val response =
-                    httpClient.post("$baseUrl/bot$botToken/$method") {
-                        contentType(ContentType.Application.Json)
-                        setBody(body)
-                        configure()
-                    }
-                response.status to response.bodyAsText()
-            } catch (e: UnresolvedAddressException) {
-                // CIO reports DNS failures with this IllegalArgumentException, not an IOException.
-                // Safe to keep as the cause: it carries no message, so no URL and no bot token.
-                return Either.Left(
+    ): Either<DomainError.NotificationError, T?> =
+        either {
+            val (status, raw) = post(method, body, configure).bind()
+            val parsed = runCatching { json.decodeFromString(Response.serializer(resultSerializer), raw) }.getOrNull()
+            if (status == HttpStatusCode.TooManyRequests) {
+                val retryAfter = parsed?.parameters?.retryAfter ?: DEFAULT_RETRY_AFTER_SECONDS
+                raise(DomainError.NotificationError.RateLimited(PROVIDER, retryAfter))
+            }
+            if (!status.isSuccess() || parsed?.ok != true) {
+                val code = parsed?.errorCode ?: status.value.takeIf { !status.isSuccess() }
+                val description = parsed?.description ?: redact(raw.take(200))
+                raise(
                     DomainError.NotificationError.DeliveryFailed(
                         PROVIDER,
-                        "$method: cannot resolve the Bot API host",
-                        cause = e
+                        "$method: HTTP ${status.value}: $description",
+                        httpStatus = code
                     )
                 )
-            } catch (e: IOException) {
-                // Ktor puts the request URL, and with it the bot token, into exception messages. Drop the cause.
-                return Either.Left(
-                    DomainError.NotificationError.DeliveryFailed(PROVIDER, "$method: ${redact(e.message)}")
-                )
             }
-
-        val parsed = runCatching { json.decodeFromString(Response.serializer(resultSerializer), raw) }.getOrNull()
-        if (status == HttpStatusCode.TooManyRequests) {
-            val retryAfter = parsed?.parameters?.retryAfter ?: DEFAULT_RETRY_AFTER_SECONDS
-            return Either.Left(DomainError.NotificationError.RateLimited(PROVIDER, retryAfter))
+            parsed.result
         }
-        if (!status.isSuccess() || parsed?.ok != true) {
-            val code = parsed?.errorCode ?: status.value.takeIf { !status.isSuccess() }
-            val description = parsed?.description ?: redact(raw.take(200))
-            return Either.Left(
+
+    /** One Bot API round trip: the status and body, or a failure that never carries the bot token. */
+    private suspend fun post(
+        method: String,
+        body: String,
+        configure: HttpRequestBuilder.() -> Unit
+    ): Either<DomainError.NotificationError, Pair<HttpStatusCode, String>> =
+        try {
+            val response =
+                httpClient.post("$baseUrl/bot$botToken/$method") {
+                    contentType(ContentType.Application.Json)
+                    setBody(body)
+                    configure()
+                }
+            Either.Right(response.status to response.bodyAsText())
+        } catch (e: UnresolvedAddressException) {
+            // CIO reports DNS failures with this IllegalArgumentException, not an IOException.
+            // Safe to keep as the cause: it carries no message, so no URL and no bot token.
+            Either.Left(
                 DomainError.NotificationError.DeliveryFailed(
                     PROVIDER,
-                    "$method: HTTP ${status.value}: $description",
-                    httpStatus = code
+                    "$method: cannot resolve the Bot API host",
+                    cause = e
                 )
             )
+        } catch (e: IOException) {
+            // Ktor puts the request URL, and with it the bot token, into exception messages. Drop the cause.
+            Either.Left(DomainError.NotificationError.DeliveryFailed(PROVIDER, "$method: ${redact(e.message)}"))
         }
-        return Either.Right(parsed.result)
-    }
 
     private fun redact(text: String?): String = text.orEmpty().replace(botToken, "<redacted>")
 }
