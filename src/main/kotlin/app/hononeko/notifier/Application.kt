@@ -1,59 +1,22 @@
 package app.hononeko.notifier
 
-import app.hononeko.notifier.adapter.inbound.telegram.TelegramInteractionModule
 import app.hononeko.notifier.adapter.inbound.telegram.registerTelegramWebhookRoute
-import app.hononeko.notifier.adapter.inbound.web.DeadLetterPersistence
-import app.hononeko.notifier.adapter.inbound.web.EventRail
-import app.hononeko.notifier.adapter.inbound.web.InboundRateLimiter
 import app.hononeko.notifier.adapter.inbound.web.configureWebhookRouting
 import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterClearDto
 import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterDetailDto
 import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterListDto
 import app.hononeko.notifier.adapter.inbound.web.controller.DeadLetterReplayDto
 import app.hononeko.notifier.adapter.inbound.web.controller.EventRailMetricsDto
-import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.adapter.inbound.web.controller.HealthStatusDto
 import app.hononeko.notifier.adapter.inbound.web.controller.MemoryMetricsDto
 import app.hononeko.notifier.adapter.inbound.web.controller.MetricsDto
 import app.hononeko.notifier.adapter.inbound.web.controller.ProbeStatusDto
 import app.hononeko.notifier.adapter.inbound.web.controller.ReconciliationMetricsDto
+import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto
+import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto
 import app.hononeko.notifier.adapter.inbound.web.dto.WebhookReceiptDto
-import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
-import app.hononeko.notifier.adapter.outbound.downloadclient.DownloadClientFactory
-import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerAdapter
-import app.hononeko.notifier.adapter.outbound.seerr.SeerrClientAdapter
-import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
-import app.hononeko.notifier.adapter.outbound.state.ValkeyStateStore
-import app.hononeko.notifier.adapter.outbound.telegram.TelegramPublisherAdapter
-import app.hononeko.notifier.adapter.outbound.tracker.InMemoryActiveTrackerStore
 import app.hononeko.notifier.config.AppConfig
 import app.hononeko.notifier.config.ConfigLoader
-import app.hononeko.notifier.domain.port.inbound.IngestWebhookUseCase
-import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
-import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
-import app.hononeko.notifier.domain.port.outbound.MediaServerPort
-import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
-import app.hononeko.notifier.domain.port.outbound.StateStorePort
-import app.hononeko.notifier.domain.service.AlertUseCases
-import app.hononeko.notifier.domain.service.CallbackRefRegistry
-import app.hononeko.notifier.domain.service.CardTemplates
-import app.hononeko.notifier.domain.service.DownloadReconciliationService
-import app.hononeko.notifier.domain.service.DownloadTrackerConfig
-import app.hononeko.notifier.domain.service.DownloadTrackerEngine
-import app.hononeko.notifier.domain.service.HealthSnoozes
-import app.hononeko.notifier.domain.service.IngestWebhookService
-import app.hononeko.notifier.domain.service.ManualInteractionService
-import app.hononeko.notifier.domain.service.MediaAvailableDeduplicator
-import app.hononeko.notifier.domain.service.MediaAvailableService
-import app.hononeko.notifier.domain.service.MediaImportedService
-import app.hononeko.notifier.domain.service.MediaRequestService
-import app.hononeko.notifier.domain.service.ReconciliationConfig
-import app.hononeko.notifier.domain.service.SeasonDebouncer
-import app.hononeko.notifier.domain.service.SystemHealthService
-import app.hononeko.notifier.domain.service.TemplateEngine
-import app.hononeko.notifier.domain.service.TrackingLeases
-import app.hononeko.notifier.domain.service.trackingLeaseTtlSeconds
-import io.ktor.client.engine.HttpClientEngine
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -70,11 +33,6 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.path
 import io.ktor.server.response.respond
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import org.slf4j.LoggerFactory
@@ -82,344 +40,12 @@ import org.slf4j.event.Level
 
 private val logger = LoggerFactory.getLogger("app.hononeko.notifier.Application")
 
-data class AppDependencies(
-    val config: AppConfig,
-    val scope: CoroutineScope,
-    val downloadClient: DownloadClientPort,
-    val notificationPublisher: NotificationPublisherPort,
-    val mediaServerPort: MediaServerPort,
-    val activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore(),
-    val downloadTracker: DownloadTrackerEngine,
-    val reconciliationService: DownloadReconciliationService? = null,
-    val seasonDebouncer: SeasonDebouncer,
-    val mediaImportedService: MediaImportedService,
-    val mediaAvailableService: MediaAvailableService,
-    val systemHealthService: SystemHealthService,
-    val manualInteractionService: ManualInteractionService,
-    val mediaRequestService: MediaRequestService,
-    val ingestWebhookService: IngestWebhookUseCase,
-    val eventRail: EventRail,
-    val rateLimiter: InboundRateLimiter,
-    val providerRegistry: WebhookProviderRegistry,
-    val healthController: HealthController,
-    val stateStore: StateStorePort = InMemoryStateStore(),
-    val deadLetterPersistence: DeadLetterPersistence? = null,
-    val telegramInteractions: TelegramInteractionModule? = null,
-    val seerrClient: SeerrClientAdapter? = null
-) {
-    fun close() {
-        logger.info("Closing application dependencies and draining queues...")
-        eventRail.close()
-        runBlocking {
-            seasonDebouncer.flushAll()
-            deadLetterPersistence?.flush()
-            // Before the state store closes: stopping loops release their tracking leases.
-            downloadTracker.stopAll()
-        }
-        telegramInteractions?.close()
-        seerrClient?.close()
-        stateStore.close()
-        scope.cancel()
-        logger.info("Application dependencies closed")
-    }
-}
-
-private const val LEASE_RETRY_MARGIN_SECONDS = 5L
-
-/** The pod name for readable logs, plus a suffix so a restarted container never assumes it still owns old leases. */
-private fun trackingOwnerId(): String {
-    val suffix = (1..6).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
-    return "${System.getenv("HOSTNAME") ?: "mwn"}-$suffix"
-}
-
-/**
- * The Seerr client behind the admin-only Approve / Decline / Resolve buttons, or `null` when those buttons stay off:
- * interactions disabled, Seerr not configured, or nobody in `TELEGRAM_ADMIN_USERS` to press them.
- */
-private fun seerrClientFor(
-    config: AppConfig,
-    interactive: Boolean
-): SeerrClientAdapter? {
-    if (!config.seerr.isConfigured) return null
-    if (!interactive) {
-        logger.info("SEERR_URL is set but Telegram interactions are off; Seerr cards carry no approval buttons")
-        return null
-    }
-    if (config.telegramInteraction.adminUserIds.isEmpty()) {
-        logger.warn(
-            "SEERR_URL is set but TELEGRAM_ADMIN_USERS is empty; Approve, Decline and Resolve buttons stay off " +
-                "until at least one admin is listed"
-        )
-        return null
-    }
-    logger.info("Seerr request buttons enabled for {}", config.seerr.url)
-    return SeerrClientAdapter(config.seerr)
-}
-
-fun buildDependencies(
-    config: AppConfig,
-    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-    telegramApiEngine: HttpClientEngine? = null
-): AppDependencies {
-    CardTemplates.templateEngine = TemplateEngine(config.templates)
-
-    val downloadClient = DownloadClientFactory.create(config)
-    val stateStore: StateStorePort =
-        when (config.state.type.lowercase()) {
-            "valkey", "redis" -> ValkeyStateStore(config = config.state)
-            else -> InMemoryStateStore()
-        }
-    // One registry shared by the publisher (registers button refs) and the listener (resolves them).
-    val callbackRefs = if (config.features.telegramInteractive) CallbackRefRegistry(stateStore) else null
-    val notificationPublisher =
-        TelegramPublisherAdapter(config = config.notifications, engine = telegramApiEngine, callbackRefs = callbackRefs)
-    val mediaServerPort = MediaServerAdapter(config = config.mediaServer)
-    val activeTrackerStore = InMemoryActiveTrackerStore()
-
-    // Only a shared store can coordinate instances; with the in-memory store each instance would just lock itself.
-    val trackingLeases =
-        (stateStore as? ValkeyStateStore)?.let { valkey ->
-            TrackingLeases(
-                valkey,
-                ownerId = trackingOwnerId(),
-                ttlSeconds = trackingLeaseTtlSeconds(config.downloadClient.pollIntervalSeconds)
-            ).also { logger.info("Tracking leases enabled (owner {}, ttl {}s)", it.ownerId, it.ttlSeconds) }
-        }
-
-    val downloadTracker =
-        DownloadTrackerEngine(
-            downloadClient = downloadClient,
-            notificationPublisher = notificationPublisher,
-            activeTrackerStore = activeTrackerStore,
-            config =
-                DownloadTrackerConfig(
-                    pollIntervalSeconds = config.downloadClient.pollIntervalSeconds,
-                    maxPollingMinutes = config.downloadClient.maxPollingMinutes,
-                    stalledTimeoutMinutes = config.downloadClient.stalledTimeoutMinutes,
-                    missingGraceAttempts = config.downloadClient.missingGraceAttempts,
-                    webuiPublicUrl = config.downloadClient.webuiPublicUrl,
-                    tagPrefix = config.downloadClient.tagPrefix
-                ),
-            scope = scope,
-            leases = trackingLeases
-        )
-
-    val reconciliationService =
-        DownloadReconciliationService(
-            downloadClient = downloadClient,
-            trackDownloadUseCase = downloadTracker,
-            activeTrackerStore = activeTrackerStore,
-            notificationPublisher = notificationPublisher,
-            config =
-                ReconciliationConfig(
-                    intervalMinutes = config.downloadClient.reconciliationIntervalMinutes,
-                    enabled = config.downloadClient.reconciliationEnabled,
-                    tagPrefix = config.downloadClient.tagPrefix,
-                    leaseRetrySeconds = trackingLeases?.let { it.ttlSeconds + LEASE_RETRY_MARGIN_SECONDS }
-                )
-        )
-    reconciliationService.start(scope)
-
-    val mediaImportedService =
-        MediaImportedService(
-            notificationPublisher = notificationPublisher
-        )
-
-    val mediaAvailableDeduplicator =
-        MediaAvailableDeduplicator(
-            stateStore = stateStore,
-            ttlMillis = 30L * 86_400_000L,
-            maxAgeSeconds = config.mediaServer.maxAvailableAgeSeconds
-        )
-
-    val mediaAvailableService =
-        MediaAvailableService(
-            notificationPublisher = notificationPublisher,
-            mediaServerPort = mediaServerPort,
-            deduplicator = mediaAvailableDeduplicator
-        )
-
-    val seasonDebouncer =
-        SeasonDebouncer(
-            debounceMillis = config.downloadClient.debounceSeconds * 1000L,
-            scope = scope,
-            deduplicator = mediaAvailableDeduplicator,
-            onDebouncedGrab = { grab ->
-                downloadTracker.track(grab.downloadId, grab)
-            },
-            onDebouncedDownload = { download ->
-                mediaImportedService.announce(download)
-            },
-            onDebouncedAvailable = { available ->
-                mediaAvailableService.announce(available)
-            }
-        )
-
-    // Cards that need someone to act go privately to the admins, once interactions are on and admins are listed.
-    val adminRecipients =
-        if (callbackRefs != null) config.telegramInteraction.adminUserIds.map { it.toString() } else emptyList()
-
-    // Snoozes only exist with interactions on: they're created by a button press.
-    val healthSnoozes = if (callbackRefs != null) HealthSnoozes(stateStore) else null
-
-    val systemHealthService =
-        SystemHealthService(
-            notificationPublisher = notificationPublisher,
-            adminRecipients = adminRecipients,
-            snoozes = healthSnoozes
-        )
-
-    val manualInteractionService =
-        ManualInteractionService(
-            notificationPublisher = notificationPublisher
-        )
-
-    val seerrClient = seerrClientFor(config, interactive = callbackRefs != null)
-    val mediaRequestService =
-        MediaRequestService(
-            notificationPublisher = notificationPublisher,
-            decisionRecipients = if (seerrClient != null) adminRecipients else emptyList()
-        )
-
-    val ingestWebhookService =
-        IngestWebhookService(
-            trackDownloadUseCase = downloadTracker,
-            announceMediaImportedUseCase = mediaImportedService,
-            announceMediaAvailableUseCase = mediaAvailableService,
-            seasonDebouncer = seasonDebouncer,
-            alertUseCases =
-                AlertUseCases(
-                    systemHealth = systemHealthService,
-                    manualInteraction = manualInteractionService,
-                    mediaRequest = mediaRequestService
-                )
-        )
-
-    val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)
-    val deadLetterPersistence =
-        (stateStore as? ValkeyStateStore)?.let { valkey ->
-            DeadLetterPersistence(buffer = eventRail.deadLetterBuffer, stateStore = valkey).also { it.start(scope) }
-        }
-    eventRail.start(scope, ingestWebhookService, workerCount = config.server.eventRailWorkers)
-
-    val rateLimiter = InboundRateLimiter(limitPerMinute = config.server.rateLimitPerMinute)
-    val providerRegistry = WebhookProviderRegistry()
-    val healthController =
-        HealthController(
-            eventRail = eventRail,
-            downloadTracker = downloadTracker,
-            reconciliationService = reconciliationService,
-            stateStore = stateStore
-        )
-
-    val telegramInteractions =
-        if (callbackRefs != null) {
-            TelegramInteractionModule
-                .create(
-                    config,
-                    callbackRefs,
-                    TelegramInteractionModule.actionHandlers(
-                        notificationPublisher,
-                        callbackRefs,
-                        seerrClient,
-                        healthSnoozes
-                    ),
-                    scope,
-                    telegramApiEngine
-                ).also { it.start(scope) }
-        } else {
-            null
-        }
-
-    return AppDependencies(
-        config = config,
-        scope = scope,
-        downloadClient = downloadClient,
-        notificationPublisher = notificationPublisher,
-        mediaServerPort = mediaServerPort,
-        activeTrackerStore = activeTrackerStore,
-        downloadTracker = downloadTracker,
-        reconciliationService = reconciliationService,
-        seasonDebouncer = seasonDebouncer,
-        mediaImportedService = mediaImportedService,
-        mediaAvailableService = mediaAvailableService,
-        systemHealthService = systemHealthService,
-        manualInteractionService = manualInteractionService,
-        mediaRequestService = mediaRequestService,
-        ingestWebhookService = ingestWebhookService,
-        eventRail = eventRail,
-        rateLimiter = rateLimiter,
-        providerRegistry = providerRegistry,
-        healthController = healthController,
-        stateStore = stateStore,
-        deadLetterPersistence = deadLetterPersistence,
-        telegramInteractions = telegramInteractions,
-        seerrClient = seerrClient
-    )
-}
-
 fun Application.module(dependencies: AppDependencies) {
     install(ForwardedHeaders)
     install(XForwardedHeaders)
-
-    install(CallLogging) {
-        level = Level.INFO
-        filter { call ->
-            val path = call.request.path()
-            !path.startsWith("/livez") &&
-                !path.startsWith("/readyz") &&
-                !path.startsWith("/startupz") &&
-                !path.startsWith("/health") &&
-                !path.startsWith("/metrics")
-        }
-    }
-
-    install(ContentNegotiation) {
-        json(
-            Json {
-                ignoreUnknownKeys = true
-                encodeDefaults = true
-                isLenient = true
-                serializersModule =
-                    SerializersModule {
-                        contextual(WebhookReceiptDto::class, WebhookReceiptDto.serializer())
-                        contextual(HealthStatusDto::class, HealthStatusDto.serializer())
-                        contextual(ProbeStatusDto::class, ProbeStatusDto.serializer())
-                        contextual(MetricsDto::class, MetricsDto.serializer())
-                        contextual(EventRailMetricsDto::class, EventRailMetricsDto.serializer())
-                        contextual(ReconciliationMetricsDto::class, ReconciliationMetricsDto.serializer())
-                        contextual(MemoryMetricsDto::class, MemoryMetricsDto.serializer())
-                        contextual(DeadLetterListDto::class, DeadLetterListDto.serializer())
-                        contextual(DeadLetterDetailDto::class, DeadLetterDetailDto.serializer())
-                        contextual(DeadLetterReplayDto::class, DeadLetterReplayDto.serializer())
-                        contextual(DeadLetterClearDto::class, DeadLetterClearDto.serializer())
-                        contextual(
-                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto::class,
-                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewRequestDto
-                                .serializer()
-                        )
-                        contextual(
-                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto::class,
-                            app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto
-                                .serializer()
-                        )
-                    }
-            }
-        )
-    }
-
-    install(StatusPages) {
-        exception<Throwable> { call, cause ->
-            logger.error("Unhandled exception processing request: {}", cause.message, cause)
-            call.respond<WebhookReceiptDto>(
-                HttpStatusCode.InternalServerError,
-                WebhookReceiptDto(
-                    status = "error",
-                    message = "An unexpected error occurred while processing the request"
-                )
-            )
-        }
-    }
+    installCallLogging()
+    installJson()
+    installErrorPage()
 
     configureWebhookRouting(
         eventRail = dependencies.eventRail,
@@ -469,4 +95,71 @@ fun main() {
     val config = ConfigLoader.load()
     val dependencies = buildDependencies(config)
     startServer(config, dependencies, wait = true)
+}
+
+/** Logs requests, except the health probes and metrics scrapes that would drown everything else. */
+private fun Application.installCallLogging() {
+    install(CallLogging) {
+        level = Level.INFO
+        filter { call ->
+            val path = call.request.path()
+            !path.startsWith("/livez") &&
+                !path.startsWith("/readyz") &&
+                !path.startsWith("/startupz") &&
+                !path.startsWith("/health") &&
+                !path.startsWith("/metrics")
+        }
+    }
+}
+
+private fun Application.installJson() {
+    install(ContentNegotiation) {
+        json(
+            Json {
+                ignoreUnknownKeys = true
+                encodeDefaults = true
+                isLenient = true
+                serializersModule =
+                    SerializersModule {
+                        contextual(WebhookReceiptDto::class, WebhookReceiptDto.serializer())
+                        contextual(HealthStatusDto::class, HealthStatusDto.serializer())
+                        contextual(ProbeStatusDto::class, ProbeStatusDto.serializer())
+                        contextual(MetricsDto::class, MetricsDto.serializer())
+                        contextual(EventRailMetricsDto::class, EventRailMetricsDto.serializer())
+                        contextual(ReconciliationMetricsDto::class, ReconciliationMetricsDto.serializer())
+                        contextual(MemoryMetricsDto::class, MemoryMetricsDto.serializer())
+                        contextual(DeadLetterListDto::class, DeadLetterListDto.serializer())
+                        contextual(DeadLetterDetailDto::class, DeadLetterDetailDto.serializer())
+                        contextual(DeadLetterReplayDto::class, DeadLetterReplayDto.serializer())
+                        contextual(DeadLetterClearDto::class, DeadLetterClearDto.serializer())
+                        contextual(
+                            TemplatePreviewRequestDto::class,
+                            TemplatePreviewRequestDto
+                                .serializer()
+                        )
+                        contextual(
+                            TemplatePreviewResponseDto::class,
+                            TemplatePreviewResponseDto
+                                .serializer()
+                        )
+                    }
+            }
+        )
+    }
+}
+
+/** Any unhandled exception becomes a generic 500, logged with its stack trace. */
+private fun Application.installErrorPage() {
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            logger.error("Unhandled exception processing request: {}", cause.message, cause)
+            call.respond<WebhookReceiptDto>(
+                HttpStatusCode.InternalServerError,
+                WebhookReceiptDto(
+                    status = "error",
+                    message = "An unexpected error occurred while processing the request"
+                )
+            )
+        }
+    }
 }

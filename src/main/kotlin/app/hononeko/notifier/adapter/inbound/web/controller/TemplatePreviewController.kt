@@ -1,14 +1,10 @@
 package app.hononeko.notifier.adapter.inbound.web.controller
 
+import app.hononeko.notifier.adapter.outbound.telegram.TelegramHtmlFormatter
 import app.hononeko.notifier.config.YamlParser
-import app.hononeko.notifier.domain.model.AppSource
-import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.DownloadState
-import app.hononeko.notifier.domain.model.EventType
-import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.ProgressUpdate
-import app.hononeko.notifier.domain.model.SwarmStats
 import app.hononeko.notifier.domain.service.CardTemplates
 import app.hononeko.notifier.domain.service.DownloadCards
 import app.hononeko.notifier.domain.service.PayloadCards
@@ -76,10 +72,6 @@ data class ActionLinkDto(
 )
 
 private const val MOCK_QBIT_URL = "https://qbittorrent.lan:8080"
-private const val MOCK_DUNE_TITLE = "Dune: Part Two"
-private const val MOCK_DUNE_POSTER = "https://image.tmdb.org/t/p/w500/dune2.jpg"
-private const val MOCK_MULTI_EPISODE_RELEASE_NAME = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE"
-private val MOCK_MULTI_EPISODE_NUMBERS = listOf(1, 2, 3, 4, 5)
 
 private val BASE_TAGS =
     listOf("title", "series_title", "season", "episode_range", "poster_url", "instance_name", "source_name")
@@ -229,69 +221,61 @@ class TemplatePreviewController {
                 return
             }
 
-        val engine =
-            if (!request.templateYaml.isNullOrBlank()) {
-                val templateConfig =
-                    YamlParser.parseTemplateConfig(
-                        request.templateYaml,
-                        defaultTheme = CardTemplates.templateEngine.theme
-                    )
-                TemplateEngine(templateConfig)
-            } else {
-                CardTemplates.templateEngine
-            }
         val eventType = request.eventType.lowercase(Locale.US).trim()
-
-        val (card, progressUpdate, availableTags) = renderMockEvent(eventType, request.multiTrack, engine)
-
-        val renderedCardDto =
-            if (card != null) {
-                RenderedCardDto(
-                    title = card.title,
-                    subtitle = card.subtitle,
-                    level = card.level.name,
-                    customBody = card.customBody,
-                    overview = card.overview,
-                    fields = card.fields.map { CardFieldDto(it.name, it.value, it.inline) },
-                    artworkUrl = card.artworkUrl,
-                    actions = card.actions.map { ActionLinkDto(it.label, it.url, it.style.name) },
-                    silent = card.silent
-                )
-            } else {
-                RenderedCardDto(
-                    title = progressUpdate!!.title,
-                    subtitle = progressUpdate.subtitle,
-                    level = "PROGRESS",
-                    customBody = progressUpdate.customBody,
-                    overview = null,
-                    fields = emptyList(),
-                    artworkUrl = null,
-                    actions = progressUpdate.actions.map { ActionLinkDto(it.label, it.url, it.style.name) },
-                    silent = true
-                )
-            }
-
-        val htmlOutput =
-            if (card != null) {
-                app.hononeko.notifier.adapter.outbound.telegram.TelegramHtmlFormatter
-                    .buildCardHtml(card)
-            } else {
-                app.hononeko.notifier.adapter.outbound.telegram.TelegramHtmlFormatter.buildProgressHtml(
-                    progressUpdate!!
-                )
-            }
+        val (card, progressUpdate, availableTags) = renderMockEvent(eventType, request.multiTrack, engineFor(request))
+        // Exactly one of the two is set: progress events render a live-progress update, all others a card.
+        val rendered = card?.toDto() ?: progressUpdate!!.toDto()
+        val html =
+            card?.let { TelegramHtmlFormatter.buildCardHtml(it) }
+                ?: TelegramHtmlFormatter.buildProgressHtml(progressUpdate!!)
 
         call.respond(
             HttpStatusCode.OK,
             TemplatePreviewResponseDto(
                 status = "success",
                 eventType = eventType,
-                renderedCard = renderedCardDto,
-                telegramHtml = htmlOutput,
+                renderedCard = rendered,
+                telegramHtml = html,
                 tagsAvailable = availableTags
             )
         )
     }
+
+    /** The request's own templates on top of the active theme, or the active engine when it brings none. */
+    private fun engineFor(request: TemplatePreviewRequestDto): TemplateEngine =
+        if (!request.templateYaml.isNullOrBlank()) {
+            TemplateEngine(
+                YamlParser.parseTemplateConfig(request.templateYaml, defaultTheme = CardTemplates.templateEngine.theme)
+            )
+        } else {
+            CardTemplates.templateEngine
+        }
+
+    private fun NotificationCard.toDto() =
+        RenderedCardDto(
+            title = title,
+            subtitle = subtitle,
+            level = level.name,
+            customBody = customBody,
+            overview = overview,
+            fields = fields.map { CardFieldDto(it.name, it.value, it.inline) },
+            artworkUrl = artworkUrl,
+            actions = actions.map { ActionLinkDto(it.label, it.url, it.style.name) },
+            silent = silent
+        )
+
+    private fun ProgressUpdate.toDto() =
+        RenderedCardDto(
+            title = title,
+            subtitle = subtitle,
+            level = "PROGRESS",
+            customBody = customBody,
+            overview = null,
+            fields = emptyList(),
+            artworkUrl = null,
+            actions = actions.map { ActionLinkDto(it.label, it.url, it.style.name) },
+            silent = true
+        )
 
     private fun renderMockEvent(
         eventType: String,
@@ -385,228 +369,3 @@ private fun renderMockCompleteEvent(
         )
     return Triple(card, null, GRAB_TAGS)
 }
-
-private fun mockMultiGrab() =
-    MediaPayload.ArrGrab(
-        source = AppSource.SONARR,
-        downloadId = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
-        title = MOCK_MULTI_EPISODE_RELEASE_NAME,
-        seriesOrMovieTitle = "Love is Blind: UK",
-        seasonNumber = 3,
-        episodeNumbers = MOCK_MULTI_EPISODE_NUMBERS,
-        releaseGroup = "DEFENESTRATE",
-        releaseTitle = MOCK_MULTI_EPISODE_RELEASE_NAME,
-        quality = "WEB-DL-1080p",
-        sizeBytes = 14173388800L,
-        indexer = "DigitalCore (API)",
-        posterUrl = "https://image.tmdb.org/t/p/w500/libuk.jpg",
-        instanceName = "Sonarr-TV"
-    )
-
-private fun mockMultiProgress(): DownloadItemProgress {
-    val ep1 =
-        DownloadItemProgress(
-            id = "hash_lib_01",
-            name = "Love.Is.Blind.UK.S03E01.1080p.WEB.H264-DEFENESTRATE",
-            progressPercent = 100.0,
-            progressRatio = 1.0,
-            downloadSpeedBytesPerSec = 0L,
-            uploadSpeedBytesPerSec = 100000L,
-            etaSeconds = 0L,
-            totalSizeBytes = 2834677760L,
-            downloadedBytes = 2834677760L,
-            state = DownloadState.COMPLETED
-        )
-    val ep2 =
-        DownloadItemProgress(
-            id = "hash_lib_02",
-            name = "Love.Is.Blind.UK.S03E02.1080p.WEB.H264-DEFENESTRATE",
-            progressPercent = 82.5,
-            progressRatio = 0.825,
-            downloadSpeedBytesPerSec = 12582912L,
-            uploadSpeedBytesPerSec = 50000L,
-            etaSeconds = 4L,
-            totalSizeBytes = 2834677760L,
-            downloadedBytes = 2338609152L,
-            state = DownloadState.DOWNLOADING
-        )
-    val ep3 =
-        DownloadItemProgress(
-            id = "hash_lib_03",
-            name = "Love.Is.Blind.UK.S03E03.1080p.WEB.H264-DEFENESTRATE",
-            progressPercent = 45.0,
-            progressRatio = 0.45,
-            downloadSpeedBytesPerSec = 8388608L,
-            uploadSpeedBytesPerSec = 20000L,
-            etaSeconds = 22L,
-            totalSizeBytes = 2834677760L,
-            downloadedBytes = 1275605000L,
-            state = DownloadState.DOWNLOADING
-        )
-    val ep4 =
-        DownloadItemProgress(
-            id = "hash_lib_04",
-            name = "Love.Is.Blind.UK.S03E04.1080p.WEB.H264-DEFENESTRATE",
-            progressPercent = 21.0,
-            progressRatio = 0.21,
-            downloadSpeedBytesPerSec = 4194304L,
-            uploadSpeedBytesPerSec = 0L,
-            etaSeconds = 75L,
-            totalSizeBytes = 2834677760L,
-            downloadedBytes = 595282330L,
-            state = DownloadState.DOWNLOADING
-        )
-    val ep5 =
-        DownloadItemProgress(
-            id = "hash_lib_05",
-            name = "Love.Is.Blind.UK.S03E05.1080p.WEB.H264-DEFENESTRATE",
-            progressPercent = 0.0,
-            progressRatio = 0.0,
-            downloadSpeedBytesPerSec = 0L,
-            uploadSpeedBytesPerSec = 0L,
-            etaSeconds = 0L,
-            totalSizeBytes = 2834677760L,
-            downloadedBytes = 0L,
-            state = DownloadState.QUEUED
-        )
-
-    return DownloadItemProgress(
-        id = "hash_lib_01|hash_lib_02|hash_lib_03|hash_lib_04|hash_lib_05",
-        name = MOCK_MULTI_EPISODE_RELEASE_NAME,
-        progressPercent = 49.70,
-        progressRatio = 0.4970,
-        downloadSpeedBytesPerSec = 25165824L,
-        uploadSpeedBytesPerSec = 170000L,
-        etaSeconds = 48L,
-        totalSizeBytes = 14173388800L,
-        downloadedBytes = 7044174242L,
-        swarm = SwarmStats(seedsCount = 18, seedsTotal = 45, peersCount = 10, peersTotal = 25),
-        state = DownloadState.DOWNLOADING,
-        items = listOf(ep1, ep2, ep3, ep4, ep5)
-    )
-}
-
-private fun mockGrab() =
-    MediaPayload.ArrGrab(
-        source = AppSource.SONARR,
-        downloadId = "mock-download-123",
-        title = "Breaking Bad - S01E01 - Pilot",
-        seriesOrMovieTitle = "Breaking Bad",
-        seasonNumber = 1,
-        episodeNumbers = listOf(1),
-        releaseGroup = "FLUX",
-        releaseTitle = "Breaking.Bad.S01E01.Pilot.1080p.BluRay.x264-FLUX",
-        quality = "WEBDL-1080p",
-        sizeBytes = 2147483648L,
-        indexer = "TorrentLeech",
-        posterUrl = "https://image.tmdb.org/t/p/w500/sample.jpg",
-        instanceName = "Sonarr-4K"
-    )
-
-private fun mockProgress(
-    percent: Double,
-    state: DownloadState
-) = DownloadItemProgress(
-    id = "mock-hash-123456",
-    name = "Breaking Bad - S01E01 - Pilot",
-    progressPercent = percent,
-    progressRatio = percent / 100.0,
-    downloadSpeedBytesPerSec = 15728640L,
-    uploadSpeedBytesPerSec = 1048576L,
-    downloadedBytes = (2147483648L * (percent / 100.0)).toLong(),
-    totalSizeBytes = 2147483648L,
-    etaSeconds = 45L,
-    swarm = SwarmStats(seedsCount = 42, seedsTotal = 120, peersCount = 8, peersTotal = 25),
-    state = state
-)
-
-private fun mockDownload() =
-    MediaPayload.ArrDownload(
-        source = AppSource.RADARR,
-        title = MOCK_DUNE_TITLE,
-        seriesOrMovieTitle = MOCK_DUNE_TITLE,
-        year = 2024,
-        quality = "Remux-2160p",
-        videoCodec = "HEVC",
-        audioCodec = "TrueHD Atmos",
-        resolution = "2160p (4K)",
-        sizeBytes = 45097156608L,
-        posterUrl = MOCK_DUNE_POSTER,
-        overview =
-            "Paul Atreides unites with Chani and the Fremen while seeking revenge " +
-                "against the conspirators who destroyed his family.",
-        instanceName = "Radarr-4K",
-        webUrl = "https://radarr.lan:7878/movie/1"
-    )
-
-private fun mockPlex() =
-    MediaPayload.PlexLibraryNew(
-        title = MOCK_DUNE_TITLE,
-        year = 2024,
-        summary =
-            "Paul Atreides unites with Chani and the Fremen while seeking revenge " +
-                "against the conspirators who destroyed his family.",
-        rating = 8.6,
-        durationSeconds = 9960L,
-        videoCodec = "HEVC",
-        audioCodec = "TrueHD Atmos",
-        resolution = "2160p (4K)",
-        posterUrl = MOCK_DUNE_POSTER,
-        deepLinkUrl = "https://app.plex.tv/desktop#!/server/abc/details?key=/library/metadata/12345",
-        instanceName = "Plex Media Server"
-    )
-
-private fun mockHealth() =
-    MediaPayload.ServarrHealth(
-        source = AppSource.SONARR,
-        level = "error",
-        message = "Indexers are unavailable: TorrentLeech",
-        type = "Indexers",
-        wikiUrl = "https://wiki.servarr.com/sonarr/system#indexers-unavailable",
-        instanceName = "Sonarr-4K"
-    )
-
-private fun mockManual() =
-    MediaPayload.ServarrManualInteraction(
-        source = AppSource.RADARR,
-        title = "$MOCK_DUNE_TITLE (2024)",
-        seriesOrMovieTitle = MOCK_DUNE_TITLE,
-        releaseTitle = "Dune.Part.Two.2024.2160p.UHD.Remux.TrueHD.Atmos-FLUX.mkv",
-        quality = "Remux-2160p",
-        sizeBytes = 45097156608L,
-        indexer = "TorrentLeech",
-        downloadClient = "qBittorrent",
-        reason = "Found unknown movie file",
-        posterUrl = MOCK_DUNE_POSTER,
-        webUrl = "https://radarr.lan:7878/activity/queue",
-        instanceName = "Radarr-4K"
-    )
-
-private fun mockSeerr() =
-    MediaPayload.SeerrEvent(
-        eventType = EventType.REQUEST_PENDING,
-        notificationType = "MEDIA_PENDING",
-        subject = "$MOCK_DUNE_TITLE (2024)",
-        requestedByUsername = "alice",
-        mediaType = "movie",
-        is4k = true,
-        image = MOCK_DUNE_POSTER,
-        webUrl = "https://overseerr.lan:5055/movie/1",
-        instanceName = "Overseerr"
-    )
-
-private fun mockIssue() =
-    MediaPayload.SeerrEvent(
-        eventType = EventType.ISSUE_CREATED,
-        notificationType = "ISSUE_CREATED",
-        subject = "$MOCK_DUNE_TITLE (2024)",
-        requestedByUsername = "bob",
-        mediaType = "movie",
-        is4k = false,
-        issueType = "Video",
-        issueStatus = "Open",
-        commentMessage = "Video playback is choppy at 45m",
-        image = MOCK_DUNE_POSTER,
-        webUrl = "https://overseerr.lan:5055/issues/42",
-        instanceName = "Overseerr"
-    )

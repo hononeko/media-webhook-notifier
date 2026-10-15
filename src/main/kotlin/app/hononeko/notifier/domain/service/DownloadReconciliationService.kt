@@ -2,6 +2,7 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.TrackingStart
@@ -10,6 +11,7 @@ import app.hononeko.notifier.domain.port.outbound.ActiveTrackerStore
 import app.hononeko.notifier.domain.port.outbound.DownloadClientPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import arrow.core.Either
+import arrow.core.getOrElse
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -63,161 +65,150 @@ class DownloadReconciliationService(
 
         totalRuns.incrementAndGet()
         logger.debug("Starting torrent reconciliation sweep...")
-
-        val activeTorrents =
-            when (val activeResult = downloadClient.getActiveDownloads("downloading")) {
-                is Either.Right -> activeResult.value
-                is Either.Left -> {
-                    logger.debug("Torrent reconciliation failed to query active torrents: {}", activeResult.value)
-                    return 0
-                }
+        val candidates = sweepCandidates() ?: return 0
+        val untracked =
+            candidates.filter { torrent ->
+                val hash = torrent.normalizedHash()
+                hash.isNotBlank() && !activeTrackerStore.isTracking(hash)
             }
-        // Tagged downloads that finished while nothing tracked them (a rollout handoff, downtime): resuming them lets
-        // the first tick send the completion card and remove the tags. Untagged finished downloads never had a card.
+        val (tagged, untagged) = untracked.partition { it.tag(tagPrefix, "msg") != null }
+
+        val tally = SweepTally()
+        tagged.groupBy { cardOf(it) }.forEach { (card, torrents) -> tally.count(resumeCard(card, torrents)) }
+        untagged.forEach { tally.count(trackUntagged(it)) }
+        report(tally)
+        return tally.resumed
+    }
+
+    /**
+     * Active downloads plus tagged ones that finished while nothing tracked them (a rollout handoff, downtime):
+     * resuming those lets the first tick send the completion card and remove the tags. Untagged finished downloads
+     * never had a card. `null` when the active downloads can't be read.
+     */
+    private suspend fun sweepCandidates(): List<DownloadItemProgress>? {
+        val active =
+            downloadClient.getActiveDownloads("downloading").getOrElse { error ->
+                logger.debug("Torrent reconciliation failed to query active torrents: {}", error)
+                return null
+            }
         val finishedTagged =
-            when (val finishedResult = downloadClient.getActiveDownloads("completed")) {
-                is Either.Right ->
-                    finishedResult.value.filter { torrent -> torrent.tags.any { it.startsWith("${tagPrefix}msg:") } }
-                is Either.Left -> {
-                    logger.debug("Torrent reconciliation failed to query finished torrents: {}", finishedResult.value)
+            downloadClient.getActiveDownloads("completed").fold(
+                { error ->
+                    logger.debug("Torrent reconciliation failed to query finished torrents: {}", error)
                     emptyList()
-                }
-            }
-        val candidates = (activeTorrents + finishedTagged).distinctBy { it.id.trim().lowercase() }
+                },
+                { finished -> finished.filter { it.tag(tagPrefix, "msg") != null } }
+            )
+        return (active + finishedTagged).distinctBy { it.normalizedHash() }
+    }
 
-        var resumedThisRun = 0
+    /** The card a tagged download belongs to: its message, in its own chat or the default one. */
+    private data class CardRef(
+        val channelOrChatId: String,
+        val messageId: String
+    )
+
+    private fun cardOf(torrent: DownloadItemProgress): CardRef =
+        CardRef(
+            channelOrChatId =
+                torrent.tag(tagPrefix, "chat")?.ifBlank { null } ?: notificationPublisher.defaultChannelOrChatId,
+            messageId = torrent.tag(tagPrefix, "msg").orEmpty()
+        )
+
+    /** Resumes the live card that one or more tagged downloads (a season pack, say) belong to. */
+    private suspend fun resumeCard(
+        card: CardRef,
+        torrents: List<DownloadItemProgress>
+    ): Either<DomainError, TrackingStart> {
+        val distinct = torrents.distinctBy { it.normalizedHash() }
+        val combinedHash = distinct.joinToString("|") { it.normalizedHash() }
+        val isPhoto = distinct.any { it.tag(tagPrefix, "photo") == "1" }
+        val handle =
+            NotificationHandle(
+                providerId = notificationPublisher.providerId,
+                channelOrChatId = card.channelOrChatId,
+                messageReferenceId = card.messageId,
+                isPhoto = isPhoto
+            )
+        logger.info(
+            "Reconciliation found existing tracked torrent(s): {} (hashes: {}, msgId: {}, isPhoto: {}). " +
+                "Resuming progress loop.",
+            distinct.map { it.name },
+            combinedHash,
+            card.messageId,
+            isPhoto
+        )
+        return trackDownloadUseCase.trackExisting(
+            hash = combinedHash,
+            payload = synthesizedGrab(distinct, combinedHash),
+            handle = handle,
+            isPhoto = isPhoto
+        )
+    }
+
+    /** A grab rebuilt from the downloads alone, since the original webhook is long gone. */
+    private fun synthesizedGrab(
+        torrents: List<DownloadItemProgress>,
+        combinedHash: String
+    ): MediaPayload.ArrGrab {
+        val primary = torrents.first()
+        return MediaPayload.ArrGrab(
+            source = AppSource.SONARR,
+            downloadId = combinedHash,
+            downloadIds = torrents.map { it.normalizedHash() },
+            title = primary.name,
+            seriesOrMovieTitle = primary.name,
+            seasonNumber = torrents.firstNotNullOfOrNull { EpisodeFormat.extractSeasonNumber(it.name) },
+            episodeNumbers = torrents.mapNotNull { EpisodeFormat.extractEpisodeNumber(it.name) }.distinct().sorted(),
+            sizeBytes = torrents.sumOf { it.totalSizeBytes }
+        )
+    }
+
+    private suspend fun trackUntagged(torrent: DownloadItemProgress): Either<DomainError, TrackingStart> {
+        val hash = torrent.normalizedHash()
+        val grab =
+            MediaPayload.ArrGrab(
+                source = AppSource.SONARR,
+                downloadId = hash,
+                title = torrent.name,
+                seriesOrMovieTitle = torrent.name,
+                sizeBytes = torrent.totalSizeBytes
+            )
+        logger.info(
+            "Reconciliation found untracked active download: {} (hash: {}). Starting new tracking loop.",
+            torrent.name,
+            hash
+        )
+        return trackDownloadUseCase.track(hash, grab)
+    }
+
+    private fun report(tally: SweepTally) {
+        heldElsewhereLastSweep = tally.heldElsewhere
+        if (tally.heldElsewhere > 0) {
+            logger.info("{} download(s) are tracked by another instance; checking again shortly", tally.heldElsewhere)
+        }
+        if (tally.resumed > 0) {
+            logger.info("Torrent reconciliation sweep completed. Resumed {} torrent tracker(s).", tally.resumed)
+        } else {
+            logger.debug("Torrent reconciliation sweep completed. No untracked downloads found.")
+        }
+    }
+
+    /** What one sweep did: trackers it started, and downloads another instance already tracks. */
+    private inner class SweepTally {
+        var resumed = 0
         var heldElsewhere = 0
 
         fun count(result: Either<DomainError, TrackingStart>) {
-            when ((result as? Either.Right)?.value) {
+            when (result.getOrNull()) {
                 TrackingStart.STARTED -> {
-                    resumedThisRun++
+                    resumed++
                     totalResumed.incrementAndGet()
                 }
                 TrackingStart.TRACKED_ELSEWHERE -> heldElsewhere++
                 TrackingStart.ALREADY_TRACKED, null -> Unit
             }
         }
-        val untrackedTorrents =
-            candidates.filter { torrent ->
-                val normalizedHash = torrent.id.trim().lowercase()
-                normalizedHash.isNotBlank() && !activeTrackerStore.isTracking(normalizedHash)
-            }
-
-        val (taggedTorrents, untaggedTorrents) =
-            untrackedTorrents.partition { torrent ->
-                torrent.tags.any { it.startsWith("${tagPrefix}msg:") }
-            }
-
-        val groupedTaggedTorrents =
-            taggedTorrents.groupBy { torrent ->
-                val msgTag = torrent.tags.first { it.startsWith("${tagPrefix}msg:") }
-                val messageId = msgTag.removePrefix("${tagPrefix}msg:").trim()
-                val chatTag = torrent.tags.firstOrNull { it.startsWith("${tagPrefix}chat:") }
-                val channelOrChatId =
-                    chatTag?.removePrefix("${tagPrefix}chat:")?.trim()?.ifBlank { null }
-                        ?: notificationPublisher.defaultChannelOrChatId
-                channelOrChatId to messageId
-            }
-
-        for ((key, torrentGroup) in groupedTaggedTorrents) {
-            val (channelOrChatId, messageId) = key
-            val distinctTorrents = torrentGroup.distinctBy { it.id.trim().lowercase() }
-            val combinedHash = distinctTorrents.joinToString("|") { it.id.trim().lowercase() }
-            val downloadIds = distinctTorrents.map { it.id.trim().lowercase() }
-            val isPhoto =
-                distinctTorrents.any { torrent ->
-                    torrent.tags
-                        .firstOrNull { it.startsWith("${tagPrefix}photo:") }
-                        ?.removePrefix("${tagPrefix}photo:")
-                        ?.trim() == "1"
-                }
-
-            val episodeNumbers =
-                distinctTorrents
-                    .mapNotNull { EpisodeFormat.extractEpisodeNumber(it.name) }
-                    .distinct()
-                    .sorted()
-            val seasonNumber =
-                distinctTorrents
-                    .mapNotNull { EpisodeFormat.extractSeasonNumber(it.name) }
-                    .firstOrNull()
-
-            val primaryTorrent = distinctTorrents.first()
-            val totalSizeBytes = distinctTorrents.sumOf { it.totalSizeBytes }
-
-            val synthesizedGrab =
-                MediaPayload.ArrGrab(
-                    source = AppSource.SONARR,
-                    downloadId = combinedHash,
-                    downloadIds = downloadIds,
-                    title = primaryTorrent.name,
-                    seriesOrMovieTitle = primaryTorrent.name,
-                    seasonNumber = seasonNumber,
-                    episodeNumbers = episodeNumbers,
-                    sizeBytes = totalSizeBytes
-                )
-
-            val handle =
-                NotificationHandle(
-                    providerId = notificationPublisher.providerId,
-                    channelOrChatId = channelOrChatId,
-                    messageReferenceId = messageId,
-                    isPhoto = isPhoto
-                )
-
-            logger.info(
-                "Reconciliation found existing tracked torrent(s): {} (hashes: {}, msgId: {}, isPhoto: {}). " +
-                    "Resuming progress loop.",
-                distinctTorrents.map { it.name },
-                combinedHash,
-                messageId,
-                isPhoto
-            )
-
-            val trackResult =
-                trackDownloadUseCase.trackExisting(
-                    hash = combinedHash,
-                    payload = synthesizedGrab,
-                    handle = handle,
-                    isPhoto = isPhoto
-                )
-
-            count(trackResult)
-        }
-
-        for (torrent in untaggedTorrents) {
-            val normalizedHash = torrent.id.trim().lowercase()
-            val synthesizedGrab =
-                MediaPayload.ArrGrab(
-                    source = AppSource.SONARR,
-                    downloadId = normalizedHash,
-                    title = torrent.name,
-                    seriesOrMovieTitle = torrent.name,
-                    sizeBytes = torrent.totalSizeBytes
-                )
-
-            logger.info(
-                "Reconciliation found untracked active download: {} (hash: {}). Starting new tracking loop.",
-                torrent.name,
-                normalizedHash
-            )
-
-            val trackResult = trackDownloadUseCase.track(normalizedHash, synthesizedGrab)
-            count(trackResult)
-        }
-
-        heldElsewhereLastSweep = heldElsewhere
-        if (heldElsewhere > 0) {
-            logger.info("{} download(s) are tracked by another instance; checking again shortly", heldElsewhere)
-        }
-        if (resumedThisRun > 0) {
-            logger.info("Torrent reconciliation sweep completed. Resumed {} torrent tracker(s).", resumedThisRun)
-        } else {
-            logger.debug("Torrent reconciliation sweep completed. No untracked downloads found.")
-        }
-
-        return resumedThisRun
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -251,3 +242,11 @@ class DownloadReconciliationService(
         }
     }
 }
+
+private fun DownloadItemProgress.normalizedHash(): String = id.trim().lowercase()
+
+/** The value of the notifier's `<prefix><key>:<value>` tag on this download, if it has one. */
+private fun DownloadItemProgress.tag(
+    prefix: String,
+    key: String
+): String? = tags.firstOrNull { it.startsWith("$prefix$key:") }?.removePrefix("$prefix$key:")?.trim()
