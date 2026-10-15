@@ -25,6 +25,8 @@ Compiled ahead-of-time (AOT) with **GraalVM Native Image** into a static, distro
 
 ## 🚀 Quick Start
 
+Images are published for **`linux/amd64`** and **`linux/arm64`** (Raspberry Pi 4 and newer, Apple Silicon, Ampere) under the same tag; Docker picks the right one.
+
 ### 1. Run with Docker Compose
 
 Create a `docker-compose.yml`:

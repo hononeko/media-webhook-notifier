@@ -136,8 +136,13 @@ graalvmNative {
             } else {
                 buildArgs.add("-J-XX:+UseParallelGC")
             }
-            if (project.hasProperty("static") || System.getenv("GRAALVM_STATIC") == "true") {
-                buildArgs.addAll("--static", "--libc=musl")
+            // The binary that goes into the container image, the same on amd64 and arm64:
+            // - mostly static: everything linked in except glibc, which the distroless base provides. Fully static
+            //   musl binaries can't be built on linux/aarch64 (oracle/graal#5872);
+            // - a portable CPU baseline: the defaults (x86-64-v3, armv8.1-a) exclude CPUs common in home servers,
+            //   such as Celerons and Atoms without AVX2, and the Raspberry Pi 4 (ARMv8.0).
+            if (project.hasProperty("containerImage") || System.getenv("GRAALVM_CONTAINER_IMAGE") == "true") {
+                buildArgs.addAll("--static-nolibc", "-march=compatibility")
             }
             if (project.hasProperty("quickBuild") || System.getenv("GRAALVM_QUICK_BUILD") == "true") {
                 buildArgs.add("-Ob")

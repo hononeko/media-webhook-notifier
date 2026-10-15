@@ -43,7 +43,7 @@ We take the security of `media-webhook-notifier` seriously. If you believe you h
 * Torrent hash format validation prevents empty-string or malformed RPC calls to download clients.
 * Safe HTML sanitization and word-boundary truncation enforce Telegram's strict 1024-character caption limits without breaking HTML tags.
 
-### 4. Minimal Static Distroless Container
-* Production container images (`ghcr.io/hononeko/media-webhook-notifier`) are built on **`gcr.io/distroless/static-debian12:nonroot`**.
+### 4. Minimal Distroless Container
+* Production container images (`ghcr.io/hononeko/media-webhook-notifier`, `linux/amd64` and `linux/arm64`) are built on **`gcr.io/distroless/base-debian13:nonroot`**. The native binary links everything statically except glibc, which this base provides.
 * No package managers, shells (`/bin/sh`, `/bin/bash`), or unnecessary system binaries exist in the runtime container.
 * Runs by default under the unprivileged `nonroot:nonroot` user (UID 65532).

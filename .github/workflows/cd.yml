@@ -2,6 +2,11 @@ name: Continuous Delivery & Release
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and smoke-test both architectures without pushing, tagging or releasing
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,7 +19,7 @@ env:
 jobs:
   version:
     name: Calculate Version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -47,11 +52,24 @@ jobs:
         if: steps.version.outputs.version_type == 'none'
         run: echo "::notice title=Release skipped::No version-bumping commits since the last tag (only docs:/test:, or HEAD is already tagged)."
 
-  release:
-    name: Build, Tag & Release
+  # Both architectures, compiled natively on their own runners and smoke tested. Real releases push each image by
+  # digest; the release job then joins them under one multi-arch tag.
+  native:
     needs: version
-    if: needs.version.outputs.version_type != 'none'
-    runs-on: ubuntu-latest
+    if: inputs.dry_run || needs.version.outputs.version_type != 'none'
+    uses: ./.github/workflows/native-image.yml
+    with:
+      push: ${{ !inputs.dry_run }}
+    permissions:
+      contents: read
+      packages: write
+
+  release:
+    name: Publish, Tag & Release
+    needs: [version, native]
+    # Only main publishes: a dispatch on another branch can still dry-run the build.
+    if: ${{ !inputs.dry_run && needs.version.outputs.version_type != 'none' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: write
@@ -64,52 +82,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup GraalVM (Java 25)
-        uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1
+      - name: Download digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          java-version: "25"
-          distribution: "graalvm-community"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
-
-      - name: Cache Musl Static zlib
-        id: cache-musl-zlib
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.musl-zlib
-          key: musl-zlib-1.3.1-x86_64
-
-      - name: Setup Musl Toolchain & Static zlib
-        run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools
-          sudo mkdir -p /usr/lib/x86_64-linux-musl /usr/include/x86_64-linux-musl
-          if [ -f ~/.musl-zlib/libz.a ]; then
-            echo "Restoring static zlib from cache..."
-            sudo cp ~/.musl-zlib/libz.a /usr/lib/x86_64-linux-musl/
-            sudo cp ~/.musl-zlib/zlib*.h /usr/include/x86_64-linux-musl/
-          else
-            echo "Compiling static zlib from source..."
-            sudo apt-get install -y make gcc
-            if ! curl -fSL --retry 5 --retry-delay 2 --retry-all-errors https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz -o zlib.tar.gz; then
-              curl -fSL --retry 5 --retry-delay 2 --retry-all-errors https://zlib.net/fossils/zlib-1.3.1.tar.gz -o zlib.tar.gz
-            fi
-            tar -xzf zlib.tar.gz
-            cd zlib-1.3.1
-            CC=musl-gcc ./configure --prefix=/usr/local/musl --static
-            make -j$(nproc)
-            sudo make install
-            cd .. && rm -rf zlib-1.3.1 zlib.tar.gz
-            sudo cp /usr/local/musl/lib/libz.a /usr/lib/x86_64-linux-musl/libz.a
-            sudo cp /usr/local/musl/include/zlib* /usr/include/x86_64-linux-musl/
-            mkdir -p ~/.musl-zlib
-            cp /usr/local/musl/lib/libz.a ~/.musl-zlib/
-            cp /usr/local/musl/include/zlib* ~/.musl-zlib/
-          fi
-
-      - name: Compile Production Native Binary
-        run: ./gradlew nativeCompile -Pstatic -PquickBuild
+          path: digests
+          pattern: digests-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
@@ -130,22 +108,30 @@ jobs:
             type=raw,value=latest
             type=raw,value=${{ needs.version.outputs.version }}
 
-      - name: Build and push Docker image
-        id: push
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          provenance: mode=max
-          sbom: true
+      - name: Create multi-arch manifest
+        id: manifest
+        working-directory: digests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+        run: |
+          sources=()
+          for digest in *; do sources+=("$IMAGE@sha256:$digest"); done
+          if [ "${#sources[@]}" -ne 2 ]; then
+            echo "::error::Expected 2 architecture digests (amd64, arm64), got ${#sources[@]}"
+            exit 1
+          fi
+          tags=()
+          while read -r tag; do tags+=(-t "$tag"); done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:${{ needs.version.outputs.version }}"
+          digest=$(docker buildx imagetools inspect "$IMAGE:${{ needs.version.outputs.version }}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       - name: Generate Build Attestation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: true
 
       - name: Generate Changelog
