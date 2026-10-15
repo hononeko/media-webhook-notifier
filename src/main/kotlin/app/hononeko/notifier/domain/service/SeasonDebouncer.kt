@@ -3,197 +3,60 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.model.MediaPayload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.coroutines.coroutineContext
 
+/**
+ * Buffers rapid grabs, imports and library additions of the same title and season (see [debounceKey]) for
+ * [debounceMillis], merging them into one payload so a multi-episode batch becomes one notification.
+ */
 class SeasonDebouncer(
-    private val debounceMillis: Long = 5000L,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    debounceMillis: Long = 5000L,
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val deduplicator: MediaAvailableDeduplicator? = null,
-    private val onDebouncedGrab: (suspend (MediaPayload.ArrGrab) -> Unit)? = null,
-    private val onDebouncedDownload: (suspend (MediaPayload.ArrDownload) -> Unit)? = null,
+    onDebouncedGrab: (suspend (MediaPayload.ArrGrab) -> Unit)? = null,
+    onDebouncedDownload: (suspend (MediaPayload.ArrDownload) -> Unit)? = null,
     private val onDebouncedAvailable: (suspend (MediaPayload) -> Unit)? = null
 ) {
-    private val grabBuffers = ConcurrentHashMap<String, GrabDebounceBuffer>()
-    private val downloadBuffers = ConcurrentHashMap<String, DownloadDebounceBuffer>()
-    private val availableBuffers = ConcurrentHashMap<String, AvailableDebounceBuffer>()
-    private val mutex = Mutex()
+    private val grabs =
+        DebounceBuffers(debounceMillis, scope, onDebouncedGrab) { grab, id ->
+            grab.downloadId.equals(id, ignoreCase = true) || grab.downloadIds.any { it.equals(id, ignoreCase = true) }
+        }
+    private val downloads =
+        DebounceBuffers(debounceMillis, scope, onDebouncedDownload) { download, id ->
+            download.downloadId?.equals(id, ignoreCase = true) == true
+        }
+    private val available = DebounceBuffers(debounceMillis, scope, onDebouncedAvailable)
 
     val supportsAvailable: Boolean
         get() = onDebouncedAvailable != null
 
-    private class GrabDebounceBuffer(
-        var payload: MediaPayload.ArrGrab,
-        var timerJob: Job
-    )
-
-    private class DownloadDebounceBuffer(
-        var payload: MediaPayload.ArrDownload,
-        var timerJob: Job
-    )
-
-    private class AvailableDebounceBuffer(
-        var payload: MediaPayload,
-        var timerJob: Job
-    )
+    val activeGrabBufferCount: Int get() = grabs.size
+    val activeDownloadBufferCount: Int get() = downloads.size
+    val activeAvailableBufferCount: Int get() = available.size
 
     suspend fun submit(grab: MediaPayload.ArrGrab) {
-        val key = computeGrabKey(grab)
-        mutex.withLock {
-            val existing = grabBuffers[key]
-            if (existing != null) {
-                // Cancel existing timer
-                existing.timerJob.cancel()
-
-                // Merge episode numbers and retain most complete metadata
-                val combinedEpisodes = (existing.payload.episodeNumbers + grab.episodeNumbers).distinct().sorted()
-                val combinedDownloadIds =
-                    (
-                        existing.payload.downloadIds + grab.downloadIds +
-                            existing.payload.downloadId
-                                .split("|")
-                                .filter { it.isNotBlank() } +
-                            grab.downloadId.split("|").filter { it.isNotBlank() }
-                    ).distinct()
-                val combinedDownloadId = combinedDownloadIds.joinToString("|")
-
-                val mergedPayload =
-                    existing.payload.copy(
-                        downloadId = combinedDownloadId,
-                        downloadIds = combinedDownloadIds,
-                        episodeNumbers = combinedEpisodes,
-                        sizeBytes = maxOf(existing.payload.sizeBytes ?: 0L, grab.sizeBytes ?: 0L).takeIf { it > 0 },
-                        releaseGroup = existing.payload.releaseGroup ?: grab.releaseGroup,
-                        releaseTitle = existing.payload.releaseTitle ?: grab.releaseTitle,
-                        quality = existing.payload.quality ?: grab.quality,
-                        indexer = existing.payload.indexer ?: grab.indexer,
-                        posterUrl = existing.payload.posterUrl ?: grab.posterUrl,
-                        instanceName = existing.payload.instanceName ?: grab.instanceName
-                    )
-                existing.payload = mergedPayload
-
-                // Restart timer
-                existing.timerJob = launchGrabTimer(key)
-            } else {
-                val initialDownloadIds =
-                    (
-                        grab.downloadIds +
-                            grab.downloadId.split("|").filter { it.isNotBlank() }
-                    ).distinct()
-                val initialDownloadId = initialDownloadIds.joinToString("|")
-                val newBuffer =
-                    GrabDebounceBuffer(
-                        payload = grab.copy(downloadId = initialDownloadId, downloadIds = initialDownloadIds),
-                        timerJob = launchGrabTimer(key)
-                    )
-                grabBuffers[key] = newBuffer
-            }
-        }
+        val initialDownloadIds = (grab.downloadIds + grab.downloadId.split("|").filter { it.isNotBlank() }).distinct()
+        val initial = grab.copy(downloadId = initialDownloadIds.joinToString("|"), downloadIds = initialDownloadIds)
+        grabs.submit(debounceKey(grab), initial) { mergeGrab(it, grab) }
     }
 
     suspend fun submit(download: MediaPayload.ArrDownload) {
-        val key = computeDownloadKey(download)
-        mutex.withLock {
-            val existing = downloadBuffers[key]
-            if (existing != null) {
-                // Cancel existing timer
-                existing.timerJob.cancel()
-
-                // Merge episode numbers and sum individual episode file sizes
-                val combinedEpisodes = (existing.payload.episodeNumbers + download.episodeNumbers).distinct().sorted()
-                val totalSizeBytes =
-                    maxOf(existing.payload.sizeBytes ?: 0L, download.sizeBytes ?: 0L).takeIf { it > 0 }
-
-                val mergedPayload =
-                    existing.payload.copy(
-                        episodeNumbers = combinedEpisodes,
-                        sizeBytes = totalSizeBytes,
-                        videoCodec = existing.payload.videoCodec ?: download.videoCodec,
-                        audioCodec = existing.payload.audioCodec ?: download.audioCodec,
-                        resolution = existing.payload.resolution ?: download.resolution,
-                        quality = existing.payload.quality ?: download.quality,
-                        isUpgrade = existing.payload.isUpgrade || download.isUpgrade,
-                        posterUrl = existing.payload.posterUrl ?: download.posterUrl,
-                        overview = existing.payload.overview ?: download.overview,
-                        year = existing.payload.year ?: download.year,
-                        instanceName = existing.payload.instanceName ?: download.instanceName,
-                        webUrl = existing.payload.webUrl ?: download.webUrl
-                    )
-                existing.payload = mergedPayload
-
-                // Restart timer
-                existing.timerJob = launchDownloadTimer(key)
-            } else {
-                val newBuffer =
-                    DownloadDebounceBuffer(
-                        payload = download,
-                        timerJob = launchDownloadTimer(key)
-                    )
-                downloadBuffers[key] = newBuffer
-            }
-        }
+        downloads.submit(debounceKey(download), download) { mergeDownload(it, download) }
     }
 
     suspend fun submit(plex: MediaPayload.PlexLibraryNew) {
         if (onDebouncedAvailable == null) return
         if (deduplicator?.isStale(plex) == true) return
-        val key = computePlexKey(plex)
-        mutex.withLock {
-            val existing = availableBuffers[key]
-            if (existing != null && existing.payload is MediaPayload.PlexLibraryNew) {
-                val prev = existing.payload as MediaPayload.PlexLibraryNew
-                existing.timerJob.cancel()
-
-                existing.payload = mergePlexPayload(prev, plex)
-                existing.timerJob = launchAvailableTimer(key)
-            } else {
-                val newBuffer =
-                    AvailableDebounceBuffer(
-                        payload = plex,
-                        timerJob = launchAvailableTimer(key)
-                    )
-                availableBuffers[key] = newBuffer
-            }
+        available.submit(debounceKey(plex), plex) { prev ->
+            (prev as? MediaPayload.PlexLibraryNew)?.let { mergePlexPayload(it, plex) } ?: plex
         }
     }
 
     suspend fun submit(jellyfin: MediaPayload.JellyfinItemAdded) {
         if (onDebouncedAvailable == null) return
         if (deduplicator?.isStale(jellyfin) == true) return
-        val key = computeJellyfinKey(jellyfin)
-        mutex.withLock {
-            val existing = availableBuffers[key]
-            if (existing != null && existing.payload is MediaPayload.JellyfinItemAdded) {
-                val prev = existing.payload as MediaPayload.JellyfinItemAdded
-                existing.timerJob.cancel()
-
-                val combinedEpisodes = (prev.episodeNumbers + jellyfin.episodeNumbers).distinct().sorted()
-                val merged =
-                    prev.copy(
-                        episodeNumbers = combinedEpisodes,
-                        posterUrl = prev.posterUrl ?: jellyfin.posterUrl,
-                        overview = prev.overview ?: jellyfin.overview,
-                        videoCodec = prev.videoCodec ?: jellyfin.videoCodec,
-                        audioCodec = prev.audioCodec ?: jellyfin.audioCodec,
-                        resolution = prev.resolution ?: jellyfin.resolution,
-                        instanceName = prev.instanceName ?: jellyfin.instanceName
-                    )
-                existing.payload = merged
-                existing.timerJob = launchAvailableTimer(key)
-            } else {
-                val newBuffer =
-                    AvailableDebounceBuffer(
-                        payload = jellyfin,
-                        timerJob = launchAvailableTimer(key)
-                    )
-                availableBuffers[key] = newBuffer
-            }
+        available.submit(debounceKey(jellyfin), jellyfin) { prev ->
+            (prev as? MediaPayload.JellyfinItemAdded)?.let { mergeJellyfin(it, jellyfin) } ?: jellyfin
         }
     }
 
@@ -207,199 +70,89 @@ class SeasonDebouncer(
         }
     }
 
-    private fun computeGrabKey(grab: MediaPayload.ArrGrab): String {
-        val title = grab.seriesOrMovieTitle.trim().lowercase()
-        val source = grab.source.name.lowercase()
-        val instance = (grab.instanceName ?: "").trim().lowercase()
-        return if (title.isNotBlank()) {
-            "$source:$instance:$title:s${grab.seasonNumber ?: 0}"
-        } else {
-            val downloadId = grab.downloadId.trim().lowercase()
-            if (downloadId.isNotBlank()) downloadId else "$source:$instance:unknown:s${grab.seasonNumber ?: 0}"
-        }
-    }
+    /** Sends the grab buffered under [key], or whose download id is [key], now. */
+    suspend fun flushGrab(key: String) = grabs.flush(key)
 
-    private fun computeDownloadKey(download: MediaPayload.ArrDownload): String {
-        val title = download.seriesOrMovieTitle.trim().lowercase()
-        val source = download.source.name.lowercase()
-        val instance = (download.instanceName ?: "").trim().lowercase()
-        return if (title.isNotBlank()) {
-            "title:$source:$instance:$title:s${download.seasonNumber ?: 0}:${download.isUpgrade}"
-        } else {
-            val downloadId = download.downloadId?.trim()?.lowercase()
-            if (!downloadId.isNullOrBlank()) {
-                "dl:$downloadId:s${download.seasonNumber ?: 0}:${download.isUpgrade}"
-            } else {
-                "title:$source:$instance:unknown:s${download.seasonNumber ?: 0}:${download.isUpgrade}"
-            }
-        }
-    }
-
-    private fun computePlexKey(plex: MediaPayload.PlexLibraryNew): String {
-        val instance = (plex.instanceName ?: "").trim().lowercase()
-        val isSeries =
-            plex.seasonNumber != null ||
-                !plex.parentTitle.isNullOrBlank() ||
-                !plex.grandParentTitle.isNullOrBlank() ||
-                plex.mediaType?.lowercase() == "episode" ||
-                plex.mediaType?.lowercase() == "season" ||
-                plex.mediaType?.lowercase() == "show" ||
-                plex.mediaType?.lowercase() == "series"
-        return if (isSeries) {
-            val series = (plex.grandParentTitle ?: plex.parentTitle ?: plex.title).trim().lowercase()
-            "plex:$instance:show:$series:s${plex.seasonNumber ?: 0}"
-        } else {
-            val title = plex.title.trim().lowercase()
-            val year = plex.year ?: 0
-            "plex:$instance:movie:$title:$year"
-        }
-    }
-
-    private fun computeJellyfinKey(jellyfin: MediaPayload.JellyfinItemAdded): String {
-        val instance = (jellyfin.instanceName ?: "").trim().lowercase()
-        val isSeries =
-            jellyfin.seasonNumber != null ||
-                !jellyfin.seriesName.isNullOrBlank() ||
-                jellyfin.mediaType?.lowercase() == "episode" ||
-                jellyfin.mediaType?.lowercase() == "season" ||
-                jellyfin.mediaType?.lowercase() == "show" ||
-                jellyfin.mediaType?.lowercase() == "series"
-        return if (isSeries) {
-            val series = (jellyfin.seriesName ?: jellyfin.title).trim().lowercase()
-            "jellyfin:$instance:show:$series:s${jellyfin.seasonNumber ?: 0}"
-        } else {
-            val title = jellyfin.title.trim().lowercase()
-            val year = jellyfin.year ?: 0
-            "jellyfin:$instance:movie:$title:$year"
-        }
-    }
-
-    private fun launchGrabTimer(key: String): Job =
-        scope.launch {
-            delay(debounceMillis)
-            flushGrab(key)
-        }
-
-    private fun launchDownloadTimer(key: String): Job =
-        scope.launch {
-            delay(debounceMillis)
-            flushDownload(key)
-        }
-
-    private fun launchAvailableTimer(key: String): Job =
-        scope.launch {
-            delay(debounceMillis)
-            flushAvailable(key)
-        }
-
-    suspend fun flushGrab(key: String) {
-        val normalized = key.trim().lowercase()
-        val buffer =
-            mutex.withLock {
-                grabBuffers.remove(normalized)
-                    ?: grabBuffers.entries
-                        .firstOrNull {
-                            it.value.payload.downloadId
-                                .equals(normalized, ignoreCase = true) ||
-                                it.value.payload.downloadIds
-                                    .any { id -> id.equals(normalized, ignoreCase = true) }
-                        }?.let {
-                            grabBuffers.remove(it.key)
-                        }
-            }
-        buffer?.let {
-            val currentJob = coroutineContext[Job]
-            if (it.timerJob != currentJob) {
-                it.timerJob.cancel()
-            }
-            onDebouncedGrab?.invoke(it.payload)
-        }
-    }
-
-    suspend fun flushDownload(key: String) {
-        val normalized = key.trim().lowercase()
-        val buffer =
-            mutex.withLock {
-                downloadBuffers.remove(normalized)
-                    ?: downloadBuffers.entries
-                        .firstOrNull {
-                            it.value.payload.downloadId
-                                ?.equals(normalized, ignoreCase = true) == true
-                        }?.let {
-                            downloadBuffers.remove(it.key)
-                        }
-            }
-        buffer?.let {
-            val currentJob = coroutineContext[Job]
-            if (it.timerJob != currentJob) {
-                it.timerJob.cancel()
-            }
-            onDebouncedDownload?.invoke(it.payload)
-        }
-    }
-
-    suspend fun flushAvailable(key: String) {
-        val normalized = key.trim().lowercase()
-        val buffer =
-            mutex.withLock {
-                availableBuffers.remove(normalized)
-            }
-        buffer?.let {
-            val currentJob = coroutineContext[Job]
-            if (it.timerJob != currentJob) {
-                it.timerJob.cancel()
-            }
-            onDebouncedAvailable?.invoke(it.payload)
-        }
-    }
+    /** Sends the import buffered under [key], or whose download id is [key], now. */
+    suspend fun flushDownload(key: String) = downloads.flush(key)
 
     suspend fun flush(key: String) {
         val normalized = key.trim().lowercase()
-        flushGrab(normalized)
-        flushDownload(normalized)
-        flushAvailable(normalized)
+        grabs.flush(normalized)
+        downloads.flush(normalized)
+        available.flush(normalized)
     }
 
     suspend fun flushAll() {
-        val (allGrabs, allDownloads, allAvailable) =
-            mutex.withLock {
-                val grabs = ArrayList(grabBuffers.values)
-                val downloads = ArrayList(downloadBuffers.values)
-                val available = ArrayList(availableBuffers.values)
-                grabBuffers.clear()
-                downloadBuffers.clear()
-                availableBuffers.clear()
-                Triple(grabs, downloads, available)
-            }
-        val currentJob = coroutineContext[Job]
-        for (buffer in allGrabs) {
-            if (buffer.timerJob != currentJob) {
-                buffer.timerJob.cancel()
-            }
-            onDebouncedGrab?.invoke(buffer.payload)
-        }
-        for (buffer in allDownloads) {
-            if (buffer.timerJob != currentJob) {
-                buffer.timerJob.cancel()
-            }
-            onDebouncedDownload?.invoke(buffer.payload)
-        }
-        for (buffer in allAvailable) {
-            if (buffer.timerJob != currentJob) {
-                buffer.timerJob.cancel()
-            }
-            onDebouncedAvailable?.invoke(buffer.payload)
-        }
+        val allGrabs = grabs.drain()
+        val allDownloads = downloads.drain()
+        val allAvailable = available.drain()
+        allGrabs.forEach { grabs.release(it) }
+        allDownloads.forEach { downloads.release(it) }
+        allAvailable.forEach { available.release(it) }
     }
 
-    fun activeBufferCount(): Int = grabBuffers.size + downloadBuffers.size + availableBuffers.size
-
-    fun activeGrabBufferCount(): Int = grabBuffers.size
-
-    fun activeDownloadBufferCount(): Int = downloadBuffers.size
-
-    fun activeAvailableBufferCount(): Int = availableBuffers.size
+    fun activeBufferCount(): Int = grabs.size + downloads.size + available.size
 }
+
+/** Merges a grab into the buffered one: episodes and download ids combine, the buffered metadata wins. */
+private fun mergeGrab(
+    prev: MediaPayload.ArrGrab,
+    incoming: MediaPayload.ArrGrab
+): MediaPayload.ArrGrab {
+    val combinedEpisodes = (prev.episodeNumbers + incoming.episodeNumbers).distinct().sorted()
+    val combinedDownloadIds =
+        (
+            prev.downloadIds + incoming.downloadIds +
+                prev.downloadId.split("|").filter { it.isNotBlank() } +
+                incoming.downloadId.split("|").filter { it.isNotBlank() }
+        ).distinct()
+    return prev.copy(
+        downloadId = combinedDownloadIds.joinToString("|"),
+        downloadIds = combinedDownloadIds,
+        episodeNumbers = combinedEpisodes,
+        sizeBytes = maxOf(prev.sizeBytes ?: 0L, incoming.sizeBytes ?: 0L).takeIf { it > 0 },
+        releaseGroup = prev.releaseGroup ?: incoming.releaseGroup,
+        releaseTitle = prev.releaseTitle ?: incoming.releaseTitle,
+        quality = prev.quality ?: incoming.quality,
+        indexer = prev.indexer ?: incoming.indexer,
+        posterUrl = prev.posterUrl ?: incoming.posterUrl,
+        instanceName = prev.instanceName ?: incoming.instanceName
+    )
+}
+
+private fun mergeDownload(
+    prev: MediaPayload.ArrDownload,
+    incoming: MediaPayload.ArrDownload
+): MediaPayload.ArrDownload =
+    prev.copy(
+        episodeNumbers = (prev.episodeNumbers + incoming.episodeNumbers).distinct().sorted(),
+        sizeBytes = maxOf(prev.sizeBytes ?: 0L, incoming.sizeBytes ?: 0L).takeIf { it > 0 },
+        videoCodec = prev.videoCodec ?: incoming.videoCodec,
+        audioCodec = prev.audioCodec ?: incoming.audioCodec,
+        resolution = prev.resolution ?: incoming.resolution,
+        quality = prev.quality ?: incoming.quality,
+        isUpgrade = prev.isUpgrade || incoming.isUpgrade,
+        posterUrl = prev.posterUrl ?: incoming.posterUrl,
+        overview = prev.overview ?: incoming.overview,
+        year = prev.year ?: incoming.year,
+        instanceName = prev.instanceName ?: incoming.instanceName,
+        webUrl = prev.webUrl ?: incoming.webUrl
+    )
+
+private fun mergeJellyfin(
+    prev: MediaPayload.JellyfinItemAdded,
+    incoming: MediaPayload.JellyfinItemAdded
+): MediaPayload.JellyfinItemAdded =
+    prev.copy(
+        episodeNumbers = (prev.episodeNumbers + incoming.episodeNumbers).distinct().sorted(),
+        posterUrl = prev.posterUrl ?: incoming.posterUrl,
+        overview = prev.overview ?: incoming.overview,
+        videoCodec = prev.videoCodec ?: incoming.videoCodec,
+        audioCodec = prev.audioCodec ?: incoming.audioCodec,
+        resolution = prev.resolution ?: incoming.resolution,
+        instanceName = prev.instanceName ?: incoming.instanceName
+    )
 
 private fun mergePlexPayload(
     prev: MediaPayload.PlexLibraryNew,
