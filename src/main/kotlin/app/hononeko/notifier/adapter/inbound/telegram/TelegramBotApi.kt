@@ -40,6 +40,9 @@ internal class TelegramBotApi(
         private const val MAX_ANSWER_CHARS = 200
         private const val DEFAULT_RETRY_AFTER_SECONDS = 5
         private const val LONG_POLL_MARGIN_SECONDS = 10
+        private const val REQUEST_TIMEOUT_MILLIS = 15_000L
+        private const val CONNECT_TIMEOUT_MILLIS = 5_000L
+        private const val SOCKET_TIMEOUT_MILLIS = 10_000L
         private val CALLBACK_UPDATES_ONLY = listOf("callback_query")
     }
 
@@ -56,9 +59,9 @@ internal class TelegramBotApi(
 
     private fun HttpClientConfig<*>.installTimeouts() {
         install(HttpTimeout) {
-            requestTimeoutMillis = 15_000
-            connectTimeoutMillis = 5_000
-            socketTimeoutMillis = 10_000
+            requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS
+            connectTimeoutMillis = CONNECT_TIMEOUT_MILLIS
+            socketTimeoutMillis = SOCKET_TIMEOUT_MILLIS
         }
     }
 
@@ -191,8 +194,13 @@ internal class TelegramBotApi(
                 response.status to response.bodyAsText()
             } catch (e: UnresolvedAddressException) {
                 // CIO reports DNS failures with this IllegalArgumentException, not an IOException.
+                // Safe to keep as the cause: it carries no message, so no URL and no bot token.
                 return Either.Left(
-                    DomainError.NotificationError.DeliveryFailed(PROVIDER, "$method: cannot resolve the Bot API host")
+                    DomainError.NotificationError.DeliveryFailed(
+                        PROVIDER,
+                        "$method: cannot resolve the Bot API host",
+                        cause = e
+                    )
                 )
             } catch (e: IOException) {
                 // Ktor puts the request URL, and with it the bot token, into exception messages. Drop the cause.

@@ -75,6 +75,7 @@ private const val MOCK_QBIT_URL = "https://qbittorrent.lan:8080"
 private const val MOCK_DUNE_TITLE = "Dune: Part Two"
 private const val MOCK_DUNE_POSTER = "https://image.tmdb.org/t/p/w500/dune2.jpg"
 private const val MOCK_MULTI_EPISODE_RELEASE_NAME = "Love.Is.Blind.UK.S03.1080p.WEB.H264-DEFENESTRATE"
+private val MOCK_MULTI_EPISODE_NUMBERS = listOf(1, 2, 3, 4, 5)
 
 private val BASE_TAGS =
     listOf("title", "series_title", "season", "episode_range", "poster_url", "instance_name", "source_name")
@@ -388,7 +389,7 @@ private fun mockMultiGrab() =
         title = MOCK_MULTI_EPISODE_RELEASE_NAME,
         seriesOrMovieTitle = "Love is Blind: UK",
         seasonNumber = 3,
-        episodeNumbers = listOf(1, 2, 3, 4, 5),
+        episodeNumbers = MOCK_MULTI_EPISODE_NUMBERS,
         releaseGroup = "DEFENESTRATE",
         releaseTitle = MOCK_MULTI_EPISODE_RELEASE_NAME,
         quality = "WEB-DL-1080p",

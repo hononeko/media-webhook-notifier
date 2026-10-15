@@ -3,8 +3,12 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 
+private const val MIN_LEASE_TTL_SECONDS = 30L
+private const val LEASE_TTL_POLL_INTERVALS = 3L
+
 /** Long enough to survive a couple of slow ticks, and never shorter than three poll intervals. */
-fun trackingLeaseTtlSeconds(pollIntervalSeconds: Long): Long = maxOf(30L, 3L * pollIntervalSeconds)
+fun trackingLeaseTtlSeconds(pollIntervalSeconds: Long): Long =
+    maxOf(MIN_LEASE_TTL_SECONDS, LEASE_TTL_POLL_INTERVALS * pollIntervalSeconds)
 
 /**
  * Cross-instance ownership of tracking loops: one lock per download hash, so only one instance edits a live card.

@@ -18,6 +18,12 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
+/**
+ * Plex sends `addedAt` in epoch seconds, some clients in milliseconds. Seconds won't reach this value for millennia,
+ * so anything larger is milliseconds.
+ */
+private const val EPOCH_MILLIS_THRESHOLD = 100_000_000_000L
+
 class PlexWebhookProvider(
     private val json: Json = Json { ignoreUnknownKeys = true }
 ) : WebhookProviderStrategy {
@@ -177,6 +183,6 @@ class PlexWebhookProvider(
 
     private fun normalizeAddedAt(rawAddedAt: Long?): Long? {
         if (rawAddedAt == null) return null
-        return if (rawAddedAt > 100_000_000_000L) rawAddedAt / 1000L else rawAddedAt
+        return if (rawAddedAt > EPOCH_MILLIS_THRESHOLD) rawAddedAt / 1000L else rawAddedAt
     }
 }

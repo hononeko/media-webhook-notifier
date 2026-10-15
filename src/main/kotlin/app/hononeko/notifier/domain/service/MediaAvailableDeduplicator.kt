@@ -4,10 +4,11 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.days
 
 class MediaAvailableDeduplicator(
     private val stateStore: StateStorePort? = null,
-    private val ttlMillis: Long = 30L * 86_400_000L,
+    private val ttlMillis: Long = 30.days.inWholeMilliseconds,
     private val maxCapacity: Int = 10_000,
     private val maxAgeSeconds: Long = 86_400L
 ) {

@@ -21,6 +21,10 @@ jobs:
     # Pinned rather than ubuntu-latest: the binary links glibc dynamically, so the runner's glibc must not be newer
     # than the distroless base image's (Debian 13, glibc 2.41). Ubuntu 24.04 has 2.39.
     runs-on: ${{ matrix.runner }}
+    # What both callers grant: read the code, push images when `push` is set.
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:

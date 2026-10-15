@@ -29,6 +29,9 @@ jobs:
         include:
           - language: java-kotlin
             build-mode: manual
+          # Scans the workflows themselves (token permissions, script injection, untrusted checkouts).
+          - language: actions
+            build-mode: none
 
     steps:
       - name: Checkout repository
@@ -37,12 +40,14 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Java (Temurin 25)
+        if: matrix.build-mode == 'manual'
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
         with:
           distribution: "temurin"
           java-version: "25"
 
       - name: Setup Gradle
+        if: matrix.build-mode == 'manual'
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
         with:
           cache-disabled: true

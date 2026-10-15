@@ -18,6 +18,9 @@ import java.util.Locale
 object CardFormatterService {
     private const val SCORE_FORMAT = "%.1f/10"
 
+    /** qBittorrent reports an unknown ETA as 8640000 s (100 days). */
+    private const val UNKNOWN_ETA_SECONDS = 8_640_000L
+
     var templateEngine: TemplateEngine = TemplateEngine()
 
     /** Added to cards that need a human (health issues, blocked imports, stalls, failed requests). */
@@ -72,7 +75,7 @@ object CardFormatterService {
 
     fun formatDuration(seconds: Long): String =
         when {
-            seconds < 0 || seconds >= 8640000 -> "∞"
+            seconds < 0 || seconds >= UNKNOWN_ETA_SECONDS -> "∞"
             seconds >= 3600 -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
             seconds >= 60 -> "${seconds / 60}m ${seconds % 60}s"
             else -> "${seconds}s"

@@ -41,15 +41,22 @@ object ConfigLoader {
         return SeerrConfig(url = url.trimEnd('/'), apiKey = apiKey)
     }
 
+    private val serverDefaults = ServerConfig()
+
     private fun loadServerConfig(reader: EnvReader): ServerConfig =
         ServerConfig(
-            port = reader.getInt(8080, "SERVER_PORT", "server.port"),
+            port = reader.getInt(serverDefaults.port, "SERVER_PORT", "server.port"),
             authToken = reader.getSecret("SERVER_AUTH_TOKEN", "server.authToken") ?: "",
-            rateLimitPerMinute = reader.getInt(120, "SERVER_RATE_LIMIT_PER_MINUTE", "server.rateLimitPerMinute"),
+            rateLimitPerMinute =
+                reader.getInt(
+                    serverDefaults.rateLimitPerMinute,
+                    "SERVER_RATE_LIMIT_PER_MINUTE",
+                    "server.rateLimitPerMinute"
+                ),
             enablePreview = reader.getBoolean(false, "ENABLE_PREVIEW", "server.enablePreview", "SERVER_ENABLE_PREVIEW"),
             eventRailWorkers =
                 reader.getInt(
-                    4,
+                    serverDefaults.eventRailWorkers,
                     "EVENT_RAIL_WORKERS",
                     "server.eventRailWorkers",
                     "SERVER_EVENT_RAIL_WORKERS"

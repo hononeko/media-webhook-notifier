@@ -33,7 +33,10 @@ class CallbackRefRegistry(
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Stores [target] under a fresh ref for [ttlSeconds]. Returns `null` if no free ref was found or the store refused. */
+    /**
+     * Stores [target] under a fresh ref for [ttlSeconds]. Returns `null` if no free ref was found or the store
+     * refused.
+     */
     suspend fun register(
         target: CallbackTarget,
         ttlSeconds: Long
@@ -63,7 +66,10 @@ class CallbackRefRegistry(
         )
     }
 
-    /** Returns the target behind [ref], or `null` if the ref is malformed, unknown, expired or holds unreadable data. */
+    /**
+     * Returns the target behind [ref], or `null` if the ref is malformed, unknown, expired or holds unreadable
+     * data.
+     */
     suspend fun resolve(ref: String): CallbackTarget? {
         if (!REF_PATTERN.matches(ref)) return null
         val raw = stateStore.get(KEY_PREFIX + ref, nowMillis = clock()) ?: return null
