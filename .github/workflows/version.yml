@@ -1,7 +1,8 @@
 name: Version
 
 # The next stable version and the release-candidate name for the current commit. Shared by main.yml (publishes the
-# RC) and cd.yml (promotes it), so both always agree on the version and on the commit tag that links them.
+# RC) and cd.yml (promotes it), so both always agree on the version and on the commit tag that links them. The rules
+# live in vehkiya/actions/version, shared by all my repositories.
 on:
   workflow_call:
     outputs:
@@ -32,11 +33,11 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
-      version_tag: ${{ steps.version.outputs.version_tag }}
-      version_type: ${{ steps.version.outputs.version_type }}
-      rc_version: ${{ steps.rc.outputs.rc_version }}
-      commit_tag: ${{ steps.rc.outputs.commit_tag }}
-      last_tag: ${{ steps.rc.outputs.last_tag }}
+      version_tag: ${{ steps.version.outputs.version-tag }}
+      version_type: ${{ steps.version.outputs.version-type }}
+      rc_version: ${{ steps.version.outputs.rc-version }}
+      commit_tag: ${{ steps.version.outputs.commit-tag }}
+      last_tag: ${{ steps.version.outputs.previous-tag }}
 
     steps:
       - name: Checkout repository
@@ -44,35 +45,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Calculate Semantic Version
+      - name: Version
         id: version
-        uses: PaulHatch/semantic-version@4d6da96a9bc3116da3613309a11ff75fba58eb8d # v6.0.4
-        with:
-          change_path: "."
-          bump_each_commit: false
-          search_commit_body: true
-          tag_prefix: ""
-          major_pattern: "/!:|BREAKING CHANGE:|BREAKING:/"
-          minor_pattern: "/feat(\\(.+\\))?:/"
-          # docs: and test: commits never bump the version; every other type bumps at least the patch.
-          ignore_commits_pattern: "/^(docs|test)(\\(.+\\))?:/"
-          version_format: "${major}.${minor}.${patch}"
-
-      # N counts every commit since the last stable tag, so each push to main gets a new RC number. The action's own
-      # `increment` skips docs:/test: commits and could repeat one.
-      - name: Release candidate
-        id: rc
-        run: |
-          last=$(git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
-          if [ -n "$last" ]; then n=$(git rev-list --count "$last..HEAD"); else n=$(git rev-list --count HEAD); fi
-          {
-            echo "rc_version=${{ steps.version.outputs.version }}-rc.$n"
-            echo "commit_tag=sha-${GITHUB_SHA::7}"
-            echo "last_tag=$last"
-          } >> "$GITHUB_OUTPUT"
-          echo "Release candidate ${{ steps.version.outputs.version }}-rc.$n (sha-${GITHUB_SHA::7}), last stable tag: ${last:-none}"
-
-      # version_type is "none" when every commit since the last tag was ignored, or HEAD is already tagged.
-      - name: Report nothing to release
-        if: steps.version.outputs.version_type == 'none'
-        run: echo "::notice title=Nothing to release::No version-bumping commits since the last tag (only docs:/test:, or HEAD is already tagged)."
+        uses: vehkiya/actions/version@38745be070eaab8f0aa89ac688573967094af0d0 # v1.1.0

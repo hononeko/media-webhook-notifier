@@ -79,8 +79,15 @@ jobs:
           push: false
           tags: smoke:${{ matrix.arch }}
 
+      # With no configuration the app starts and answers its liveness probe.
       - name: Smoke test
-        run: .github/scripts/smoke-test.sh smoke:${{ matrix.arch }}
+        uses: vehkiya/actions/smoke-test@38745be070eaab8f0aa89ac688573967094af0d0 # v1.1.0
+        with:
+          image: smoke:${{ matrix.arch }}
+          path: /livez
+          status: "200"
+          max-memory-mib: "64"
+          started-regex: Application started in [0-9.]+ seconds
 
       - name: Log in to GitHub Container Registry (GHCR)
         if: inputs.push
