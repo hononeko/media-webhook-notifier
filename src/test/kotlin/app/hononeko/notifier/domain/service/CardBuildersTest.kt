@@ -19,7 +19,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class CardFormatterServiceTest {
+class CardBuildersTest {
     @Test
     fun `should draw progress bar accurately with sub-blocks and brackets`() {
         assertEquals("[░░░░░░░░░░]", MediaFormat.drawProgressBar(0, 10))

@@ -51,11 +51,7 @@ object DownloadCards {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
-        val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+        val titleText = downloadTitle(payload, epRange)
 
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
         val formattedSize = payload.sizeBytes?.let { formatBytes(it) }
@@ -76,37 +72,17 @@ object DownloadCards {
                 context = context
             )
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = NotificationLevel.PROGRESS,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions,
-                eventType = "grab",
-                silent = resolved.silent
-            )
-        }
-
-        val fields = mutableListOf<CardField>()
-        (payload.releaseTitle ?: payload.title).let { fields.add(CardField("Release", it)) }
-        payload.quality?.let { fields.add(CardField("Quality", it)) }
-        payload.releaseGroup?.let { fields.add(CardField("Group", it)) }
-        payload.sizeBytes?.let { fields.add(CardField("Size", formatBytes(it))) }
-        payload.indexer?.let { fields.add(CardField("Indexer", it)) }
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            level = NotificationLevel.PROGRESS,
-            fields = fields,
-            artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions,
-            eventType = "grab",
-            silent = resolved.silent
-        )
+        return resolved.toCard(NotificationLevel.PROGRESS, "grab") { copy(fields = grabFields(payload)) }
     }
+
+    private fun grabFields(payload: MediaPayload.ArrGrab): List<CardField> =
+        listOfNotNull(
+            CardField("Release", payload.releaseTitle ?: payload.title),
+            payload.quality?.let { CardField("Quality", it) },
+            payload.releaseGroup?.let { CardField("Group", it) },
+            payload.sizeBytes?.let { CardField("Size", formatBytes(it)) },
+            payload.indexer?.let { CardField("Indexer", it) }
+        )
 
     fun buildProgressUpdate(
         payload: MediaPayload.ArrGrab,
@@ -115,37 +91,8 @@ object DownloadCards {
         engine: TemplateEngine = templateEngine
     ): ProgressUpdate {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
-        val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
-
-        val sizeFormatted = "${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalSizeBytes)}"
-        val speedFormatted = formatSpeed(progress.downloadSpeedBytesPerSec)
-        val etaFormatted = formatDuration(progress.etaSeconds)
-        // Only swarm-based (torrent) clients report peers; the empty value suppresses the template line otherwise.
-        val peersFormatted =
-            progress.swarm?.let { formatPeers(it.seedsCount, it.seedsTotal, it.peersCount, it.peersTotal) }.orEmpty()
-        val progressBar =
-            drawProgressBar(
-                progress.progressPercent,
-                engine.theme.progressBarLength,
-                engine.theme.progressBarStyle
-            )
-
-        val stateLabel =
-            when (progress.state) {
-                DownloadState.DOWNLOADING -> "Downloading"
-                DownloadState.STALLED -> "Stalled (No seeds)"
-                DownloadState.COMPLETED, DownloadState.UPLOADING -> "Completed"
-                DownloadState.ALLOCATING_METADATA -> "Allocating metadata"
-                DownloadState.PAUSED -> "Paused"
-                DownloadState.QUEUED -> "Queued"
-                DownloadState.CHECKING -> "Checking"
-                DownloadState.UNKNOWN -> "Active"
-            }
-
+        val titleText = downloadTitle(payload, epRange)
+        val shown = formatProgress(progress, engine)
         val episodeTracks = formatEpisodeTracks(progress.items, engine)
         val releaseName =
             if (progress.items.size > 1) {
@@ -154,22 +101,7 @@ object DownloadCards {
                 progress.name.ifBlank { payload.releaseTitle ?: payload.title }
             }
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
-        context["release_title"] = releaseName
-        context["release_name"] = releaseName
-        context["torrent_name"] = progress.name
-        context["progress_percent"] = String.format(Locale.US, "%.2f", progress.progressPercent)
-        context["progress_bar"] = progressBar
-        context["speed"] = speedFormatted
-        context["eta"] = etaFormatted
-        context["downloaded_size"] = formatBytes(progress.downloadedBytes)
-        context["total_size"] = formatBytes(progress.totalSizeBytes)
-        context["size_formatted"] = sizeFormatted
-        context["size"] = sizeFormatted
-        context["peers_info"] = peersFormatted
-        context["state"] = stateLabel
-        context["episode_tracks"] = episodeTracks
-        context["has_multiple_tracks"] = progress.items.size > 1
-        context["episode_count"] = progress.items.size
+        context.putAll(progressContext(progress, releaseName, shown, episodeTracks))
 
         val resolved =
             engine.resolveProgress(
@@ -185,12 +117,12 @@ object DownloadCards {
             title = resolved.title,
             subtitle = resolved.subtitle,
             percent = progress.progressPercent,
-            progressBar = progressBar,
-            speedFormatted = speedFormatted,
-            etaFormatted = etaFormatted,
-            sizeFormatted = sizeFormatted,
-            peersInfo = peersFormatted,
-            stateText = stateLabel,
+            progressBar = shown.progressBar,
+            speedFormatted = shown.speed,
+            etaFormatted = shown.eta,
+            sizeFormatted = shown.size,
+            peersInfo = shown.peers,
+            stateText = shown.state,
             customBody = resolved.customBody,
             episodeTracks = episodeTracks,
             actions = resolved.actions
@@ -204,11 +136,7 @@ object DownloadCards {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
-        val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+        val titleText = downloadTitle(payload, epRange)
 
         val releaseName = progress.name.ifBlank { payload.releaseTitle ?: payload.title }
         val context = buildArrGrabContext(payload, webUiUrl, titleText, epRange)
@@ -234,38 +162,27 @@ object DownloadCards {
                 context = context
             )
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = NotificationLevel.SUCCESS,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions,
-                eventType = "download_complete",
-                silent = resolved.silent
-            )
+        return resolved.toCard(NotificationLevel.SUCCESS, "download_complete") {
+            copy(fields = completionFields(payload, progress, releaseName))
         }
+    }
 
-        val fields = mutableListOf<CardField>()
-        fields.add(CardField("Release", releaseName))
-        if (progress.items.size > 1) {
-            val epSummary = progress.items.joinToString(", ") { extractEpisodeLabel(it.name) }
-            fields.add(CardField("Episodes", "$epSummary (${progress.items.size} episodes)"))
-        }
-        fields.add(CardField("Status", "✅ 100% Downloaded"))
-        fields.add(CardField("Total Size", formatBytes(progress.totalSizeBytes)))
-        payload.quality?.let { fields.add(CardField("Quality", it)) }
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            level = NotificationLevel.SUCCESS,
-            fields = fields,
-            artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions,
-            eventType = "download_complete",
-            silent = resolved.silent
+    private fun completionFields(
+        payload: MediaPayload.ArrGrab,
+        progress: DownloadItemProgress,
+        releaseName: String
+    ): List<CardField> {
+        val episodes =
+            progress.items.takeIf { it.size > 1 }?.let { items ->
+                val summary = items.joinToString(", ") { extractEpisodeLabel(it.name) }
+                CardField("Episodes", "$summary (${items.size} episodes)")
+            }
+        return listOfNotNull(
+            CardField("Release", releaseName),
+            episodes,
+            CardField("Status", "✅ 100% Downloaded"),
+            CardField("Total Size", formatBytes(progress.totalSizeBytes)),
+            payload.quality?.let { CardField("Quality", it) }
         )
     }
 
@@ -283,11 +200,7 @@ object DownloadCards {
         engine: TemplateEngine = templateEngine
     ): NotificationCard {
         val epRange = formatEpisodeRange(payload.seasonNumber, payload.episodeNumbers)
-        val titleText =
-            when {
-                epRange != null -> "${payload.seriesOrMovieTitle} ($epRange)"
-                else -> payload.title
-            }
+        val titleText = downloadTitle(payload, epRange)
 
         val progressVal = progress?.progressPercent ?: 0.0
         val progressBar =
@@ -322,39 +235,97 @@ object DownloadCards {
                 context = context
             )
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = NotificationLevel.WARNING,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions,
-                eventType = "download_stalled",
-                silent = resolved.silent
+        return resolved.toCard(NotificationLevel.WARNING, "download_stalled") {
+            copy(
+                fields =
+                    listOfNotNull(
+                        CardField("Release", releaseName),
+                        CardField("Status", "⚠️ Download Stalled (0 B/s)"),
+                        CardField("Progress", "${String.format(Locale.US, "%.2f", progressVal)}% $progressBar"),
+                        payload.quality?.let { CardField("Quality", it) }
+                    )
             )
         }
-
-        val fields =
-            mutableListOf(
-                CardField("Release", releaseName),
-                CardField("Status", "⚠️ Download Stalled (0 B/s)"),
-                CardField(
-                    "Progress",
-                    "${String.format(Locale.US, "%.2f", progressVal)}% $progressBar"
-                )
-            )
-        payload.quality?.let { fields.add(CardField("Quality", it)) }
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            level = NotificationLevel.WARNING,
-            fields = fields,
-            artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions,
-            eventType = "download_stalled",
-            silent = resolved.silent
-        )
     }
+
+    /** "Series (S01E02)" when the episodes are known, otherwise the release title. */
+    private fun downloadTitle(
+        payload: MediaPayload.ArrGrab,
+        epRange: String?
+    ): String = if (epRange != null) "${payload.seriesOrMovieTitle} ($epRange)" else payload.title
 }
+
+/** The values a live progress card shows, formatted once for both the template context and the card. */
+private class FormattedProgress(
+    val size: String,
+    val speed: String,
+    val eta: String,
+    val peers: String,
+    val progressBar: String,
+    val state: String
+)
+
+private fun formatProgress(
+    progress: DownloadItemProgress,
+    engine: TemplateEngine
+): FormattedProgress =
+    FormattedProgress(
+        size = "${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalSizeBytes)}",
+        speed = formatSpeed(progress.downloadSpeedBytesPerSec),
+        eta = formatDuration(progress.etaSeconds),
+        // Only swarm-based (torrent) clients report peers; the empty value suppresses the template line otherwise.
+        peers =
+            progress.swarm
+                ?.let {
+                    formatPeers(
+                        it.seedsCount,
+                        it.seedsTotal,
+                        it.peersCount,
+                        it.peersTotal
+                    )
+                }.orEmpty(),
+        progressBar =
+            drawProgressBar(
+                progress.progressPercent,
+                engine.theme.progressBarLength,
+                engine.theme.progressBarStyle
+            ),
+        state = stateLabel(progress.state)
+    )
+
+private fun stateLabel(state: DownloadState): String =
+    when (state) {
+        DownloadState.DOWNLOADING -> "Downloading"
+        DownloadState.STALLED -> "Stalled (No seeds)"
+        DownloadState.COMPLETED, DownloadState.UPLOADING -> "Completed"
+        DownloadState.ALLOCATING_METADATA -> "Allocating metadata"
+        DownloadState.PAUSED -> "Paused"
+        DownloadState.QUEUED -> "Queued"
+        DownloadState.CHECKING -> "Checking"
+        DownloadState.UNKNOWN -> "Active"
+    }
+
+private fun progressContext(
+    progress: DownloadItemProgress,
+    releaseName: String,
+    shown: FormattedProgress,
+    episodeTracks: String?
+): Map<String, Any?> =
+    mapOf(
+        "release_title" to releaseName,
+        "release_name" to releaseName,
+        "torrent_name" to progress.name,
+        "progress_percent" to String.format(Locale.US, "%.2f", progress.progressPercent),
+        "progress_bar" to shown.progressBar,
+        "speed" to shown.speed,
+        "eta" to shown.eta,
+        "downloaded_size" to formatBytes(progress.downloadedBytes),
+        "total_size" to formatBytes(progress.totalSizeBytes),
+        "size_formatted" to shown.size,
+        "size" to shown.size,
+        "peers_info" to shown.peers,
+        "state" to shown.state,
+        "episode_tracks" to episodeTracks,
+        "has_multiple_tracks" to (progress.items.size > 1),
+        "episode_count" to progress.items.size
+    )

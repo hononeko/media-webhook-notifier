@@ -43,29 +43,7 @@ object SeerrCards {
                 context = context
             )
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = meta.level,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions,
-                eventType = eventName,
-                silent = resolved.silent
-            )
-        }
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            level = meta.level,
-            fields = buildSeerrCardFields(payload, mediaLabel),
-            artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions,
-            eventType = eventName,
-            silent = resolved.silent
-        )
+        return resolved.toCard(meta.level, eventName) { copy(fields = buildSeerrCardFields(payload, mediaLabel)) }
     }
 }
 
@@ -77,95 +55,56 @@ private data class SeerrMetadata(
     val requestAction: String
 )
 
+/** How a Seerr event is announced: its icon, the action in the title, the subtitle suffix and the card level. */
+private data class SeerrStyle(
+    val icon: String,
+    val action: String,
+    val subtitleSuffix: String,
+    val level: NotificationLevel
+)
+
+private val SEERR_STYLES =
+    mapOf(
+        EventType.REQUEST_PENDING to SeerrStyle("🛎️", "New Request", "Request Pending", NotificationLevel.WARNING),
+        EventType.REQUEST_APPROVED to
+            SeerrStyle(
+                "✅",
+                "Request Approved",
+                "Request Approved",
+                NotificationLevel.SUCCESS
+            ),
+        EventType.REQUEST_AUTO_APPROVED to
+            SeerrStyle("✅", "Request Auto-Approved", "Request Auto-Approved", NotificationLevel.SUCCESS),
+        EventType.REQUEST_AVAILABLE to
+            SeerrStyle("🍿", "Request Available", "Media Available", NotificationLevel.SUCCESS),
+        EventType.REQUEST_DECLINED to SeerrStyle("❌", "Request Declined", "Request Declined", NotificationLevel.ERROR),
+        EventType.REQUEST_FAILED to
+            SeerrStyle("🚨", "Request Failed", "Request Processing Failed", NotificationLevel.ERROR),
+        EventType.ISSUE_CREATED to SeerrStyle("⚠️", "Issue Reported", "Issue Report", NotificationLevel.WARNING),
+        EventType.ISSUE_COMMENT to SeerrStyle("💬", "Issue Comment", "Issue Update", NotificationLevel.INFO),
+        EventType.ISSUE_RESOLVED to SeerrStyle("✅", "Issue Resolved", "Issue Resolved", NotificationLevel.SUCCESS),
+        EventType.ISSUE_REOPENED to SeerrStyle("⚠️", "Issue Reopened", "Issue Reopened", NotificationLevel.WARNING)
+    )
+
+/** Any other Seerr notification: titled with just the subject. */
+private val SEERR_FALLBACK_STYLE = SeerrStyle("🔔", "Notification", "Notification", NotificationLevel.INFO)
+
 private fun resolveSeerrMetadata(
     payload: MediaPayload.SeerrEvent,
     appName: String
-): SeerrMetadata =
-    when (payload.eventType) {
-        EventType.REQUEST_PENDING ->
-            SeerrMetadata(
-                "🛎️ New Request: ${payload.subject}",
-                "$appName • Request Pending",
-                NotificationLevel.WARNING,
-                "🛎️",
-                "New Request"
-            )
-        EventType.REQUEST_APPROVED, EventType.REQUEST_AUTO_APPROVED -> {
-            val approvedType =
-                if (payload.eventType == EventType.REQUEST_AUTO_APPROVED) "Auto-Approved" else "Approved"
-            SeerrMetadata(
-                "✅ Request $approvedType: ${payload.subject}",
-                "$appName • Request $approvedType",
-                NotificationLevel.SUCCESS,
-                "✅",
-                "Request $approvedType"
-            )
+): SeerrMetadata {
+    val style = SEERR_STYLES[payload.eventType]
+    val shown = style ?: SEERR_FALLBACK_STYLE
+    val title =
+        if (style !=
+            null
+        ) {
+            "${shown.icon} ${shown.action}: ${payload.subject}"
+        } else {
+            "${shown.icon} ${payload.subject}"
         }
-        EventType.REQUEST_AVAILABLE ->
-            SeerrMetadata(
-                "🍿 Request Available: ${payload.subject}",
-                "$appName • Media Available",
-                NotificationLevel.SUCCESS,
-                "🍿",
-                "Request Available"
-            )
-        EventType.REQUEST_DECLINED ->
-            SeerrMetadata(
-                "❌ Request Declined: ${payload.subject}",
-                "$appName • Request Declined",
-                NotificationLevel.ERROR,
-                "❌",
-                "Request Declined"
-            )
-        EventType.REQUEST_FAILED ->
-            SeerrMetadata(
-                "🚨 Request Failed: ${payload.subject}",
-                "$appName • Request Processing Failed",
-                NotificationLevel.ERROR,
-                "🚨",
-                "Request Failed"
-            )
-        EventType.ISSUE_CREATED ->
-            SeerrMetadata(
-                "⚠️ Issue Reported: ${payload.subject}",
-                "$appName • Issue Report",
-                NotificationLevel.WARNING,
-                "⚠️",
-                "Issue Reported"
-            )
-        EventType.ISSUE_COMMENT ->
-            SeerrMetadata(
-                "💬 Issue Comment: ${payload.subject}",
-                "$appName • Issue Update",
-                NotificationLevel.INFO,
-                "💬",
-                "Issue Comment"
-            )
-        EventType.ISSUE_RESOLVED ->
-            SeerrMetadata(
-                "✅ Issue Resolved: ${payload.subject}",
-                "$appName • Issue Resolved",
-                NotificationLevel.SUCCESS,
-                "✅",
-                "Issue Resolved"
-            )
-        EventType.ISSUE_REOPENED ->
-            SeerrMetadata(
-                "⚠️ Issue Reopened: ${payload.subject}",
-                "$appName • Issue Reopened",
-                NotificationLevel.WARNING,
-                "⚠️",
-                "Issue Reopened"
-            )
-        else ->
-            SeerrMetadata(
-                "🔔 ${payload.subject}",
-                "$appName • Notification",
-                NotificationLevel.INFO,
-                "🔔",
-                "Notification"
-            )
-    }
+    return SeerrMetadata(title, "$appName • ${shown.subtitleSuffix}", shown.level, shown.icon, shown.action)
+}
 
 private val SEERR_ISSUE_EVENTS =
     setOf(

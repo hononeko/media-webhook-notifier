@@ -31,18 +31,12 @@ object ServarrCards {
                 year = payload.year
             )
 
-        val defaultTitle =
+        val instanceLabel = payload.instanceName ?: payload.source.displayName
+        val (defaultTitle, defaultSubtitle) =
             if (payload.isUpgrade) {
-                "⬆️ File Upgraded: $fullTitle"
+                "⬆️ File Upgraded: $fullTitle" to "$instanceLabel • Quality Upgrade"
             } else {
-                "📁 File Imported: $fullTitle"
-            }
-
-        val defaultSubtitle =
-            if (payload.isUpgrade) {
-                "${payload.instanceName ?: payload.source.displayName} • Quality Upgrade"
-            } else {
-                "${payload.instanceName ?: payload.source.displayName} • Library Import"
+                "📁 File Imported: $fullTitle" to "$instanceLabel • Library Import"
             }
 
         val specsSummary =
@@ -82,30 +76,9 @@ object ServarrCards {
                 context = context
             )
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = NotificationLevel.SUCCESS,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions,
-                eventType = "import",
-                silent = resolved.silent
-            )
+        return resolved.toCard(NotificationLevel.SUCCESS, "import") {
+            copy(overview = truncateOverview(payload.overview, engine.theme.maxOverviewLength), mediaSpecs = mediaSpecs)
         }
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            overview = truncateOverview(payload.overview, engine.theme.maxOverviewLength),
-            level = NotificationLevel.SUCCESS,
-            mediaSpecs = mediaSpecs,
-            artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions,
-            eventType = "import",
-            silent = resolved.silent
-        )
     }
 
     fun buildHealthCard(
@@ -164,33 +137,15 @@ object ServarrCards {
                 context = context
             )
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = meta.level,
-                customBody = resolved.customBody,
-                actions = resolved.actions,
-                eventType = "health",
-                silent = resolved.silent
+        return resolved.toCard(meta.level, "health", artworkUrl = null) {
+            copy(
+                fields =
+                    listOfNotNull(
+                        CardField("Message", payload.message, inline = false),
+                        payload.type?.takeIf { it.isNotBlank() }?.let { CardField("Issue Type", it, inline = true) }
+                    )
             )
         }
-
-        val fields = mutableListOf<CardField>()
-        fields.add(CardField("Message", payload.message, inline = false))
-        payload.type?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Issue Type", it, inline = true))
-        }
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            level = meta.level,
-            fields = fields,
-            actions = resolved.actions,
-            eventType = "health",
-            silent = resolved.silent
-        )
     }
 
     fun buildManualInteractionCard(
@@ -219,17 +174,15 @@ object ServarrCards {
         val context = buildManualInteractionContext(payload, fullTitle, epRange, instanceLabel)
 
         val defaultActions =
-            if (!payload.webUrl.isNullOrBlank()) {
-                listOf(
+            listOfNotNull(
+                payload.webUrl?.takeIf { it.isNotBlank() }?.let {
                     ActionLink(
                         label = "📁 Open in ${payload.source.displayName}",
-                        url = payload.webUrl,
+                        url = it,
                         style = ActionStyle.PRIMARY
                     )
-                )
-            } else {
-                emptyList()
-            }
+                }
+            )
 
         val resolved =
             engine.resolveCard(
@@ -244,50 +197,20 @@ object ServarrCards {
                 context = context
             )
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = NotificationLevel.WARNING,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                actions = resolved.actions,
-                eventType = "manual_interaction",
-                silent = resolved.silent
-            )
+        return resolved.toCard(NotificationLevel.WARNING, "manual_interaction") {
+            copy(fields = manualInteractionFields(payload))
         }
-
-        val fields = mutableListOf<CardField>()
-        payload.reason?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Reason", it, inline = false))
-        }
-        payload.releaseTitle?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Release", it, inline = false))
-        }
-        payload.quality?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Quality", it, inline = true))
-        }
-        payload.sizeBytes?.let {
-            fields.add(CardField("Size", formatBytes(it), inline = true))
-        }
-        payload.indexer?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Indexer", it, inline = true))
-        }
-        payload.downloadClient?.takeIf { it.isNotBlank() }?.let {
-            fields.add(CardField("Client", it, inline = true))
-        }
-
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            level = NotificationLevel.WARNING,
-            fields = fields,
-            artworkUrl = resolved.artworkUrl,
-            actions = resolved.actions,
-            eventType = "manual_interaction",
-            silent = resolved.silent
-        )
     }
+
+    private fun manualInteractionFields(payload: MediaPayload.ServarrManualInteraction): List<CardField> =
+        listOfNotNull(
+            payload.reason?.takeIf { it.isNotBlank() }?.let { CardField("Reason", it, inline = false) },
+            payload.releaseTitle?.takeIf { it.isNotBlank() }?.let { CardField("Release", it, inline = false) },
+            payload.quality?.takeIf { it.isNotBlank() }?.let { CardField("Quality", it, inline = true) },
+            payload.sizeBytes?.let { CardField("Size", formatBytes(it), inline = true) },
+            payload.indexer?.takeIf { it.isNotBlank() }?.let { CardField("Indexer", it, inline = true) },
+            payload.downloadClient?.takeIf { it.isNotBlank() }?.let { CardField("Client", it, inline = true) }
+        )
 }
 
 private data class HealthMetadata(

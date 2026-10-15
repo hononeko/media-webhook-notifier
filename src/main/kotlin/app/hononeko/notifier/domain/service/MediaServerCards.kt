@@ -41,55 +41,18 @@ object MediaServerCards {
         details: MediaServerItemDetails,
         engine: TemplateEngine
     ): NotificationCard {
-        val formattedSeason = details.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
-        val formattedEpisode = details.episodeNumber?.let { String.format(Locale.US, "%02d", it) }
-        val specsSummary =
-            listOfNotNull(
-                details.specs.resolution,
-                details.specs.video,
-                details.specs.audio
-            ).joinToString(" • ")
-
-        val context =
-            mutableMapOf<String, Any?>(
-                "title" to details.fullTitle,
-                "item_title" to details.itemTitle,
-                "series_title" to details.seriesTitle.ifBlank { details.itemTitle },
-                "season" to formattedSeason,
-                "season_number" to details.seasonNumber?.toString(),
-                "season_title" to (details.seasonLabel ?: formattedSeason?.let { "Season $it" }),
-                "episode" to formattedEpisode,
-                "episode_number" to details.episodeNumber?.toString(),
-                "episode_title" to details.itemTitle,
-                "media_type" to details.resolvedMediaType,
-                "year" to details.year?.toString(),
-                "specs" to specsSummary,
-                "overview" to truncateOverview(details.overview, engine.theme.maxOverviewLength),
-                "video_codec" to details.specs.video,
-                "audio_codec" to details.specs.audio,
-                "resolution" to details.specs.resolution,
-                "rating" to details.specs.score,
-                "score" to details.specs.score,
-                "duration" to details.specs.duration,
-                "deep_link_url" to details.deepLinkUrl,
-                "media_server_name" to details.mediaServerName,
-                "poster_url" to details.posterUrl,
-                "instance_name" to details.mediaServerName,
-                "source_name" to details.sourceName
-            )
+        val context = mediaServerContext(details, engine)
 
         val defaultActions =
-            if (!details.deepLinkUrl.isNullOrBlank()) {
-                listOf(
+            listOfNotNull(
+                details.deepLinkUrl?.takeIf { it.isNotBlank() }?.let {
                     ActionLink(
                         label = "${details.actionEmoji} Watch on ${details.sourceName}",
-                        url = details.deepLinkUrl,
+                        url = it,
                         style = ActionStyle.PRIMARY
                     )
-                )
-            } else {
-                emptyList()
-            }
+                }
+            )
 
         val defaults =
             DefaultCardSpec(
@@ -108,31 +71,49 @@ object MediaServerCards {
 
         val finalArtworkBytes = if (resolved.imageEmbedEnabled) details.artworkBytes else null
 
-        if (resolved.customBody != null) {
-            return NotificationCard(
-                title = resolved.title,
-                subtitle = resolved.subtitle,
-                level = NotificationLevel.SUCCESS,
-                customBody = resolved.customBody,
-                artworkUrl = resolved.artworkUrl,
-                artworkBytes = finalArtworkBytes,
-                actions = resolved.actions,
-                eventType = "media_available",
-                silent = resolved.silent
-            )
+        return resolved.toCard(NotificationLevel.SUCCESS, "media_available", artworkBytes = finalArtworkBytes) {
+            copy(overview = truncateOverview(defaults.body, engine.theme.maxOverviewLength), mediaSpecs = details.specs)
         }
+    }
 
-        return NotificationCard(
-            title = resolved.title,
-            subtitle = resolved.subtitle,
-            overview = truncateOverview(defaults.body, engine.theme.maxOverviewLength),
-            level = NotificationLevel.SUCCESS,
-            mediaSpecs = details.specs,
-            artworkUrl = resolved.artworkUrl,
-            artworkBytes = finalArtworkBytes,
-            actions = resolved.actions,
-            eventType = "media_available",
-            silent = resolved.silent
+    private fun mediaServerContext(
+        details: MediaServerItemDetails,
+        engine: TemplateEngine
+    ): Map<String, Any?> {
+        val formattedSeason = details.seasonNumber?.let { String.format(Locale.US, "%02d", it) }
+        val formattedEpisode = details.episodeNumber?.let { String.format(Locale.US, "%02d", it) }
+        val specsSummary =
+            listOfNotNull(
+                details.specs.resolution,
+                details.specs.video,
+                details.specs.audio
+            ).joinToString(" • ")
+
+        return mapOf(
+            "title" to details.fullTitle,
+            "item_title" to details.itemTitle,
+            "series_title" to details.seriesTitle.ifBlank { details.itemTitle },
+            "season" to formattedSeason,
+            "season_number" to details.seasonNumber?.toString(),
+            "season_title" to (details.seasonLabel ?: formattedSeason?.let { "Season $it" }),
+            "episode" to formattedEpisode,
+            "episode_number" to details.episodeNumber?.toString(),
+            "episode_title" to details.itemTitle,
+            "media_type" to details.resolvedMediaType,
+            "year" to details.year?.toString(),
+            "specs" to specsSummary,
+            "overview" to truncateOverview(details.overview, engine.theme.maxOverviewLength),
+            "video_codec" to details.specs.video,
+            "audio_codec" to details.specs.audio,
+            "resolution" to details.specs.resolution,
+            "rating" to details.specs.score,
+            "score" to details.specs.score,
+            "duration" to details.specs.duration,
+            "deep_link_url" to details.deepLinkUrl,
+            "media_server_name" to details.mediaServerName,
+            "poster_url" to details.posterUrl,
+            "instance_name" to details.mediaServerName,
+            "source_name" to details.sourceName
         )
     }
 
