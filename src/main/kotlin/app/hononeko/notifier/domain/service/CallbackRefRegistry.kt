@@ -20,6 +20,9 @@ class CallbackRefRegistry(
         const val REF_LENGTH = 10
         const val MAX_ATTEMPTS = 5
         const val KEY_PREFIX = "cb:"
+
+        /** Buttons stay usable for 30 days; a health card may be acknowledged long after it was sent. */
+        const val DEFAULT_TTL_SECONDS = 2_592_000L
         const val CLAIM_PREFIX = "cb-claim:"
 
         /** Long enough to outlive one outbound call plus a card edit, short enough that a crashed claim soon frees. */

@@ -32,10 +32,14 @@ interface NotificationPublisherPort {
     /**
      * Replaces the content and buttons of an already sent card. Publishers that can't edit messages report it as a
      * failure rather than pretending the edit happened.
+     *
+     * With [callbackRef], the card's remaining interactions stay bound to that existing ref instead of a new one, so
+     * every copy of a card keeps pointing at the same target (whose deliveries list them all).
      */
     suspend fun editCard(
         handle: NotificationHandle,
-        card: NotificationCard
+        card: NotificationCard,
+        callbackRef: String? = null
     ): Either<DomainError.NotificationError, Unit> {
         val reason = "editCard is not supported by $providerId"
         return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))

@@ -8,8 +8,11 @@ import app.hononeko.notifier.domain.service.AcknowledgeHandler
 import app.hononeko.notifier.domain.service.BotActionHandler
 import app.hononeko.notifier.domain.service.BotInteractionService
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
+import app.hononeko.notifier.domain.service.HealthSnoozes
 import app.hononeko.notifier.domain.service.SeerrAction
 import app.hononeko.notifier.domain.service.SeerrActionHandler
+import app.hononeko.notifier.domain.service.SnoozeHandler
+import app.hononeko.notifier.domain.service.UnsnoozeHandler
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -59,7 +62,8 @@ class TelegramInteractionModule private constructor(
             publisher: NotificationPublisherPort,
             scope: CoroutineScope,
             engine: HttpClientEngine? = null,
-            requestManager: MediaRequestManagerPort? = null
+            requestManager: MediaRequestManagerPort? = null,
+            snoozes: HealthSnoozes? = null
         ): TelegramInteractionModule {
             val interaction = config.telegramInteraction
             val api = TelegramBotApi(config.notifications.botToken, engine)
@@ -67,6 +71,14 @@ class TelegramInteractionModule private constructor(
                 requestManager
                     ?.let { manager ->
                         SeerrAction.entries.map { SeerrActionHandler(it, manager, publisher, refRegistry) }
+                    }.orEmpty()
+            val snoozeHandlers: List<BotActionHandler> =
+                snoozes
+                    ?.let {
+                        listOf(
+                            SnoozeHandler(it, publisher, refRegistry),
+                            UnsnoozeHandler(it, publisher, refRegistry)
+                        )
                     }.orEmpty()
             val processor =
                 TelegramCallbackProcessor(
@@ -78,7 +90,8 @@ class TelegramInteractionModule private constructor(
                         ),
                     useCase =
                         BotInteractionService(
-                            handlers = listOf(AcknowledgeHandler(publisher, refRegistry)) + seerrHandlers,
+                            handlers =
+                                listOf(AcknowledgeHandler(publisher, refRegistry)) + seerrHandlers + snoozeHandlers,
                             refRegistry = refRegistry
                         ),
                     api = api,

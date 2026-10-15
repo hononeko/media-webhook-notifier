@@ -40,18 +40,16 @@ class AcknowledgeHandler(
                 ensureNotNull(interaction.origin) {
                     DomainError.NotificationError.DeliveryFailed(publisher.providerId, "no message to acknowledge")
                 }
+            // Claimed like Snooze on the same card, so the two can't race over the shared ref.
+            if (!refRegistry.claim(interaction.ref)) return@either BotReply(ALREADY_HANDLING, alert = true)
             val stamped =
                 target.card.copy(
                     interactions = emptyList(),
                     footnote = "✅ Handled by ${interaction.actor.displayName} · ${hourMinute(clock(), timeZone)}"
                 )
-            publisher.editCard(origin, stamped).bind()
-            // A card sent to every admin is marked handled on each copy; those edits are best effort.
-            otherCopies(target, origin).forEach { copy ->
-                publisher.editCard(copy, stamped).onLeft { error ->
-                    logger.warn("Could not mark the copy in chat {} as handled: {}", copy.channelOrChatId, error)
-                }
-            }
+            publisher.editCard(origin, stamped).onLeft { refRegistry.unclaim(interaction.ref) }.bind()
+            // A card sent to every admin is marked handled on each copy.
+            publisher.editOtherCopies(target, origin, stamped, logger)
             refRegistry.release(interaction.ref)
             BotReply(REPLY)
         }

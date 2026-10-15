@@ -48,7 +48,7 @@ class SeerrActionHandler(
     private val timeZone: TimeZone = TimeZone.currentSystemDefault()
 ) : BotActionHandler {
     companion object {
-        const val BUSY = "⏳ Someone is already handling this."
+        const val BUSY = ALREADY_HANDLING
 
         fun notFound(resource: String) = "⚠️ This $resource no longer exists in Seerr."
     }
@@ -88,17 +88,15 @@ class SeerrActionHandler(
                 )
             // Every admin got a copy; stamp them all so nobody acts on a decided request. Seerr already has the
             // decision, so a failed edit must not turn into "Action failed" or allow a re-press.
-            (listOf(origin) + otherCopies(target, origin)).forEach { copy ->
-                publisher.editCard(copy, stamped).onLeft { error ->
-                    logger.warn(
-                        "Seerr {} {} done, but the copy in chat {} could not be updated: {}",
-                        action.resource,
-                        id,
-                        copy.channelOrChatId,
-                        error
-                    )
-                }
+            publisher.editCard(origin, stamped).onLeft { error ->
+                logger.warn(
+                    "Seerr {} {} done, but the pressed card could not be updated: {}",
+                    action.resource,
+                    id,
+                    error
+                )
             }
+            publisher.editOtherCopies(target, origin, stamped, logger)
             refRegistry.release(interaction.ref)
             BotReply(action.reply)
         }

@@ -127,4 +127,17 @@ class TelegramDirectMessageTest {
 
             assertEquals(listOf("sendMessage", "sendPhoto", "editMessageText"), methods)
         }
+
+    @Test
+    fun `an edit with callbackRef keeps the buttons on that ref instead of registering a new one`() =
+        runTest {
+            val publisher = TelegramPublisherAdapter(config, engine(), registry)
+            val handle = publisher.sendDirect(card, listOf("1")).getValue("1").getOrNull()!!
+            val ref = refOf(sent.single())
+            sent.clear()
+
+            publisher.editCard(handle, card.copy(title = "Edited"), callbackRef = ref)
+
+            assertEquals(ref, refOf(sent.single()))
+        }
 }
