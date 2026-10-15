@@ -22,67 +22,67 @@ import kotlin.test.assertTrue
 class CardFormatterServiceTest {
     @Test
     fun `should draw progress bar accurately with sub-blocks and brackets`() {
-        assertEquals("[░░░░░░░░░░]", CardFormatterService.drawProgressBar(0, 10))
-        assertEquals("[███▌░░░░░░]", CardFormatterService.drawProgressBar(35, 10))
-        assertEquals("[█████░░░░░]", CardFormatterService.drawProgressBar(50, 10))
-        assertEquals("[██████▌░░░]", CardFormatterService.drawProgressBar(65, 10))
-        assertEquals("[██████████]", CardFormatterService.drawProgressBar(100, 10))
-        assertEquals("[██████████]", CardFormatterService.drawProgressBar(120, 10))
-        assertEquals("[░░░░░░░░░░]", CardFormatterService.drawProgressBar(-10, 10))
+        assertEquals("[░░░░░░░░░░]", MediaFormat.drawProgressBar(0, 10))
+        assertEquals("[███▌░░░░░░]", MediaFormat.drawProgressBar(35, 10))
+        assertEquals("[█████░░░░░]", MediaFormat.drawProgressBar(50, 10))
+        assertEquals("[██████▌░░░]", MediaFormat.drawProgressBar(65, 10))
+        assertEquals("[██████████]", MediaFormat.drawProgressBar(100, 10))
+        assertEquals("[██████████]", MediaFormat.drawProgressBar(120, 10))
+        assertEquals("[░░░░░░░░░░]", MediaFormat.drawProgressBar(-10, 10))
     }
 
     @Test
     fun `should format durations correctly`() {
-        assertEquals("0s", CardFormatterService.formatDuration(0))
-        assertEquals("45s", CardFormatterService.formatDuration(45))
-        assertEquals("2m 30s", CardFormatterService.formatDuration(150))
-        assertEquals("1h 15m", CardFormatterService.formatDuration(4500))
-        assertEquals("∞", CardFormatterService.formatDuration(-1))
-        assertEquals("∞", CardFormatterService.formatDuration(9999999))
+        assertEquals("0s", MediaFormat.formatDuration(0))
+        assertEquals("45s", MediaFormat.formatDuration(45))
+        assertEquals("2m 30s", MediaFormat.formatDuration(150))
+        assertEquals("1h 15m", MediaFormat.formatDuration(4500))
+        assertEquals("∞", MediaFormat.formatDuration(-1))
+        assertEquals("∞", MediaFormat.formatDuration(9999999))
     }
 
     @Test
     fun `should format byte sizes and speed correctly`() {
-        assertEquals("500 B", CardFormatterService.formatBytes(500))
-        assertEquals("1.5 MB", CardFormatterService.formatBytes(1572864))
-        assertEquals("4.00 GB", CardFormatterService.formatBytes(4294967296L))
-        assertEquals("1.50 TB", CardFormatterService.formatBytes(1649267441664L))
-        assertEquals("14.2 MB/s", CardFormatterService.formatSpeed(14889779))
+        assertEquals("500 B", MediaFormat.formatBytes(500))
+        assertEquals("1.5 MB", MediaFormat.formatBytes(1572864))
+        assertEquals("4.00 GB", MediaFormat.formatBytes(4294967296L))
+        assertEquals("1.50 TB", MediaFormat.formatBytes(1649267441664L))
+        assertEquals("14.2 MB/s", MediaFormat.formatSpeed(14889779))
     }
 
     @Test
     fun `should format peers and seeders correctly`() {
         assertEquals(
             "12 (45) seeds • 4 (18) peers",
-            CardFormatterService.formatPeers(12, 45, 4, 18)
+            MediaFormat.formatPeers(12, 45, 4, 18)
         )
         assertEquals(
             "12 seeds • 4 peers",
-            CardFormatterService.formatPeers(12, 0, 4, 0)
+            MediaFormat.formatPeers(12, 0, 4, 0)
         )
     }
 
     @Test
     fun `should format episode ranges correctly`() {
-        assertNull(CardFormatterService.formatEpisodeRange(null, emptyList()))
-        assertNull(CardFormatterService.formatEpisodeRange(1, emptyList()))
-        assertEquals("S02E01", CardFormatterService.formatEpisodeRange(2, listOf(1)))
-        assertEquals("S02E01-E08", CardFormatterService.formatEpisodeRange(2, (1..8).toList()))
-        assertEquals("S01E01,E03,E05", CardFormatterService.formatEpisodeRange(1, listOf(1, 3, 5)))
+        assertNull(EpisodeFormat.formatEpisodeRange(null, emptyList()))
+        assertNull(EpisodeFormat.formatEpisodeRange(1, emptyList()))
+        assertEquals("S02E01", EpisodeFormat.formatEpisodeRange(2, listOf(1)))
+        assertEquals("S02E01-E08", EpisodeFormat.formatEpisodeRange(2, (1..8).toList()))
+        assertEquals("S01E01,E03,E05", EpisodeFormat.formatEpisodeRange(1, listOf(1, 3, 5)))
     }
 
     @Test
     fun `should truncate long overviews gracefully on word boundary`() {
-        assertNull(CardFormatterService.truncateOverview(null))
-        assertNull(CardFormatterService.truncateOverview("   "))
+        assertNull(MediaFormat.truncateOverview(null))
+        assertNull(MediaFormat.truncateOverview("   "))
 
         val shortText = "A short overview."
-        assertEquals(shortText, CardFormatterService.truncateOverview(shortText))
+        assertEquals(shortText, MediaFormat.truncateOverview(shortText))
 
         val longText =
             "Lumon Industries employees undergo a surgical procedure called severance " +
                 "to separate their work memories from non-work memories, leading to eerie consequences."
-        val truncated = CardFormatterService.truncateOverview(longText, 50)
+        val truncated = MediaFormat.truncateOverview(longText, 50)
         assertNotNull(truncated)
         assertTrue(truncated.endsWith("..."))
         assertTrue(truncated.length <= 53)
@@ -104,7 +104,7 @@ class CardFormatterServiceTest {
                 posterUrl = "https://cdn.example.com/poster.jpg"
             )
 
-        val card = CardFormatterService.buildGrabInitialCard(payload, "https://qbit.example.com")
+        val card = DownloadCards.buildGrabInitialCard(payload, "https://qbit.example.com")
         assertEquals("⏳ Downloading: Severance (S02E01)", card.title)
         assertEquals(NotificationLevel.PROGRESS, card.level)
         assertEquals(4, card.fields.size)
@@ -122,7 +122,7 @@ class CardFormatterServiceTest {
                 )
             )
         val cardWithIndexer =
-            CardFormatterService.buildGrabInitialCard(
+            DownloadCards.buildGrabInitialCard(
                 payloadWithIndexer,
                 "https://qbit.example.com",
                 engine
@@ -159,7 +159,7 @@ class CardFormatterServiceTest {
                 state = DownloadState.DOWNLOADING
             )
 
-        val update = CardFormatterService.buildProgressUpdate(payload, progress, "https://qbit.example.com")
+        val update = DownloadCards.buildProgressUpdate(payload, progress, "https://qbit.example.com")
         assertEquals("⏳ Downloading: Severance (S02E01)", update.title)
         assertEquals("Sonarr-Main", update.subtitle)
         assertEquals(65.0, update.percent)
@@ -194,11 +194,11 @@ class CardFormatterServiceTest {
             )
         val usenet = torrent.copy(id = "nzo_abc", swarm = null, usenet = UsenetStats(stage = "Repairing"))
 
-        val torrentUpdate = CardFormatterService.buildProgressUpdate(payload, torrent, null, engine)
+        val torrentUpdate = DownloadCards.buildProgressUpdate(payload, torrent, null, engine)
         assertEquals("45 (120) seeds • 5 (12) peers", torrentUpdate.peersInfo)
         assertTrue(torrentUpdate.customBody.orEmpty().contains("Peers:"))
 
-        val usenetUpdate = CardFormatterService.buildProgressUpdate(payload, usenet, null, engine)
+        val usenetUpdate = DownloadCards.buildProgressUpdate(payload, usenet, null, engine)
         assertEquals("", usenetUpdate.peersInfo)
         assertFalse(usenetUpdate.customBody.orEmpty().contains("Peers:"))
     }
@@ -228,12 +228,12 @@ class CardFormatterServiceTest {
                 state = DownloadState.COMPLETED
             )
 
-        val completionCard = CardFormatterService.buildCompletionCard(payload, progress, "https://qbit.example.com")
+        val completionCard = DownloadCards.buildCompletionCard(payload, progress, "https://qbit.example.com")
         assertEquals("✅ Download Complete: Dune: Part Two (2024)", completionCard.title)
         assertEquals(NotificationLevel.SUCCESS, completionCard.level)
 
         val stalledCard =
-            CardFormatterService.buildStalledCard(
+            DownloadCards.buildStalledCard(
                 payload,
                 progress.copy(state = DownloadState.STALLED),
                 "https://qbit.example.com"
@@ -257,7 +257,7 @@ class CardFormatterServiceTest {
                 deepLinkUrl = "https://app.plex.tv/desktop#!/server/123/details"
             )
 
-        val plexCard = CardFormatterService.buildAvailableCard(plex)
+        val plexCard = PayloadCards.buildAvailableCard(plex)
         assertEquals("🍿 Dune: Part Two (2024) now available on Plex", plexCard.title)
         assertEquals(null, plexCard.subtitle)
         assertEquals("8.6/10", plexCard.mediaSpecs?.score)
@@ -276,7 +276,7 @@ class CardFormatterServiceTest {
                 deepLinkUrl = "https://jellyfin.example.com/item123"
             )
 
-        val jellyfinCard = CardFormatterService.buildAvailableCard(jellyfin)
+        val jellyfinCard = PayloadCards.buildAvailableCard(jellyfin)
         assertEquals("🍿 Severance - Hello World now available on Jellyfin", jellyfinCard.title)
         assertEquals(null, jellyfinCard.subtitle)
         assertEquals("🍿 Watch on Jellyfin", jellyfinCard.actions.first().label)
@@ -303,7 +303,7 @@ class CardFormatterServiceTest {
                 instanceName = "Kerrlab Plex"
             )
 
-        val plexCard = CardFormatterService.buildAvailableCard(plexSeason)
+        val plexCard = PayloadCards.buildAvailableCard(plexSeason)
         assertEquals("🍿 Futurama - Season 3 now available on Kerrlab Plex", plexCard.title)
         assertEquals(null, plexCard.subtitle)
         assertEquals("8.8/10", plexCard.mediaSpecs?.score)
@@ -328,7 +328,7 @@ class CardFormatterServiceTest {
                 instanceName = "Home Jellyfin"
             )
 
-        val jellyfinCard = CardFormatterService.buildAvailableCard(jellyfinSeason)
+        val jellyfinCard = PayloadCards.buildAvailableCard(jellyfinSeason)
         assertEquals("🍿 Futurama - Season 3 now available on Home Jellyfin", jellyfinCard.title)
         assertEquals(null, jellyfinCard.subtitle)
         assertNull(jellyfinCard.mediaSpecs?.duration)
@@ -348,7 +348,7 @@ class CardFormatterServiceTest {
                 instanceName = "Plex"
             )
 
-        val card = CardFormatterService.buildAvailableCard(plexSeasonNoThumb)
+        val card = PayloadCards.buildAvailableCard(plexSeasonNoThumb)
         assertEquals("🍿 Futurama - Season 3 now available on Plex", card.title)
         assertEquals("https://plex.example.com/series_poster.jpg", card.artworkUrl)
     }
@@ -369,7 +369,7 @@ class CardFormatterServiceTest {
                 instanceName = "Kerrlab Plex"
             )
 
-        val plexCard = CardFormatterService.buildAvailableCard(plexEpisode)
+        val plexCard = PayloadCards.buildAvailableCard(plexEpisode)
         assertEquals("🍿 Futurama - S03E01 - Roswell That Ends Well now available on Kerrlab Plex", plexCard.title)
         assertEquals("22m 0s", plexCard.mediaSpecs?.duration)
         assertEquals("https://plex.example.com/ep_thumb.jpg", plexCard.artworkUrl)
@@ -386,7 +386,7 @@ class CardFormatterServiceTest {
                 instanceName = "Jellyfin"
             )
 
-        val jellyfinCard = CardFormatterService.buildAvailableCard(jellyfinEpisode)
+        val jellyfinCard = PayloadCards.buildAvailableCard(jellyfinEpisode)
         assertEquals("🍿 Futurama - S03E01 - Roswell That Ends Well now available on Jellyfin", jellyfinCard.title)
     }
 
@@ -402,7 +402,7 @@ class CardFormatterServiceTest {
                 episodeNumbers = listOf(1, 2, 3, 4, 5),
                 instanceName = "Kerrlab Plex"
             )
-        val plexCard = CardFormatterService.buildAvailableCard(plexMulti)
+        val plexCard = PayloadCards.buildAvailableCard(plexMulti)
         assertEquals("🍿 Ghost in the Shell - S01E01-E05 now available on Kerrlab Plex", plexCard.title)
 
         val jellyfinMulti =
@@ -415,7 +415,7 @@ class CardFormatterServiceTest {
                 episodeNumbers = listOf(1, 2, 3),
                 instanceName = "Jellyfin"
             )
-        val jfCard = CardFormatterService.buildAvailableCard(jellyfinMulti)
+        val jfCard = PayloadCards.buildAvailableCard(jellyfinMulti)
         assertEquals("🍿 Severance - S02E01-E03 now available on Jellyfin", jfCard.title)
     }
 
@@ -432,7 +432,7 @@ class CardFormatterServiceTest {
                 episodeNumber = 1,
                 instanceName = "Plex"
             )
-        val card1 = CardFormatterService.buildAvailableCard(plexEpWithCodeTitle)
+        val card1 = PayloadCards.buildAvailableCard(plexEpWithCodeTitle)
         assertEquals("🍿 Futurama - S03E01 now available on Plex", card1.title)
 
         // Episode with 'Episode 1' as title (no duplicate code in output)
@@ -446,7 +446,7 @@ class CardFormatterServiceTest {
                 episodeNumber = 1,
                 instanceName = "Plex"
             )
-        val card2 = CardFormatterService.buildAvailableCard(plexEpWithGenericTitle)
+        val card2 = PayloadCards.buildAvailableCard(plexEpWithGenericTitle)
         assertEquals("🍿 Futurama - S03E01 now available on Plex", card2.title)
 
         // Episode with null episodeNumber fallback
@@ -459,7 +459,7 @@ class CardFormatterServiceTest {
                 episodeNumber = null,
                 instanceName = "Plex"
             )
-        val card3 = CardFormatterService.buildAvailableCard(plexEpNoEpNumber)
+        val card3 = PayloadCards.buildAvailableCard(plexEpNoEpNumber)
         assertEquals("🍿 Futurama - Special now available on Plex", card3.title)
 
         // Season with non-Season title and null seasonNumber fallback
@@ -471,7 +471,7 @@ class CardFormatterServiceTest {
                 seasonNumber = null,
                 instanceName = "Plex"
             )
-        val card4 = CardFormatterService.buildAvailableCard(plexSeasonCustomTitle)
+        val card4 = PayloadCards.buildAvailableCard(plexSeasonCustomTitle)
         assertEquals("🍿 Attack on Titan - Final Arc now available on Plex", card4.title)
 
         // Grandparent poster fallback
@@ -485,7 +485,7 @@ class CardFormatterServiceTest {
                 grandparentPosterUrl = "https://plex.example.com/grandparent.jpg",
                 instanceName = "Plex"
             )
-        val card5 = CardFormatterService.buildAvailableCard(plexGrandparentPoster)
+        val card5 = PayloadCards.buildAvailableCard(plexGrandparentPoster)
         assertEquals("https://plex.example.com/grandparent.jpg", card5.artworkUrl)
 
         // Jellyfin Series mapping to show
@@ -497,7 +497,7 @@ class CardFormatterServiceTest {
                 year = 2022,
                 instanceName = "Jellyfin"
             )
-        val card6 = CardFormatterService.buildAvailableCard(jellyfinSeries)
+        val card6 = PayloadCards.buildAvailableCard(jellyfinSeries)
         assertEquals("🍿 Severance (2022) now available on Jellyfin", card6.title)
 
         // Movie with no year
@@ -508,7 +508,7 @@ class CardFormatterServiceTest {
                 year = null,
                 instanceName = "Plex"
             )
-        val card7 = CardFormatterService.buildAvailableCard(plexMovieNoYear)
+        val card7 = PayloadCards.buildAvailableCard(plexMovieNoYear)
         assertEquals("🍿 Standalone Movie now available on Plex", card7.title)
     }
 
@@ -529,7 +529,7 @@ class CardFormatterServiceTest {
                 instanceName = "Sonarr 4K"
             )
 
-        val importCard = CardFormatterService.buildImportCard(importPayload)
+        val importCard = ServarrCards.buildImportCard(importPayload)
         assertEquals("📁 File Imported: Severance - S02E01 - Hello World", importCard.title)
         assertEquals("Sonarr 4K • Library Import", importCard.subtitle)
         assertEquals(NotificationLevel.SUCCESS, importCard.level)
@@ -542,13 +542,13 @@ class CardFormatterServiceTest {
             importPayload.copy(
                 isUpgrade = true
             )
-        val upgradeCard = CardFormatterService.buildImportCard(upgradePayload)
+        val upgradeCard = ServarrCards.buildImportCard(upgradePayload)
         assertEquals("⬆️ File Upgraded: Severance - S02E01 - Hello World", upgradeCard.title)
         assertEquals("Sonarr 4K • Quality Upgrade", upgradeCard.subtitle)
 
         // Fallback without episodeTitle
         val noEpTitlePayload = importPayload.copy(episodeTitle = null)
-        val noEpTitleCard = CardFormatterService.buildImportCard(noEpTitlePayload)
+        val noEpTitleCard = ServarrCards.buildImportCard(noEpTitlePayload)
         assertEquals("📁 File Imported: Severance (S02E01)", noEpTitleCard.title)
     }
 
@@ -564,7 +564,7 @@ class CardFormatterServiceTest {
                 wikiUrl = "https://wiki.servarr.com/indexers",
                 instanceName = "Sonarr-Anime"
             )
-        val warningCard = CardFormatterService.buildHealthCard(warningPayload)
+        val warningCard = ServarrCards.buildHealthCard(warningPayload)
         assertEquals("⚠️ Health Warning: Sonarr-Anime", warningCard.title)
         assertEquals("Sonarr-Anime • Health Warning", warningCard.subtitle)
         assertEquals(NotificationLevel.WARNING, warningCard.level)
@@ -577,7 +577,7 @@ class CardFormatterServiceTest {
                 level = "error",
                 message = "All download clients are offline"
             )
-        val errorCard = CardFormatterService.buildHealthCard(errorPayload)
+        val errorCard = ServarrCards.buildHealthCard(errorPayload)
         assertEquals("🚨 Health Error: Sonarr-Anime", errorCard.title)
         assertEquals(NotificationLevel.ERROR, errorCard.level)
 
@@ -587,7 +587,7 @@ class CardFormatterServiceTest {
                 level = "ok",
                 message = "Indexer connection restored"
             )
-        val restoredCard = CardFormatterService.buildHealthCard(restoredPayload)
+        val restoredCard = ServarrCards.buildHealthCard(restoredPayload)
         assertEquals("✅ Health Restored: Sonarr-Anime", restoredCard.title)
         assertEquals(NotificationLevel.SUCCESS, restoredCard.level)
     }
@@ -611,7 +611,7 @@ class CardFormatterServiceTest {
                 instanceName = "Radarr-4K"
             )
 
-        val card = CardFormatterService.buildManualInteractionCard(manualPayload)
+        val card = ServarrCards.buildManualInteractionCard(manualPayload)
         assertEquals("✋ Manual Import Required: Dune: Part Two (2024)", card.title)
         assertEquals("Radarr-4K • Manual Intervention", card.subtitle)
         assertEquals(NotificationLevel.WARNING, card.level)
@@ -637,7 +637,7 @@ class CardFormatterServiceTest {
                 reason = "Sample file detected",
                 instanceName = "Sonarr-TV"
             )
-        val sonarrCard = CardFormatterService.buildManualInteractionCard(sonarrManualSingleEp)
+        val sonarrCard = ServarrCards.buildManualInteractionCard(sonarrManualSingleEp)
         assertEquals("✋ Manual Import Required: Severance - S02E01 - Hello World", sonarrCard.title)
         assertEquals("Sonarr-TV • Manual Intervention", sonarrCard.subtitle)
 
@@ -646,7 +646,7 @@ class CardFormatterServiceTest {
             sonarrManualSingleEp.copy(
                 episodeTitle = "S02E01"
             )
-        val sonarrCodeCard = CardFormatterService.buildManualInteractionCard(sonarrManualCodeTitle)
+        val sonarrCodeCard = ServarrCards.buildManualInteractionCard(sonarrManualCodeTitle)
         assertEquals("✋ Manual Import Required: Severance - S02E01", sonarrCodeCard.title)
 
         // TV series single episode with generic 'Episode 1' title
@@ -654,7 +654,7 @@ class CardFormatterServiceTest {
             sonarrManualSingleEp.copy(
                 episodeTitle = "Episode 1"
             )
-        val sonarrGenericCard = CardFormatterService.buildManualInteractionCard(sonarrManualGenericTitle)
+        val sonarrGenericCard = ServarrCards.buildManualInteractionCard(sonarrManualGenericTitle)
         assertEquals("✋ Manual Import Required: Severance - S02E01", sonarrGenericCard.title)
 
         // TV series multi-episode manual interaction
@@ -669,7 +669,7 @@ class CardFormatterServiceTest {
                 reason = "Multiple episodes in release",
                 instanceName = "Sonarr-TV"
             )
-        val sonarrMultiCard = CardFormatterService.buildManualInteractionCard(sonarrManualMultiEp)
+        val sonarrMultiCard = ServarrCards.buildManualInteractionCard(sonarrManualMultiEp)
         assertEquals("✋ Manual Import Required: Severance (S02E01-E03)", sonarrMultiCard.title)
 
         // TV series template resolution with season and episode tags
@@ -690,7 +690,7 @@ class CardFormatterServiceTest {
                 )
             )
         val templateCard =
-            CardFormatterService.buildManualInteractionCard(
+            ServarrCards.buildManualInteractionCard(
                 sonarrManualSingleEp,
                 engine = manualTemplateEngine
             )
@@ -717,7 +717,7 @@ class CardFormatterServiceTest {
                 instanceName = "Overseerr"
             )
 
-        val pendingCard = CardFormatterService.buildSeerrCard(pendingPayload)
+        val pendingCard = SeerrCards.buildSeerrCard(pendingPayload)
         assertEquals("🛎️ New Request: Severance (2022)", pendingCard.title)
         assertEquals("Overseerr • Request Pending", pendingCard.subtitle)
         assertEquals(NotificationLevel.WARNING, pendingCard.level)
@@ -730,7 +730,7 @@ class CardFormatterServiceTest {
             pendingPayload.copy(
                 eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_APPROVED
             )
-        val approvedCard = CardFormatterService.buildSeerrCard(approvedPayload)
+        val approvedCard = SeerrCards.buildSeerrCard(approvedPayload)
         assertEquals("✅ Request Approved: Severance (2022)", approvedCard.title)
         assertEquals(NotificationLevel.SUCCESS, approvedCard.level)
 
@@ -746,7 +746,7 @@ class CardFormatterServiceTest {
                 webUrl = "https://overseerr.example.com/issues/42",
                 instanceName = "Jellyseerr"
             )
-        val issueCard = CardFormatterService.buildSeerrCard(issuePayload)
+        val issueCard = SeerrCards.buildSeerrCard(issuePayload)
         assertEquals("⚠️ Issue Reported: Dune: Part Two (2024)", issueCard.title)
         assertEquals("Jellyseerr • Issue Report", issueCard.subtitle)
         assertEquals(NotificationLevel.WARNING, issueCard.level)
@@ -757,56 +757,56 @@ class CardFormatterServiceTest {
         assertEquals("https://overseerr.example.com/issues/42", issueCard.actions.first().url)
 
         val autoApprovedCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_AUTO_APPROVED)
             )
         assertEquals("✅ Request Auto-Approved: Severance (2022)", autoApprovedCard.title)
         assertEquals(NotificationLevel.SUCCESS, autoApprovedCard.level)
 
         val availableCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_AVAILABLE)
             )
         assertEquals("🍿 Request Available: Severance (2022)", availableCard.title)
         assertEquals(NotificationLevel.SUCCESS, availableCard.level)
 
         val declinedCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_DECLINED)
             )
         assertEquals("❌ Request Declined: Severance (2022)", declinedCard.title)
         assertEquals(NotificationLevel.ERROR, declinedCard.level)
 
         val failedCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 pendingPayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.REQUEST_FAILED)
             )
         assertEquals("🚨 Request Failed: Severance (2022)", failedCard.title)
         assertEquals(NotificationLevel.ERROR, failedCard.level)
 
         val issueCommentCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_COMMENT)
             )
         assertEquals("💬 Issue Comment: Dune: Part Two (2024)", issueCommentCard.title)
         assertEquals(NotificationLevel.INFO, issueCommentCard.level)
 
         val issueResolvedCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_RESOLVED)
             )
         assertEquals("✅ Issue Resolved: Dune: Part Two (2024)", issueResolvedCard.title)
         assertEquals(NotificationLevel.SUCCESS, issueResolvedCard.level)
 
         val issueReopenedCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 issuePayload.copy(eventType = app.hononeko.notifier.domain.model.EventType.ISSUE_REOPENED)
             )
         assertEquals("⚠️ Issue Reopened: Dune: Part Two (2024)", issueReopenedCard.title)
         assertEquals(NotificationLevel.WARNING, issueReopenedCard.level)
 
         val fallbackCard =
-            CardFormatterService.buildSeerrCard(
+            SeerrCards.buildSeerrCard(
                 pendingPayload.copy(
                     eventType = app.hononeko.notifier.domain.model.EventType.UNKNOWN,
                     webUrl = null
@@ -846,7 +846,7 @@ class CardFormatterServiceTest {
                 posterUrl = "https://example.com/poster.jpg"
             )
         val grabCard =
-            CardFormatterService.buildGrabInitialCard(
+            DownloadCards.buildGrabInitialCard(
                 grab,
                 "https://qbit.example.com",
                 engine = customEngine
@@ -868,7 +868,7 @@ class CardFormatterServiceTest {
                 state = DownloadState.COMPLETED
             )
         val completeCard =
-            CardFormatterService.buildCompletionCard(
+            DownloadCards.buildCompletionCard(
                 grab,
                 progress,
                 "https://qbit.example.com",
@@ -882,7 +882,7 @@ class CardFormatterServiceTest {
                 title = "Show - S01E01",
                 seriesOrMovieTitle = "Show"
             )
-        val importCard = CardFormatterService.buildImportCard(importPayload, engine = customEngine)
+        val importCard = ServarrCards.buildImportCard(importPayload, engine = customEngine)
         assertEquals("Custom Import Body", importCard.customBody)
 
         val plex =
@@ -890,7 +890,7 @@ class CardFormatterServiceTest {
                 title = "Movie",
                 artworkBytes = bytes
             )
-        val availableCard = CardFormatterService.buildAvailableCard(plex, engine = customEngine)
+        val availableCard = PayloadCards.buildAvailableCard(plex, engine = customEngine)
         assertEquals("Custom Available Body", availableCard.customBody)
         assertNotNull(availableCard.artworkBytes)
 
@@ -902,7 +902,7 @@ class CardFormatterServiceTest {
                 subject = "Movie",
                 image = "https://example.com/poster.jpg"
             )
-        val reqCard = CardFormatterService.buildSeerrCard(req, engine = customEngine)
+        val reqCard = SeerrCards.buildSeerrCard(req, engine = customEngine)
         assertEquals("Custom Request Body", reqCard.customBody)
 
         val issue =
@@ -913,7 +913,7 @@ class CardFormatterServiceTest {
                 subject = "Movie Issue",
                 image = "https://example.com/poster.jpg"
             )
-        val issueCard = CardFormatterService.buildSeerrCard(issue, engine = customEngine)
+        val issueCard = SeerrCards.buildSeerrCard(issue, engine = customEngine)
         assertEquals("Custom Issue Body", issueCard.customBody)
         assertNull(issueCard.artworkUrl)
 
@@ -926,11 +926,11 @@ class CardFormatterServiceTest {
                 releaseTitle = "Movie.2024",
                 reason = "Sample"
             )
-        val manualCard = CardFormatterService.buildManualInteractionCard(manual, engine = customEngine)
+        val manualCard = ServarrCards.buildManualInteractionCard(manual, engine = customEngine)
         assertEquals("Custom Manual Body", manualCard.customBody)
 
         val stalledCard =
-            CardFormatterService.buildStalledCard(
+            DownloadCards.buildStalledCard(
                 grab,
                 progress.copy(state = DownloadState.STALLED),
                 "https://qbit.example.com",
@@ -947,7 +947,7 @@ class CardFormatterServiceTest {
                 type = "DiskSpace",
                 instanceName = "Sonarr"
             )
-        val healthCard = CardFormatterService.buildHealthCard(health, engine = customEngine)
+        val healthCard = ServarrCards.buildHealthCard(health, engine = customEngine)
         assertEquals("Custom Health Body", healthCard.customBody)
     }
 
@@ -991,26 +991,26 @@ class CardFormatterServiceTest {
                 subject = "Show"
             )
 
-        assertNotNull(CardFormatterService.buildAvailableCard(jellyfin))
-        assertNotNull(CardFormatterService.buildAvailableCard(download))
-        assertNotNull(CardFormatterService.buildAvailableCard(grab))
-        assertNotNull(CardFormatterService.buildAvailableCard(health))
-        assertNotNull(CardFormatterService.buildAvailableCard(manual))
-        assertNotNull(CardFormatterService.buildAvailableCard(seerr))
+        assertNotNull(PayloadCards.buildAvailableCard(jellyfin))
+        assertNotNull(PayloadCards.buildAvailableCard(download))
+        assertNotNull(PayloadCards.buildAvailableCard(grab))
+        assertNotNull(PayloadCards.buildAvailableCard(health))
+        assertNotNull(PayloadCards.buildAvailableCard(manual))
+        assertNotNull(PayloadCards.buildAvailableCard(seerr))
     }
 
     @Test
     fun `should handle edge cases in formatting helpers`() {
         // Truncate overview with no spaces
         val longWord = "a".repeat(100)
-        val truncated = CardFormatterService.truncateOverview(longWord, 20)
+        val truncated = MediaFormat.truncateOverview(longWord, 20)
         assertTrue(truncated?.endsWith("...") == true)
         assertTrue((truncated?.length ?: 0) <= 23)
 
         // Duration formatting
-        assertEquals("30s", CardFormatterService.formatDuration(30))
-        assertEquals("5m 0s", CardFormatterService.formatDuration(300))
-        assertEquals("2h 0m", CardFormatterService.formatDuration(7200))
+        assertEquals("30s", MediaFormat.formatDuration(30))
+        assertEquals("5m 0s", MediaFormat.formatDuration(300))
+        assertEquals("2h 0m", MediaFormat.formatDuration(7200))
 
         // Progress updates across states
         val grab =
@@ -1046,7 +1046,7 @@ class CardFormatterServiceTest {
                     swarm = SwarmStats(seedsCount = 10, seedsTotal = 20, peersCount = 5, peersTotal = 10),
                     state = state
                 )
-            val update = CardFormatterService.buildProgressUpdate(grab, progress, null)
+            val update = DownloadCards.buildProgressUpdate(grab, progress, null)
             assertNotNull(update.subtitle)
         }
     }
@@ -1055,12 +1055,12 @@ class CardFormatterServiceTest {
     fun `should extract episode labels accurately from various torrent release names`() {
         assertEquals(
             "E01",
-            CardFormatterService.extractEpisodeLabel("Love.Is.Blind.UK.S03E01.1080p.WEB.H264-DEFENESTRATE")
+            EpisodeFormat.extractEpisodeLabel("Love.Is.Blind.UK.S03E01.1080p.WEB.H264-DEFENESTRATE")
         )
-        assertEquals("E05", CardFormatterService.extractEpisodeLabel("Futurama.S01E05.1080p.WEBDL"))
-        assertEquals("E02", CardFormatterService.extractEpisodeLabel("Severance.1x02.720p.HDTV"))
-        assertEquals("E08", CardFormatterService.extractEpisodeLabel("Show.Name - Episode 8"))
-        assertEquals("E03", CardFormatterService.extractEpisodeLabel("UnknownReleaseName", fallbackIndex = 3))
+        assertEquals("E05", EpisodeFormat.extractEpisodeLabel("Futurama.S01E05.1080p.WEBDL"))
+        assertEquals("E02", EpisodeFormat.extractEpisodeLabel("Severance.1x02.720p.HDTV"))
+        assertEquals("E08", EpisodeFormat.extractEpisodeLabel("Show.Name - Episode 8"))
+        assertEquals("E03", EpisodeFormat.extractEpisodeLabel("UnknownReleaseName", fallbackIndex = 3))
     }
 
     @Test
@@ -1092,7 +1092,7 @@ class CardFormatterServiceTest {
                 items = emptyList() // Single-track
             )
 
-        val update = CardFormatterService.buildProgressUpdate(grab, progress, "https://qbit.example.com")
+        val update = DownloadCards.buildProgressUpdate(grab, progress, "https://qbit.example.com")
         assertEquals("⏳ Downloading: Severance (S02E01)", update.title)
         assertEquals("Sonarr-Main", update.subtitle)
         assertEquals(65.5, update.percent, 0.001)
@@ -1168,7 +1168,7 @@ class CardFormatterServiceTest {
                 items = listOf(ep1, ep2, ep3)
             )
 
-        val update = CardFormatterService.buildProgressUpdate(grab, multiProgress, "https://qbit.example.com")
+        val update = DownloadCards.buildProgressUpdate(grab, multiProgress, "https://qbit.example.com")
         assertEquals("⏳ Downloading: Love is Blind: UK (S03E01-E03)", update.title)
         assertNotNull(update.episodeTracks)
         assertTrue(update.episodeTracks.contains("<b>100%</b> • <b>E01:</b> 2.64 GB"))
@@ -1188,7 +1188,7 @@ class CardFormatterServiceTest {
                     .parseTemplateConfig(defaultYaml)
             )
         val templatedUpdate =
-            CardFormatterService.buildProgressUpdate(grab, multiProgress, "https://qbit.example.com", defaultEngine)
+            DownloadCards.buildProgressUpdate(grab, multiProgress, "https://qbit.example.com", defaultEngine)
         assertNotNull(templatedUpdate.customBody)
         assertTrue(templatedUpdate.customBody.contains("E01"))
         assertTrue(templatedUpdate.customBody.contains("E02"))
@@ -1196,7 +1196,7 @@ class CardFormatterServiceTest {
 
         // Verify completion card includes Episodes field
         val completionCard =
-            CardFormatterService.buildCompletionCard(
+            DownloadCards.buildCompletionCard(
                 grab,
                 multiProgress.copy(state = DownloadState.COMPLETED),
                 null
@@ -1249,7 +1249,7 @@ class CardFormatterServiceTest {
             )
 
         // Pass out of order: E02, E07, E01
-        val tracks = CardFormatterService.formatEpisodeTracks(listOf(ep2, ep7, ep1))
+        val tracks = EpisodeFormat.formatEpisodeTracks(listOf(ep2, ep7, ep1))
         assertNotNull(tracks)
         val lines = tracks.lines()
         assertEquals(3, lines.size)
@@ -1276,7 +1276,7 @@ class CardFormatterServiceTest {
                 )
             }
 
-        val tracks = CardFormatterService.formatEpisodeTracks(childItems, maxItems = 8)
+        val tracks = EpisodeFormat.formatEpisodeTracks(childItems, maxItems = 8)
         assertNotNull(tracks)
         assertTrue(tracks.contains("E01"))
         assertTrue(tracks.contains("E08"))
@@ -1362,7 +1362,7 @@ class CardFormatterServiceTest {
                 )
             )
 
-        val tracks = CardFormatterService.formatEpisodeTracks(items)
+        val tracks = EpisodeFormat.formatEpisodeTracks(items)
         assertNotNull(tracks)
         assertTrue(tracks.contains("Stalled"))
         assertTrue(tracks.contains("Queued"))
@@ -1407,15 +1407,15 @@ class CardFormatterServiceTest {
                 state = DownloadState.DOWNLOADING
             )
 
-        val update = CardFormatterService.buildProgressUpdate(grab, progress, null, engine = customEngine)
+        val update = DownloadCards.buildProgressUpdate(grab, progress, null, engine = customEngine)
         assertNotNull(update.customBody)
         assertTrue(update.customBody.contains("Transferred: 476.8 MB / 953.7 MB | Size: 476.8 MB / 953.7 MB"))
 
-        val completeCard = CardFormatterService.buildCompletionCard(grab, progress, null, engine = customEngine)
+        val completeCard = DownloadCards.buildCompletionCard(grab, progress, null, engine = customEngine)
         assertNotNull(completeCard.customBody)
         assertTrue(completeCard.customBody.contains("Final: 953.7 MB | Total: 953.7 MB"))
 
-        val stalledCard = CardFormatterService.buildStalledCard(grab, progress, null, engine = customEngine)
+        val stalledCard = DownloadCards.buildStalledCard(grab, progress, null, engine = customEngine)
         assertNotNull(stalledCard.customBody)
         assertTrue(stalledCard.customBody.contains("Stalled at: 953.7 MB"))
     }
@@ -1448,13 +1448,13 @@ class CardFormatterServiceTest {
                 state = DownloadState.COMPLETED
             )
 
-        val grabCard = CardFormatterService.buildGrabInitialCard(grabPayload, null)
+        val grabCard = DownloadCards.buildGrabInitialCard(grabPayload, null)
         assertTrue(grabCard.silent)
 
-        val completionCard = CardFormatterService.buildCompletionCard(grabPayload, progress, null)
+        val completionCard = DownloadCards.buildCompletionCard(grabPayload, progress, null)
         kotlin.test.assertFalse(completionCard.silent)
 
-        val stalledCard = CardFormatterService.buildStalledCard(grabPayload, progress, null)
+        val stalledCard = DownloadCards.buildStalledCard(grabPayload, progress, null)
         kotlin.test.assertFalse(stalledCard.silent)
 
         val importPayload =
@@ -1467,7 +1467,7 @@ class CardFormatterServiceTest {
                 quality = "2160p",
                 sizeBytes = 1000L
             )
-        val importCard = CardFormatterService.buildImportCard(importPayload)
+        val importCard = ServarrCards.buildImportCard(importPayload)
         assertTrue(importCard.silent)
 
         val manualPayload =
@@ -1480,7 +1480,7 @@ class CardFormatterServiceTest {
                 sizeBytes = 1000L,
                 reason = "Unknown error"
             )
-        val manualCard = CardFormatterService.buildManualInteractionCard(manualPayload)
+        val manualCard = ServarrCards.buildManualInteractionCard(manualPayload)
         kotlin.test.assertFalse(manualCard.silent)
 
         val healthPayload =
@@ -1490,7 +1490,7 @@ class CardFormatterServiceTest {
                 level = "warning",
                 message = "Disk space low"
             )
-        val healthCard = CardFormatterService.buildHealthCard(healthPayload)
+        val healthCard = ServarrCards.buildHealthCard(healthPayload)
         kotlin.test.assertFalse(healthCard.silent)
 
         // With template override: grab is audible, import is audible
@@ -1504,10 +1504,10 @@ class CardFormatterServiceTest {
                         )
                 )
             )
-        val audibleGrabCard = CardFormatterService.buildGrabInitialCard(grabPayload, null, overrideEngine)
+        val audibleGrabCard = DownloadCards.buildGrabInitialCard(grabPayload, null, overrideEngine)
         kotlin.test.assertFalse(audibleGrabCard.silent)
 
-        val audibleImportCard = CardFormatterService.buildImportCard(importPayload, engine = overrideEngine)
+        val audibleImportCard = ServarrCards.buildImportCard(importPayload, engine = overrideEngine)
         kotlin.test.assertFalse(audibleImportCard.silent)
     }
 
@@ -1546,12 +1546,12 @@ class CardFormatterServiceTest {
 
     @Test
     fun `acknowledge is offered on cards that need a human`() {
-        val ack = listOf(CardFormatterService.ACKNOWLEDGE)
+        val ack = listOf(CardTemplates.ACKNOWLEDGE)
 
-        assertEquals(ack, CardFormatterService.buildHealthCard(healthPayload()).interactions)
-        assertEquals(ack, CardFormatterService.buildManualInteractionCard(manualPayload).interactions)
-        assertEquals(ack, CardFormatterService.buildStalledCard(grabPayload, null, null).interactions)
-        assertEquals(ack, CardFormatterService.buildSeerrCard(seerrPayload(EventType.REQUEST_FAILED)).interactions)
+        assertEquals(ack, ServarrCards.buildHealthCard(healthPayload()).interactions)
+        assertEquals(ack, ServarrCards.buildManualInteractionCard(manualPayload).interactions)
+        assertEquals(ack, DownloadCards.buildStalledCard(grabPayload, null, null).interactions)
+        assertEquals(ack, SeerrCards.buildSeerrCard(seerrPayload(EventType.REQUEST_FAILED)).interactions)
     }
 
     @Test
@@ -1563,14 +1563,14 @@ class CardFormatterServiceTest {
                 seriesOrMovieTitle = "Show"
             )
 
-        val restored = CardFormatterService.buildHealthCard(healthPayload(EventType.HEALTH_RESTORED))
+        val restored = ServarrCards.buildHealthCard(healthPayload(EventType.HEALTH_RESTORED))
         assertTrue(restored.interactions.isEmpty())
-        assertTrue(CardFormatterService.buildHealthCard(healthPayload(level = "ok")).interactions.isEmpty())
-        assertTrue(CardFormatterService.buildHealthCard(healthPayload(level = "restored")).interactions.isEmpty())
-        assertTrue(CardFormatterService.buildGrabInitialCard(grabPayload, null).interactions.isEmpty())
-        assertTrue(CardFormatterService.buildImportCard(importPayload).interactions.isEmpty())
+        assertTrue(ServarrCards.buildHealthCard(healthPayload(level = "ok")).interactions.isEmpty())
+        assertTrue(ServarrCards.buildHealthCard(healthPayload(level = "restored")).interactions.isEmpty())
+        assertTrue(DownloadCards.buildGrabInitialCard(grabPayload, null).interactions.isEmpty())
+        assertTrue(ServarrCards.buildImportCard(importPayload).interactions.isEmpty())
         assertTrue(
-            CardFormatterService.buildSeerrCard(seerrPayload(EventType.REQUEST_APPROVED)).interactions.isEmpty()
+            SeerrCards.buildSeerrCard(seerrPayload(EventType.REQUEST_APPROVED)).interactions.isEmpty()
         )
     }
 
@@ -1587,12 +1587,12 @@ class CardFormatterServiceTest {
                         )
                 )
             )
-        val ack = listOf(CardFormatterService.ACKNOWLEDGE)
+        val ack = listOf(CardTemplates.ACKNOWLEDGE)
 
-        val health = CardFormatterService.buildHealthCard(healthPayload(), engine)
+        val health = ServarrCards.buildHealthCard(healthPayload(), engine)
         assertEquals("Custom Health Body", health.customBody)
         assertEquals(ack, health.interactions)
-        assertEquals(ack, CardFormatterService.buildManualInteractionCard(manualPayload, engine).interactions)
-        assertEquals(ack, CardFormatterService.buildStalledCard(grabPayload, null, null, engine).interactions)
+        assertEquals(ack, ServarrCards.buildManualInteractionCard(manualPayload, engine).interactions)
+        assertEquals(ack, DownloadCards.buildStalledCard(grabPayload, null, null, engine).interactions)
     }
 }

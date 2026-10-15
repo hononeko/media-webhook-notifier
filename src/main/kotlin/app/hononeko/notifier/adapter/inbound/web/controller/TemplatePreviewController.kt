@@ -9,7 +9,11 @@ import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.model.SwarmStats
-import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.CardTemplates
+import app.hononeko.notifier.domain.service.DownloadCards
+import app.hononeko.notifier.domain.service.PayloadCards
+import app.hononeko.notifier.domain.service.SeerrCards
+import app.hononeko.notifier.domain.service.ServarrCards
 import app.hononeko.notifier.domain.service.TemplateEngine
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -230,11 +234,11 @@ class TemplatePreviewController {
                 val templateConfig =
                     YamlParser.parseTemplateConfig(
                         request.templateYaml,
-                        defaultTheme = CardFormatterService.templateEngine.theme
+                        defaultTheme = CardTemplates.templateEngine.theme
                     )
                 TemplateEngine(templateConfig)
             } else {
-                CardFormatterService.templateEngine
+                CardTemplates.templateEngine
             }
         val eventType = request.eventType.lowercase(Locale.US).trim()
 
@@ -302,42 +306,42 @@ class TemplatePreviewController {
             "download_stalled" -> {
                 val grab = mockGrab()
                 val progress = mockProgress(42.0, DownloadState.STALLED)
-                val card = CardFormatterService.buildStalledCard(grab, progress, MOCK_QBIT_URL, engine)
+                val card = DownloadCards.buildStalledCard(grab, progress, MOCK_QBIT_URL, engine)
                 Triple(card, null, STALLED_TAGS)
             }
             "import" -> {
                 val download = mockDownload()
-                val card = CardFormatterService.buildImportCard(download, engine)
+                val card = ServarrCards.buildImportCard(download, engine)
                 Triple(card, null, IMPORT_TAGS)
             }
             "media_available" -> {
                 val plex = mockPlex()
-                val card = CardFormatterService.buildAvailableCard(plex, engine = engine)
+                val card = PayloadCards.buildAvailableCard(plex, engine = engine)
                 Triple(card, null, AVAILABLE_TAGS)
             }
             "health" -> {
                 val health = mockHealth()
-                val card = CardFormatterService.buildHealthCard(health, engine)
+                val card = ServarrCards.buildHealthCard(health, engine)
                 Triple(card, null, HEALTH_TAGS)
             }
             "manual_interaction" -> {
                 val manual = mockManual()
-                val card = CardFormatterService.buildManualInteractionCard(manual, engine)
+                val card = ServarrCards.buildManualInteractionCard(manual, engine)
                 Triple(card, null, MANUAL_TAGS)
             }
             "issue" -> {
                 val issue = mockIssue()
-                val card = CardFormatterService.buildSeerrCard(issue, engine)
+                val card = SeerrCards.buildSeerrCard(issue, engine)
                 Triple(card, null, ISSUE_TAGS)
             }
             "request" -> {
                 val seerr = mockSeerr()
-                val card = CardFormatterService.buildSeerrCard(seerr, engine)
+                val card = SeerrCards.buildSeerrCard(seerr, engine)
                 Triple(card, null, REQUEST_TAGS)
             }
             else -> {
                 val grab = mockGrab()
-                val card = CardFormatterService.buildGrabInitialCard(grab, MOCK_QBIT_URL, engine)
+                val card = DownloadCards.buildGrabInitialCard(grab, MOCK_QBIT_URL, engine)
                 Triple(card, null, GRAB_TAGS)
             }
         }
@@ -352,7 +356,7 @@ private fun renderMockProgressEvent(
     val grab = if (isMulti) mockMultiGrab() else mockGrab()
     val progress = if (isMulti) mockMultiProgress() else mockProgress(68.5, DownloadState.DOWNLOADING)
     val update =
-        CardFormatterService.buildProgressUpdate(
+        DownloadCards.buildProgressUpdate(
             grab,
             progress,
             MOCK_QBIT_URL,
@@ -373,7 +377,7 @@ private fun renderMockCompleteEvent(
             mockProgress(100.0, DownloadState.COMPLETED)
         }
     val card =
-        CardFormatterService.buildCompletionCard(
+        DownloadCards.buildCompletionCard(
             grab,
             progress,
             MOCK_QBIT_URL,

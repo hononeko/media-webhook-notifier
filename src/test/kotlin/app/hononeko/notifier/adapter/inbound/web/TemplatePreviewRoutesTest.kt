@@ -7,7 +7,7 @@ import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewReque
 import app.hononeko.notifier.adapter.inbound.web.controller.TemplatePreviewResponseDto
 import app.hononeko.notifier.config.ServerConfig
 import app.hononeko.notifier.config.YamlParser
-import app.hononeko.notifier.domain.service.CardFormatterService
+import app.hononeko.notifier.domain.service.CardTemplates
 import app.hononeko.notifier.domain.service.TemplateEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
@@ -294,9 +294,9 @@ class TemplatePreviewRoutesTest {
     }
 
     @Test
-    fun `preview endpoint uses active CardFormatterService template engine when template_yaml is omitted`() =
+    fun `preview endpoint uses active CardTemplates template engine when template_yaml is omitted`() =
         withPreviewApp { client ->
-            val prevEngine = CardFormatterService.templateEngine
+            val prevEngine = CardTemplates.templateEngine
             try {
                 val customEngine =
                     TemplateEngine(
@@ -304,7 +304,7 @@ class TemplatePreviewRoutesTest {
                             "events:\n  grab:\n    title: 'Active Engine: {title}'"
                         )
                     )
-                CardFormatterService.templateEngine = customEngine
+                CardTemplates.templateEngine = customEngine
 
                 val response =
                     client.post("/api/v1/templates/preview") {
@@ -317,7 +317,7 @@ class TemplatePreviewRoutesTest {
                 val body = response.bodyAsText()
                 assertTrue(body.contains("Active Engine: Breaking Bad"))
             } finally {
-                CardFormatterService.templateEngine = prevEngine
+                CardTemplates.templateEngine = prevEngine
             }
         }
 }

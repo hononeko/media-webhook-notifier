@@ -37,7 +37,7 @@ class MediaAvailableService(
             }
 
             logger.info("Announcing media available for '{}' ({}) from {}", title, payload.eventType, payload.source)
-            val card = CardFormatterService.buildAvailableCard(payload, mediaServerPort)
+            val card = PayloadCards.buildAvailableCard(payload, mediaServerPort)
             val sendResult = notificationPublisher.sendCard(card)
 
             when (sendResult) {

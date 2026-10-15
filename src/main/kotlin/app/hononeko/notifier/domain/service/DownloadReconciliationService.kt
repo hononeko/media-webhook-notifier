@@ -135,12 +135,12 @@ class DownloadReconciliationService(
 
             val episodeNumbers =
                 distinctTorrents
-                    .mapNotNull { CardFormatterService.extractEpisodeNumber(it.name) }
+                    .mapNotNull { EpisodeFormat.extractEpisodeNumber(it.name) }
                     .distinct()
                     .sorted()
             val seasonNumber =
                 distinctTorrents
-                    .mapNotNull { CardFormatterService.extractSeasonNumber(it.name) }
+                    .mapNotNull { EpisodeFormat.extractSeasonNumber(it.name) }
                     .firstOrNull()
 
             val primaryTorrent = distinctTorrents.first()

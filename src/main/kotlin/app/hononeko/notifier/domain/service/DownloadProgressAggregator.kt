@@ -29,7 +29,7 @@ object DownloadProgressAggregator {
         val childItems =
             items.sortedWith(
                 compareBy(
-                    { CardFormatterService.extractEpisodeNumber(it.name) ?: Int.MAX_VALUE },
+                    { EpisodeFormat.extractEpisodeNumber(it.name) ?: Int.MAX_VALUE },
                     { it.name }
                 )
             )

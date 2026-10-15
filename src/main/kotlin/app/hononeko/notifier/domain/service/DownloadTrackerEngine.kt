@@ -80,7 +80,7 @@ class DownloadTrackerEngine(
                 return@withLock Either.Right(TrackingStart.TRACKED_ELSEWHERE)
             }
 
-            val initialCard = CardFormatterService.buildGrabInitialCard(initialPayload, webuiPublicUrl)
+            val initialCard = DownloadCards.buildGrabInitialCard(initialPayload, webuiPublicUrl)
             val handleResult = notificationPublisher.startLiveProgress(initialCard)
 
             val handle: NotificationHandle =
@@ -214,7 +214,7 @@ class DownloadTrackerEngine(
             if (elapsedSeconds >= maxPollingSeconds) {
                 logger.warn("Tracking for {} reached max limit of {}m. Halting.", hash, maxPollingMinutes)
                 val stalledCard =
-                    CardFormatterService.buildStalledCard(
+                    DownloadCards.buildStalledCard(
                         payload,
                         state.lastKnownProgress,
                         webuiPublicUrl
@@ -292,7 +292,7 @@ class DownloadTrackerEngine(
         }
 
         logger.warn("Torrent {} missing after {} attempts. Halting.", hash, missingCount)
-        val stalledCard = CardFormatterService.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
+        val stalledCard = DownloadCards.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
         notificationPublisher.cancelProgress(handle, stalledCard)
         cleanupTags(hash, handle)
         activeTrackerStore.cancel(hash)
@@ -308,7 +308,7 @@ class DownloadTrackerEngine(
     ): Boolean {
         if (progress.progressPercent >= 100 || progress.state.isComplete) {
             logger.info("Torrent {} reached 100%. Dispatching completion card.", hash)
-            val completionCard = CardFormatterService.buildCompletionCard(payload, progress, webuiPublicUrl)
+            val completionCard = DownloadCards.buildCompletionCard(payload, progress, webuiPublicUrl)
             notificationPublisher.completeProgress(handle, completionCard)
             cleanupTags(hash, handle)
             activeTrackerStore.complete(hash)
@@ -328,7 +328,7 @@ class DownloadTrackerEngine(
 
         if (updatedStalledSeconds >= maxStalledSeconds) {
             logger.warn("Torrent {} stalled for {}s. Halting.", hash, updatedStalledSeconds)
-            val stalledCard = CardFormatterService.buildStalledCard(payload, progress, webuiPublicUrl)
+            val stalledCard = DownloadCards.buildStalledCard(payload, progress, webuiPublicUrl)
             notificationPublisher.cancelProgress(handle, stalledCard)
             cleanupTags(hash, handle)
             activeTrackerStore.cancel(hash)
@@ -346,7 +346,7 @@ class DownloadTrackerEngine(
         handle: NotificationHandle,
         progress: DownloadItemProgress
     ) {
-        val update = CardFormatterService.buildProgressUpdate(payload, progress, webuiPublicUrl)
+        val update = DownloadCards.buildProgressUpdate(payload, progress, webuiPublicUrl)
         val updateResult = notificationPublisher.updateProgress(handle, update)
         if (updateResult is Either.Left) {
             logger.debug("Dropped progress tick for {}: {}", hash, updateResult.value)

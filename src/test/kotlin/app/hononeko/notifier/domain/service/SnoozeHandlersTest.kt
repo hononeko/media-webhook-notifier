@@ -45,7 +45,7 @@ class SnoozeHandlersTest {
         NotificationCard(
             title = "⚠️ Health Warning: Sonarr-TV",
             actions = listOf(ActionLink("📖 Wiki", "https://w")),
-            interactions = listOf(CardFormatterService.ACKNOWLEDGE, SnoozeHandler.button(check))
+            interactions = listOf(CardTemplates.ACKNOWLEDGE, SnoozeHandler.button(check))
         )
     private val target = CallbackTarget(card, deliveries = listOf(alexCopy, boCopy))
 

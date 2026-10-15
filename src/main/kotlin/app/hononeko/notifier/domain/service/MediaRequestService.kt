@@ -23,7 +23,7 @@ class MediaRequestService(
     private val logger = LoggerFactory.getLogger(MediaRequestService::class.java)
 
     override suspend fun announce(payload: MediaPayload.SeerrEvent): Either<DomainError, Unit> {
-        val card = CardFormatterService.buildSeerrCard(payload)
+        val card = SeerrCards.buildSeerrCard(payload)
         val buttons = if (decisionRecipients.isNotEmpty()) seerrButtons(payload) else emptyList()
         if (buttons.isEmpty()) return notificationPublisher.sendCard(card).map { }
 
