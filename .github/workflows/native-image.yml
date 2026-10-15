@@ -1,0 +1,114 @@
+name: Native Image
+
+# Builds the GraalVM native binary and its distroless image natively on an amd64 and an arm64 runner (no QEMU), smoke
+# tests each image, and, with `push`, pushes each one to GHCR by digest. The caller combines the digests into one
+# multi-arch tag (see cd.yml).
+on:
+  workflow_call:
+    inputs:
+      push:
+        description: Push each architecture's image to GHCR by digest and upload the digests as artifacts
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: media-webhook-notifier
+
+jobs:
+  build:
+    name: Native image (${{ matrix.arch }})
+    # Pinned rather than ubuntu-latest: the binary links glibc dynamically, so the runner's glibc must not be newer
+    # than the distroless base image's (Debian 13, glibc 2.41). Ubuntu 24.04 has 2.39.
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup GraalVM (Java 25)
+        uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1
+        with:
+          java-version: "25"
+          distribution: "graalvm-community"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+
+      # Mostly-static images link zlib statically.
+      - name: Install static zlib
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+
+      - name: Compile native binary
+        run: ./gradlew nativeCompile -PcontainerImage -PquickBuild
+
+      - name: Check linkage
+        run: |
+          bin=build/native/nativeCompile/media-webhook-notifier
+          file "$bin"
+          ldd "$bin"
+          # Only glibc may be linked dynamically, and no newer than the base image's (2.41).
+          newest=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "Newest glibc symbol version required: $newest"
+          if [ "$(printf '%s\nGLIBC_2.41\n' "$newest" | sort -V | tail -1)" != "GLIBC_2.41" ]; then
+            echo "::error::The binary needs $newest, newer than the base image's glibc 2.41"
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Build image for the smoke test
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          push: false
+          tags: smoke:${{ matrix.arch }}
+
+      - name: Smoke test
+        run: .github/scripts/smoke-test.sh smoke:${{ matrix.arch }}
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        if: inputs.push
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image by digest
+        id: push
+        if: inputs.push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+
+      - name: Export digest
+        if: inputs.push
+        run: |
+          mkdir -p digests
+          digest="${{ steps.push.outputs.digest }}"
+          touch "digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: inputs.push
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1

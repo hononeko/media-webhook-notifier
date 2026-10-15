@@ -4,10 +4,10 @@
 
 To achieve an ultra-lightweight footprint suitable for continuous sidecar or microservice deployment in Kubernetes / Docker Compose, `media-webhook-notifier` compiles ahead-of-time (AOT) to a static native executable using **GraalVM Native Image** and is published to GitHub Container Registry as **`ghcr.io/hononeko/media-webhook-notifier`**.
 
-### Performance Target Metrics:
-* **Cold Startup Time:** `< 5 ms` (instantaneous readiness).
-* **Resident Set Size (RSS Memory):** `~35 - 40 MB` under load with multiple concurrent tracking jobs.
-* **Container Image Size:** `< 35 MB` uncompressed (built on distroless base).
+### Measured Footprint (smoke test, idle, no configuration):
+* **Server start:** about **2 ms**, as reported by Ktor. Time from `docker run` to the first `/livez` answer is 250–400 ms, most of it Docker starting the container.
+* **Memory:** about **21 MiB** after startup (2.13.1, amd64). CI fails a build whose image uses more than 64 MiB once started.
+* **Image size:** about 160 MB uncompressed, most of it the native binary. The distroless glibc base adds about 39 MB.
 
 ---
 
@@ -27,45 +27,40 @@ Traditional JVM frameworks rely heavily on runtime reflection and dynamic proxie
 
 ---
 
-## 3. Multi-Stage Dockerfile (`ghcr.io/hononeko/media-webhook-notifier`)
+## 3. Multi-Arch Container Image (`ghcr.io/hononeko/media-webhook-notifier`)
+
+Every release tag is a **multi-arch image** for `linux/amd64` and `linux/arm64`: Docker and Kubernetes pull the right one automatically.
+
+### 3.1 How it's built
+* **Native on each architecture:** `.github/workflows/native-image.yml` compiles the binary on an `ubuntu-24.04` (amd64) and an `ubuntu-24.04-arm` (arm64) runner, in parallel and without QEMU. The Dockerfile only copies that binary into the runtime image.
+* **Smoke test:** each image is started with no configuration. It must answer `/livez` within 10 s and stay under 64 MiB, and the timings are written to the job summary (`.github/scripts/smoke-test.sh`).
+* **Release:** `cd.yml` pushes each architecture's image by digest, joins them under the version and `latest` tags with `docker buildx imagetools create`, and attests the resulting manifest. Dispatching it with `dry_run` builds and smoke-tests both architectures without pushing anything. Only `main` can publish.
+* **On every push to `main`:** `main.yml` runs the same build and smoke test, without pushing.
+
+### 3.2 Linking and CPU baseline
+The binary is built with `./gradlew nativeCompile -PcontainerImage`, which adds:
+* **`--static-nolibc` (mostly static):** everything is linked statically except glibc, which the distroless base image provides. Fully static musl binaries aren't possible on `linux/aarch64` ([oracle/graal#5872](https://github.com/oracle/graal/issues/5872)), so both architectures use the same mode.
+* **`-march=compatibility`:** GraalVM's defaults (`x86-64-v3` on amd64, `armv8.1-a` on arm64) don't run on CPUs common in home servers, such as Celerons and Atoms without AVX2, or the Raspberry Pi 4 (ARMv8.0).
+
+Because glibc is linked dynamically, the binary must be built against a glibc **no newer than the base image's** (Debian 13: 2.41). That's why the runners are pinned to Ubuntu 24.04 (glibc 2.39), and why CI checks the newest `GLIBC_*` symbol the binary requires.
+
+### 3.3 Dockerfile
 
 ```dockerfile
-# Stage 1: Build Native Binary with GraalVM
-FROM ghcr.io/graalvm/native-image-community:21-ol9 AS builder
-
-WORKDIR /build
-
-# Copy Gradle wrapper and definition files for dependency caching
-COPY gradlew gradlew
-COPY gradle gradle
-COPY build.gradle.kts settings.gradle.kts gradle.properties ./
-
-RUN ./gradlew dependencies --no-daemon
-
-# Copy application source code
-COPY src src
-
-# Build native binary with optimization flags
-RUN ./gradlew nativeCompile --no-daemon
-
-# Stage 2: Minimal Distroless Runtime
-FROM gcr.io/distroless/static-debian12:nonroot
-
-LABEL org.opencontainers.image.source="https://github.com/hononeko/media-webhook-notifier"
-LABEL org.opencontainers.image.description="Lightweight Kotlin native media webhook notifier with live Telegram progress cards"
-LABEL org.opencontainers.image.licenses="MIT"
-
+FROM gcr.io/distroless/base-debian13:nonroot
 WORKDIR /app
-
-# Copy native binary from builder
-COPY --from=builder /build/build/native/nativeCompile/media-webhook-notifier /app/media-webhook-notifier
-
-# Expose HTTP Ingestion Port
+COPY build/native/nativeCompile/media-webhook-notifier /app/media-webhook-notifier
 EXPOSE 8080
-
 USER nonroot:nonroot
-
 ENTRYPOINT ["/app/media-webhook-notifier"]
+```
+
+To build an image locally (Linux, glibc 2.41 or older, GraalVM 25):
+
+```bash
+./gradlew nativeCompile -PcontainerImage
+docker build -t media-webhook-notifier:local .
+.github/scripts/smoke-test.sh media-webhook-notifier:local
 ```
 
 ---
