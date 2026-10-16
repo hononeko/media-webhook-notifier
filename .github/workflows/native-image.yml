@@ -81,7 +81,7 @@ jobs:
 
       # With no configuration the app starts and answers its liveness probe.
       - name: Smoke test
-        uses: vehkiya/actions/smoke-test@38745be070eaab8f0aa89ac688573967094af0d0 # v1.1.0
+        uses: hononeko/actions/smoke-test@38745be070eaab8f0aa89ac688573967094af0d0 # v1.1.0
         with:
           image: smoke:${{ matrix.arch }}
           path: /livez
