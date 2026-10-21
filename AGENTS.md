@@ -101,6 +101,7 @@ Versions are calculated from git history (`version.yml`), ignoring `docs:` and `
 1. **Every push to `main` (`main.yml`):** lint and tests run, then native images for `linux/amd64` and `linux/arm64` are built on their own runners and smoke-tested (`native-image.yml`). If there's something to release, both are published as one multi-arch **release candidate**: `X.Y.Z-rc.N`, `sha-<commit>` and `edge`, attested.
 2. **Stable release (`cd.yml`, dispatched manually from `main`):** promotes the release candidate of the dispatched commit by re-tagging it as `X.Y.Z` and `latest` (same digest, no rebuild). It then tags the git commit, creates the GitHub Release, and prunes that version's other release candidates from GHCR. Dispatch with `dry_run` to check without changing anything; the release notes are shown in the run summary either way.
 3. **Release notes (`hononeko/actions/release-notes`):** the commits since the last release are grouped by type: 💥 Breaking changes (`type!:` or a `BREAKING CHANGE:` footer), 🚀 Features (`feat`), 🐛 Bug fixes (`fix`), 👷 CI (`ci`) and 📦 Others (every other type, including `docs:` and `test:`). Each entry is `type(scope): subject #PR`. Commit subjects are the release notes, so write them for a reader of the release.
+4. **Snapshots (`pr.yml`):** a pull request from a branch of this repository labelled `snapshot` builds its head commit's native images and publishes them as one multi-arch image tagged `pr-<PR>-sha-<commit>` and `pr-<PR>` (the newest), after every push, and a comment on the pull request names it. Without the label, pull requests build no images. Snapshots are for testing in the cluster before merging, never for the gitops repository. `snapshot-cleanup.yml` deletes them when the pull request closes.
 
 ---
 
@@ -111,7 +112,8 @@ Versions are calculated from git history (`version.yml`), ignoring `docs:` and `
 ├── .github/
 │   └── workflows/
 │       ├── validate.yml          # Reusable validation (lint, test, build scan)
-│       ├── pr.yml                # PR validation workflow
+│       ├── pr.yml                # PR validation workflow, and snapshots of labelled PRs
+│       ├── snapshot-cleanup.yml  # Deletes a PR's snapshot images when it closes
 │       ├── main.yml              # Main push: validation, native images, release candidate
 │       ├── cd.yml                # Stable release: promote the release candidate, git tag & GitHub release
 │       ├── version.yml           # Reusable SemVer + release-candidate version calculation
