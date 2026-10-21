@@ -6,6 +6,10 @@ name: Native Image
 on:
   workflow_call:
     inputs:
+      ref:
+        description: Commit to build; empty for the event's own (a pull request's snapshot builds its head commit)
+        type: string
+        default: ""
       push:
         description: Push each architecture's image to GHCR by digest and upload the digests as artifacts
         type: boolean
@@ -36,6 +40,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Setup GraalVM (Java 25)
         uses: graalvm/setup-graalvm@27b360dbb857524eaf0b4c4cef364d38e5b4f173 # v1
@@ -81,7 +87,7 @@ jobs:
 
       # With no configuration the app starts and answers its liveness probe.
       - name: Smoke test
-        uses: hononeko/actions/smoke-test@5195ba91f927f924616c364a7eddd737fbff5308 # v1.2.0
+        uses: hononeko/actions/smoke-test@3898710c9118a72c6d5a7fcedeaea0156469abd8 # v1.3.0
         with:
           image: smoke:${{ matrix.arch }}
           path: /livez
