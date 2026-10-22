@@ -18,7 +18,7 @@ We take the security of `media-webhook-notifier` seriously. If you believe you h
 1. **GitHub Security Advisory (Preferred):**
    * Navigate to the [Security Advisories](https://github.com/hononeko/media-webhook-notifier/security/advisories/new) tab on GitHub and submit a private draft report.
 2. **Direct Maintainer Contact:**
-   * If GitHub Security Advisories are unavailable, contact the project maintainers via email at `security@hononeko.app` with detailed reproduction steps, potential impact, and sample payloads.
+   * If GitHub Security Advisories are unavailable, contact the project maintainers via email at `contact@hononeko.app` with detailed reproduction steps, potential impact, and sample payloads.
 
 ### What to Expect:
 * **Initial Response:** Within 48 hours of receipt.
