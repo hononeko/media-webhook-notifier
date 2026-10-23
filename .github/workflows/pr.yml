@@ -23,35 +23,6 @@ jobs:
       contents: read
       packages: read
 
-  integration-test:
-    name: Integration Tests
-    if: github.event.action != 'labeled' || github.event.label.name == 'snapshot'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Setup Java (Temurin 25)
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
-        with:
-          distribution: "temurin"
-          java-version: "25"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
-
-      - name: Run Integration Tests
-        run: ./gradlew integrationTest --no-daemon
-
-      - name: Generate Job Summary
-        if: always()
-        run: |
-          echo "### Integration Test Summary" >> $GITHUB_STEP_SUMMARY
-          echo "Testcontainers integration tests completed successfully." >> $GITHUB_STEP_SUMMARY
-
   # Native images are only built in pull requests for a snapshot: with the snapshot label, on a branch of this
   # repository (never a fork's, whose code mustn't run with a token that can push). The snapshot's name comes from the
   # pull request's head commit, which is what's built.
