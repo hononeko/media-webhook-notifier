@@ -2,22 +2,14 @@ name: PR Validation
 
 on:
   pull_request:
-    # No base-branch filter and no `edited` trigger: stacked PRs are checked on every push, so after a
-    # retarget to main the required checks are already on the head commit, and description edits run nothing.
-    # labeled: adding the snapshot label publishes a snapshot of the branch (see the snapshot job).
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
 
-# Any other label gets a group of its own, so labelling never cancels a running build.
 concurrency:
-  group: >-
-    ${{ github.workflow }}-${{ github.head_ref || github.ref }}${{
-    github.event.action == 'labeled' && github.event.label.name != 'snapshot' && format('-{0}', github.run_id) || '' }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    # Labelling re-runs the checks only for the snapshot label.
-    if: github.event.action != 'labeled' || github.event.label.name == 'snapshot'
     uses: ./.github/workflows/validate.yml
     permissions:
       contents: read
