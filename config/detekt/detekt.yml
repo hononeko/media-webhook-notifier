@@ -24,6 +24,10 @@ style:
   LoopWithTooManyJumpStatements:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**']
+  MaxLineLength:
+    active: true
+    # Tests keep API responses on one line, as the API sends them; ktlint still checks their line length.
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**']
   MagicNumber:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/*.kts']

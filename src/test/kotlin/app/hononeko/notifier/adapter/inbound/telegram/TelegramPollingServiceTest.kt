@@ -112,7 +112,7 @@ class TelegramPollingServiceTest {
             var attempts = 0
             coEvery { api.deleteWebhook() } coAnswers {
                 events += "deleteWebhook"
-                if (attempts++ == 0) throw IllegalStateException("resolver not ready") else Either.Right(Unit)
+                if (attempts++ == 0) error("resolver not ready") else Either.Right(Unit)
             }
             script()
 
