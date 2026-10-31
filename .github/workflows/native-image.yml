@@ -54,7 +54,7 @@ jobs:
       # setup-gradle writes its cache only on the default branch and only reads it elsewhere, so a pull request can't
       # poison what a release build restores.
       - name: Setup Gradle # zizmor: ignore[cache-poisoning]
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
 
       # Mostly-static images link zlib statically.
       - name: Install static zlib
