@@ -1,6 +1,7 @@
 package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.error.DomainError
+import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.MediaServerHealthPort
@@ -25,12 +26,16 @@ import java.time.ZoneId
 data class MediaServerStatusConfig(
     val serverName: String,
     val sourceName: String,
+    /** This instance's name on the polling lock. */
+    val ownerId: String,
     val pollIntervalSeconds: Long = 30,
     /** Failed checks only turn the status offline once they've lasted this long, so restarts go unnoticed. */
     val graceSeconds: Long = 90,
     /** How often an unchanged card is refreshed (last check time, the running downtime). */
     val refreshSeconds: Long = 300,
-    val pinEnabled: Boolean = true
+    val pinEnabled: Boolean = true,
+    /** The time zone the card's times are shown in. */
+    val zone: ZoneId = ZoneId.systemDefault()
 )
 
 enum class ServerStatus { UP, DOWN }
@@ -54,7 +59,9 @@ data class MediaServerStatusState(
     val checkedAt: Long? = null,
     /** The status the message shows, and when it was last rendered. */
     val renderedStatus: ServerStatus? = null,
-    val renderedAt: Long? = null
+    val renderedAt: Long? = null,
+    /** Whether the message is pinned; a message sent while pinning was off is pinned once it's turned on. */
+    val pinned: Boolean = false
 )
 
 /**
@@ -69,21 +76,22 @@ class MediaServerStatusMonitor(
     private val publisher: NotificationPublisherPort,
     private val stateStore: StateStorePort,
     private val config: MediaServerStatusConfig,
-    private val ownerId: String,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val zone: ZoneId = ZoneId.systemDefault(),
     private val engine: () -> TemplateEngine = { CardTemplates.templateEngine }
 ) {
     companion object {
         const val STATE_KEY = "media_server:status"
         const val LOCK_KEY = "lock:media_server:status"
-        private const val MAX_ERROR_LENGTH = 200
     }
 
     private val logger = LoggerFactory.getLogger(MediaServerStatusMonitor::class.java)
-    private val json = Json { ignoreUnknownKeys = true }
+    private val states = StatusStates(stateStore, clock)
     private val lockTtlSeconds = trackingLeaseTtlSeconds(config.pollIntervalSeconds)
     private val graceMillis = config.graceSeconds * 1000
+
+    // Checks are a poll interval apart plus their own latency; only a gap well past that means this instance was away.
+    private val staleGapMillis =
+        maxOf(graceMillis, config.pollIntervalSeconds * 1000) + config.pollIntervalSeconds * 1000
     private val refreshMillis = config.refreshSeconds * 1000
 
     @Volatile private var job: Job? = null
@@ -109,7 +117,7 @@ class MediaServerStatusMonitor(
     /** Stops polling and frees the lock, so another instance takes over at once. */
     suspend fun stop() {
         job?.cancelAndJoin()
-        withContext(NonCancellable) { stateStore.releaseLock(LOCK_KEY, ownerId) }
+        withContext(NonCancellable) { stateStore.releaseLock(LOCK_KEY, config.ownerId) }
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -125,7 +133,7 @@ class MediaServerStatusMonitor(
 
     /** One check: polls the server, moves the status on, and renders the message when it needs it. */
     suspend fun tick() {
-        when (stateStore.renewLock(LOCK_KEY, ownerId, lockTtlSeconds, clock())) {
+        when (stateStore.renewLock(LOCK_KEY, config.ownerId, lockTtlSeconds, clock())) {
             LockRenewal.RENEWED -> Unit
             LockRenewal.LOST -> return logger.debug("Another instance monitors the media server")
             // Without the store, the message id is unknown and a new message would be pinned on every check.
@@ -133,8 +141,8 @@ class MediaServerStatusMonitor(
         }
         val health = healthCheck.checkHealth()
         val now = clock()
-        val next = advance(load(), health, now)
-        save(render(next, now))
+        val next = advance(states.load(), health, now)
+        states.save(render(next, now))
     }
 
     /** The state after a check at [now] with [health]. */
@@ -142,49 +150,48 @@ class MediaServerStatusMonitor(
         state: MediaServerStatusState,
         health: Either<DomainError.MediaServerError, Unit>,
         now: Long
-    ): MediaServerStatusState =
-        when (health) {
-            is Either.Right ->
-                when (state.status) {
-                    ServerStatus.DOWN -> {
-                        val downtime = now - (state.since ?: now)
-                        logger.info(
-                            "{} is back up after {}",
-                            config.serverName,
-                            MediaFormat.formatDuration(
-                                downtime / 1000
-                            )
-                        )
-                        state.copy(status = ServerStatus.UP, since = now, lastDowntimeMillis = downtime)
-                    }
-                    ServerStatus.UP -> state
-                    null -> state.copy(status = ServerStatus.UP, since = now)
-                }.copy(firstFailedAt = null, lastError = null, checkedAt = now)
-            is Either.Left -> failedCheck(state, health.value, now)
-        }
+    ): MediaServerStatusState {
+        if (health is Either.Left) return failedCheck(state, health.value, now)
+        val up =
+            when (state.status) {
+                ServerStatus.DOWN -> {
+                    val downtime = now - (state.since ?: now)
+                    logger.info(
+                        "{} is back up after {}",
+                        config.serverName,
+                        MediaFormat.formatDuration(downtime / 1000)
+                    )
+                    state.copy(status = ServerStatus.UP, since = now, lastDowntimeMillis = downtime)
+                }
+                ServerStatus.UP -> state
+                null -> state.copy(status = ServerStatus.UP, since = now)
+            }
+        return up.copy(firstFailedAt = null, lastError = null, checkedAt = now)
+    }
 
     private fun failedCheck(
         state: MediaServerStatusState,
         error: DomainError.MediaServerError,
         now: Long
     ): MediaServerStatusState {
-        // A gap longer than the grace period (this instance was down) says nothing about the failures before it.
-        val continuing = state.checkedAt != null && now - state.checkedAt <= graceMillis
+        // After a long gap (this instance was down), the failures before it say nothing about the current run.
+        val continuing = state.checkedAt != null && now - state.checkedAt <= staleGapMillis
         val firstFailedAt = state.firstFailedAt?.takeIf { continuing } ?: now
-        val failing = state.copy(firstFailedAt = firstFailedAt, lastError = describe(error), checkedAt = now)
-        if (state.status == ServerStatus.DOWN || now - firstFailedAt < graceMillis) {
-            if (state.status !=
-                ServerStatus.DOWN
-            ) {
+        val failing = state.copy(firstFailedAt = firstFailedAt, lastError = error.describe(), checkedAt = now)
+        return when {
+            state.status == ServerStatus.DOWN -> failing
+            now - firstFailedAt < graceMillis -> {
                 logger.debug("{} check failed: {}", config.serverName, failing.lastError)
+                failing
             }
-            return failing
+            else -> {
+                logger.warn("{} is down: {}", config.serverName, failing.lastError)
+                failing.copy(status = ServerStatus.DOWN, since = firstFailedAt)
+            }
         }
-        logger.warn("{} is down: {}", config.serverName, failing.lastError)
-        return failing.copy(status = ServerStatus.DOWN, since = firstFailedAt)
     }
 
-    /** Sends, edits or leaves the message: changes render at once, an unchanged card every refresh interval. */
+    /** Edits, sends or leaves the message: changes render at once, an unchanged card every refresh interval. */
     private suspend fun render(
         state: MediaServerStatusState,
         now: Long
@@ -196,34 +203,41 @@ class MediaServerStatusMonitor(
         val due = state.renderedAt == null || now - state.renderedAt >= refreshMillis
         if (handle != null && state.renderedStatus == status && !due) return state
 
-        val card = MediaServerStatusCards.build(viewOf(state, status, now), zone, engine())
+        val card = MediaServerStatusCards.build(viewOf(state, status, now), config.zone, engine())
         val rendered = state.copy(renderedStatus = status, renderedAt = now)
-        if (handle != null) {
-            when (val edited = publisher.editCard(handle, card)) {
-                is Either.Right -> return rendered
-                is Either.Left ->
-                    if (edited.value !is DomainError.NotificationError.MessageNotFound) {
-                        // Kept unrendered, so the next check tries again.
-                        logger.debug("Could not update the media server status message: {}", edited.value)
-                        return state
-                    }
+        val editFailure = handle?.let { publisher.editCard(it, card).leftOrNull() }
+        return when {
+            handle == null -> send(card, rendered)
+            editFailure == null -> if (state.pinned) rendered else rendered.copy(pinned = pin(handle))
+            editFailure is DomainError.NotificationError.MessageNotFound -> {
+                logger.info("The media server status message is gone; sending a new one")
+                send(card, rendered)
             }
-            logger.info("The media server status message is gone; sending a new one")
-        }
-        return when (val sent = publisher.sendCard(card)) {
-            is Either.Right -> {
-                pin(sent.value)
-                rendered.copy(handle = sent.value)
-            }
-            is Either.Left -> {
-                logger.warn("Could not send the media server status message: {}", sent.value)
-                state.copy(handle = null)
+            else -> {
+                // Kept unrendered, so the next check tries again.
+                logger.debug("Could not update the media server status message: {}", editFailure)
+                state
             }
         }
     }
 
-    private suspend fun pin(handle: NotificationHandle) {
-        if (!config.pinEnabled) return
+    /** Sends [card] as a new message and pins it; [rendered] is the state once that worked. */
+    private suspend fun send(
+        card: NotificationCard,
+        rendered: MediaServerStatusState
+    ): MediaServerStatusState =
+        when (val sent = publisher.sendCard(card)) {
+            is Either.Right -> rendered.copy(handle = sent.value, pinned = pin(sent.value))
+            is Either.Left -> {
+                logger.warn("Could not send the media server status message: {}", sent.value)
+                // Nothing to edit: the next check sends again.
+                rendered.copy(handle = null, renderedStatus = null)
+            }
+        }
+
+    /** Pins the message when pinning is on; true once it's pinned. */
+    private suspend fun pin(handle: NotificationHandle): Boolean {
+        if (!config.pinEnabled) return false
         val pinned = publisher.pinMessage(handle, silent = true)
         if (pinned is Either.Left && !pinWarned) {
             pinWarned = true
@@ -233,6 +247,7 @@ class MediaServerStatusMonitor(
                 pinned.value
             )
         }
+        return pinned.isRight()
     }
 
     private fun viewOf(
@@ -252,15 +267,26 @@ class MediaServerStatusMonitor(
         checkedAt = now,
         error = state.lastError
     )
+}
 
-    private fun describe(error: DomainError.MediaServerError): String =
-        when (error) {
-            is DomainError.MediaServerError.Unhealthy -> "HTTP ${error.httpStatus}"
-            is DomainError.MediaServerError.Unreachable -> error.reason.take(MAX_ERROR_LENGTH)
-        }
+private const val MAX_ERROR_LENGTH = 200
 
-    private suspend fun load(): MediaServerStatusState {
-        val raw = stateStore.get(STATE_KEY, clock()) ?: return MediaServerStatusState()
+private fun DomainError.MediaServerError.describe(): String =
+    when (this) {
+        is DomainError.MediaServerError.Unhealthy -> "HTTP $httpStatus"
+        is DomainError.MediaServerError.Unreachable -> reason.take(MAX_ERROR_LENGTH)
+    }
+
+/** The monitor's state in the state store, as JSON under [MediaServerStatusMonitor.STATE_KEY]. */
+private class StatusStates(
+    private val stateStore: StateStorePort,
+    private val clock: () -> Long
+) {
+    private val logger = LoggerFactory.getLogger(MediaServerStatusMonitor::class.java)
+    private val json = Json { ignoreUnknownKeys = true }
+
+    suspend fun load(): MediaServerStatusState {
+        val raw = stateStore.get(MediaServerStatusMonitor.STATE_KEY, clock()) ?: return MediaServerStatusState()
         return runCatching { json.decodeFromString(MediaServerStatusState.serializer(), raw) }
             .getOrElse {
                 logger.warn("Ignoring unreadable media server status state: {}", it.message)
@@ -268,7 +294,8 @@ class MediaServerStatusMonitor(
             }
     }
 
-    private suspend fun save(state: MediaServerStatusState) {
-        stateStore.set(STATE_KEY, json.encodeToString(MediaServerStatusState.serializer(), state), null, clock())
+    suspend fun save(state: MediaServerStatusState) {
+        val encoded = json.encodeToString(MediaServerStatusState.serializer(), state)
+        stateStore.set(MediaServerStatusMonitor.STATE_KEY, encoded, null, clock())
     }
 }

@@ -66,11 +66,17 @@ object MediaServerStatusCards {
                 defaults = DefaultCardSpec(title = "$icon ${view.serverName} — $status", silent = true),
                 context = context
             )
+        // The body is sent as HTML, so its values are escaped: an error message may well contain `<` or `&`. The title
+        // is escaped when it's sent.
+        val bodyTemplate =
+            engine.getEventTemplate(eventName)?.body?.takeIf { it.isNotBlank() }
+                ?: if (view.online) ONLINE_BODY else OFFLINE_BODY
+        val body = engine.interpolateBody(bodyTemplate, context.mapValues { (_, value) -> value?.let(::escapeHtml) })
         val level = if (view.online) NotificationLevel.SUCCESS else NotificationLevel.ERROR
-        return resolved.toCard(level, eventName, artworkUrl = null) {
-            copy(customBody = engine.interpolateBody(if (view.online) ONLINE_BODY else OFFLINE_BODY, context))
-        }
+        return resolved.copy(customBody = body).toCard(level, eventName, artworkUrl = null)
     }
+
+    private fun escapeHtml(text: String): String = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     /** `HH:mm` on the same day as [now], the theme's date format otherwise. */
     internal fun formatTime(

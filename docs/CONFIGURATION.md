@@ -119,7 +119,7 @@ A single pinned message shows whether the media server is up, and is edited in p
 
 - **Restarts and rollouts:** the message id and status are kept in the state store, so with `STATE_STORE_TYPE=valkey` a restarted instance keeps editing the same message. With the `memory` store, every restart sends (and pins) a new one.
 - **Replicas:** only one instance polls at a time, through a lock in the state store.
-- **Deleted message:** if someone deletes the message, the next update sends and pins a new one.
+- **Deleted message:** if someone deletes the message, the next update sends and pins a new one. The same happens when the configured chat changes. Moving to another forum topic in the same chat (`?topic=`) isn't detected: delete the old message and a new one is posted in the new topic.
 - **Network:** the notifier must reach `MEDIA_SERVER_URL` (e.g. allow egress to `plex:32400` in a network policy).
 - Customize the message with the `media_server.status_online` and `media_server.status_offline` templates ([TEMPLATES.md](TEMPLATES.md#7-media-server-status-message)).
 

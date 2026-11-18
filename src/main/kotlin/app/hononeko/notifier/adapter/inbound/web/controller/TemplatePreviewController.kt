@@ -421,3 +421,28 @@ private fun renderMockCompleteEvent(
         )
     return Triple(card, null, GRAB_TAGS)
 }
+
+/** A server that came back after a 4m 18s outage, or one that has been down for 12 minutes. */
+private fun mockStatus(online: Boolean): MediaServerStatusCards.StatusView {
+    val now = System.currentTimeMillis()
+    return if (online) {
+        MediaServerStatusCards.StatusView(
+            serverName = "Kerrlab Plex",
+            sourceName = "Plex",
+            online = true,
+            since = now - 60_000L,
+            downtimeMillis = 258_000L,
+            checkedAt = now
+        )
+    } else {
+        MediaServerStatusCards.StatusView(
+            serverName = "Kerrlab Plex",
+            sourceName = "Plex",
+            online = false,
+            since = now - 720_000L,
+            downtimeMillis = 720_000L,
+            checkedAt = now,
+            error = "Connection refused"
+        )
+    }
+}

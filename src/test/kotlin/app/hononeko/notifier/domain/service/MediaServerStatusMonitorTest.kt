@@ -5,10 +5,15 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
+import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.MediaServerHealthPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import app.hononeko.notifier.testing.RecordingPublisher
 import arrow.core.Either
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
@@ -23,6 +28,7 @@ class MediaServerStatusMonitorTest {
     private val start = 1_795_010_400_000L
     private var now = start
     private var healthy = true
+    private var checks = 0
     private val store = InMemoryStateStore()
     private val publisher = StatusPublisher()
 
@@ -36,23 +42,28 @@ class MediaServerStatusMonitorTest {
         owner: String = "pod-a",
         stateStore: StateStorePort = store,
         refreshSeconds: Long = 300,
-        pinEnabled: Boolean = true
+        pinEnabled: Boolean = true,
+        graceSeconds: Long = 90
     ) = MediaServerStatusMonitor(
-        healthCheck = MediaServerHealthPort { if (healthy) Either.Right(Unit) else Either.Left(unreachable) },
+        healthCheck =
+            MediaServerHealthPort {
+                checks++
+                if (healthy) Either.Right(Unit) else Either.Left(unreachable)
+            },
         publisher = publisher,
         stateStore = stateStore,
         config =
             MediaServerStatusConfig(
                 serverName = "Kerrlab Plex",
                 sourceName = "Plex",
+                ownerId = owner,
                 pollIntervalSeconds = 30,
-                graceSeconds = 90,
+                graceSeconds = graceSeconds,
                 refreshSeconds = refreshSeconds,
-                pinEnabled = pinEnabled
+                pinEnabled = pinEnabled,
+                zone = ZoneOffset.UTC
             ),
-        ownerId = owner,
         clock = { now },
-        zone = ZoneOffset.UTC,
         engine = { TemplateEngine() }
     )
 
@@ -266,6 +277,42 @@ class MediaServerStatusMonitorTest {
         }
 
     @Test
+    fun `a grace period no longer than the poll interval still turns the status offline`() =
+        runTest {
+            val monitor = monitor(graceSeconds = 30)
+            monitor.tick()
+            healthy = false
+            // Checks land a poll interval apart plus their latency.
+            repeat(3) {
+                now += 31_000
+                monitor.tick()
+            }
+            assertEquals(
+                "🔴 Kerrlab Plex — Offline",
+                publisher.edits
+                    .lastOrNull()
+                    ?.second
+                    ?.title
+            )
+        }
+
+    @Test
+    fun `turning pinning on pins the existing message at its next update`() =
+        runTest {
+            monitor(pinEnabled = false).tick()
+            assertTrue(publisher.pinned.isEmpty())
+
+            healthy = false
+            val pinning = monitor(pinEnabled = true)
+            pinning.checks(4)
+            assertEquals(listOf("msg1" to true), publisher.pinned)
+
+            now += 300_000
+            pinning.tick()
+            assertEquals(1, publisher.pinned.size, "pinned once, not on every update")
+        }
+
+    @Test
     fun `pinning can be turned off`() =
         runTest {
             monitor(pinEnabled = false).tick()
@@ -284,6 +331,86 @@ class MediaServerStatusMonitorTest {
             val stored = store.get(MediaServerStatusMonitor.STATE_KEY)
             assertTrue(stored != null && stored.contains("\"status\":\"DOWN\"") && stored.contains("msg1"), stored)
         }
+
+    @Test
+    fun `start polls on its interval and stop hands the lock over`() =
+        runTest {
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            val podA = monitor(owner = "pod-a")
+            podA.start(scope)
+            try {
+                scope.advanceTimeBy(1)
+                assertEquals(1, checks)
+                scope.advanceTimeBy(30_000)
+                assertEquals(2, checks)
+            } finally {
+                podA.stop()
+            }
+            assertEquals(LockRenewal.RENEWED, store.renewLock(MediaServerStatusMonitor.LOCK_KEY, "pod-b", 90, now))
+        }
+
+    @Test
+    fun `a check that throws doesn't stop the polling`() =
+        runTest {
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            var calls = 0
+            val flaky =
+                MediaServerStatusMonitor(
+                    healthCheck = {
+                        calls++
+                        if (calls == 1) error("boom") else Either.Right(Unit)
+                    },
+                    publisher = publisher,
+                    stateStore = store,
+                    config = MediaServerStatusConfig("Plex", "Plex", ownerId = "pod-a", zone = ZoneOffset.UTC),
+                    clock = { now },
+                    engine = { TemplateEngine() }
+                )
+            flaky.start(scope)
+            try {
+                scope.advanceTimeBy(30_001)
+            } finally {
+                flaky.stop()
+            }
+            assertEquals(2, calls)
+            assertEquals(1, publisher.sent.size)
+        }
+
+    @Test
+    fun `a failed send is tried again on the next check`() =
+        runTest {
+            publisher.sendFails = true
+            val monitor = monitor()
+            monitor.tick()
+            assertTrue(publisher.sent.isEmpty())
+
+            publisher.sendFails = false
+            now += 30_000
+            monitor.tick()
+            assertEquals(1, publisher.sent.size)
+        }
+
+    @Test
+    fun `unreadable stored state starts over`() =
+        runTest {
+            store.set(MediaServerStatusMonitor.STATE_KEY, "{not json")
+            monitor().tick()
+            assertEquals(1, publisher.sent.size)
+        }
+
+    @Test
+    fun `publishers can't pin unless they say so`() =
+        runTest {
+            val result = RecordingPublisher().pinMessage(NotificationHandle("fake", "chat", "1"))
+            assertTrue(result.isLeft())
+        }
+
+    @Test
+    fun `an HTTP error shows its status`() {
+        val monitor = monitor()
+        val unhealthy = DomainError.MediaServerError.Unhealthy("http://plex:32400/identity", 503)
+        assertEquals("HTTP 503", monitor.advance(MediaServerStatusState(), Either.Left(unhealthy), start).lastError)
+    }
 
     @Test
     fun `advance moves through up, failing, down and back up`() {
@@ -318,10 +445,12 @@ class MediaServerStatusMonitorTest {
         var messageGone = false
         var editFailures = 0
         var pinFails = false
+        var sendFails = false
 
         override suspend fun sendCard(
             card: NotificationCard
         ): Either<DomainError.NotificationError, NotificationHandle> {
+            if (sendFails) return Either.Left(DomainError.NotificationError.RateLimited(providerId, 30))
             sent += card
             messageGone = false
             return Either.Right(NotificationHandle(providerId, chat, "msg${sent.size}"))

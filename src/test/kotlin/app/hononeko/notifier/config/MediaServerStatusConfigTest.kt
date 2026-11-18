@@ -117,4 +117,35 @@ class MediaServerStatusConfigTest {
         )
         assertEquals("00:00", MediaServerStatusCards.formatTime(0, 1000, java.time.ZoneOffset.UTC, "yyyy-MM-dd HH:mm"))
     }
+
+    @Test
+    fun `values in the status body are HTML-escaped, the title is left to the publisher`() {
+        val view =
+            MediaServerStatusCards.StatusView(
+                serverName = "Plex & Co",
+                sourceName = "Plex",
+                online = false,
+                since = 0,
+                downtimeMillis = 0,
+                checkedAt = 0,
+                error = "Unexpected <html> from proxy"
+            )
+        val card =
+            MediaServerStatusCards.build(
+                view,
+                java.time.ZoneOffset.UTC,
+                TemplateEngine(ConfigLoader.load(emptyMap()).templates)
+            )
+        assertEquals("🔴 Plex & Co — Offline", card.title)
+        assertTrue(card.customBody!!.contains("▪ <b>Error:</b> Unexpected &lt;html&gt; from proxy"), card.customBody)
+
+        val custom =
+            TemplateEngine(
+                YamlParser.parseTemplateConfig("events:\n  status_offline:\n    body: '{media_server_name}: {error}'")
+            )
+        assertEquals(
+            "Plex &amp; Co: Unexpected &lt;html&gt; from proxy",
+            MediaServerStatusCards.build(view, engine = custom).customBody
+        )
+    }
 }

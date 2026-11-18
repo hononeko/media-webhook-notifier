@@ -1230,4 +1230,27 @@ class TelegramPublisherAdapterTest {
 
             assertIs<Either.Left<DomainError.NotificationError.MessageNotFound>>(result)
         }
+
+    @Test
+    fun `pinMessage refuses a handle that isn't a Telegram message id`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent))
+
+            val result = adapter.pinMessage(NotificationHandle("telegram", "-1001", "not-a-number"))
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+            assertTrue(sent.isEmpty())
+        }
+
+    @Test
+    fun `pinMessage reports a network failure`() =
+        runTest {
+            val adapter =
+                TelegramPublisherAdapter(interactiveConfig, MockEngine { throw IOException("connection reset") })
+
+            val result = adapter.pinMessage(NotificationHandle("telegram", "-1001", "5"))
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+        }
 }

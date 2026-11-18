@@ -129,12 +129,12 @@ private fun buildMediaServerStatus(
                 MediaServerStatusConfig(
                     serverName = mediaServer.displayName,
                     sourceName = mediaServer.typeName,
+                    ownerId = trackingOwnerId(),
                     pollIntervalSeconds = settings.pollIntervalSeconds,
                     graceSeconds = settings.graceSeconds,
                     refreshSeconds = settings.refreshSeconds,
                     pinEnabled = settings.pinEnabled
-                ),
-            ownerId = trackingOwnerId()
+                )
         )
     monitor.start(scope)
     return MediaServerStatus(monitor, health)

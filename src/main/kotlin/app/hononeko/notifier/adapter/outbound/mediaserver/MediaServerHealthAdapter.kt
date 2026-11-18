@@ -45,13 +45,19 @@ class MediaServerHealthAdapter(
             } else {
                 Either.Left(DomainError.MediaServerError.Unhealthy(healthUrl, status.value))
             }
+        } catch (e: CancellationException) {
+            // A timeout may surface as a CancellationException; only a cancelled caller ends the check.
+            currentCoroutineContext().ensureActive()
+            unreachable(e)
         } catch (e: Exception) {
-            // A timeout may surface as a CancellationException; only a cancelled caller should end the check.
-            if (e is CancellationException) currentCoroutineContext().ensureActive()
             // Connection refused, DNS failure, timeout: the server is unreachable either way.
-            val reason = e.message?.takeIf { it.isNotBlank() } ?: e::class.simpleName ?: "unreachable"
-            Either.Left(DomainError.MediaServerError.Unreachable(healthUrl, reason))
+            unreachable(e)
         }
+
+    private fun unreachable(e: Exception): Either<DomainError.MediaServerError, Unit> {
+        val reason = e.message?.takeIf { it.isNotBlank() } ?: e::class.simpleName ?: "unreachable"
+        return Either.Left(DomainError.MediaServerError.Unreachable(healthUrl, reason))
+    }
 
     override fun close() = httpClient.close()
 

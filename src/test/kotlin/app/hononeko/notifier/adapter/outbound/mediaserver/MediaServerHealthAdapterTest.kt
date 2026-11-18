@@ -5,6 +5,7 @@ import app.hononeko.notifier.domain.error.DomainError
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -59,5 +60,25 @@ class MediaServerHealthAdapterTest {
             val failure = adapter.checkHealth().leftOrNull()
             assertIs<DomainError.MediaServerError.Unreachable>(failure)
             assertEquals("Connection refused", failure.reason)
+        }
+
+    @Test
+    fun `a timeout that surfaces as a cancellation is unreachable while the caller is still active`() =
+        runTest {
+            val adapter =
+                MediaServerHealthAdapter(
+                    MediaServerConfig(type = "plex", url = "http://plex-ui:32400"),
+                    MockEngine { throw CancellationException("Request timeout has expired") }
+                )
+            adapter.use {
+                assertIs<DomainError.MediaServerError.Unreachable>(it.checkHealth().leftOrNull())
+            }
+        }
+
+    @Test
+    fun `other server types are checked at their base URL`() =
+        runTest {
+            assertTrue(adapter("emby").checkHealth().isRight())
+            assertEquals(listOf("http://plex-ui:32400/"), requested)
         }
 }
