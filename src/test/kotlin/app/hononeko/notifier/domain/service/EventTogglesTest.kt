@@ -277,9 +277,8 @@ class EventTogglesTest {
         downloadClient = DownloadClientPort { Either.Right(progress().copy(id = it)) },
         notificationPublisher = publisher,
         activeTrackerStore = InMemoryActiveTrackerStore(),
-        config = DownloadTrackerConfig(pollIntervalSeconds = 2),
-        scope = scope,
-        isEventEnabled = { it !in disabled }
+        config = DownloadTrackerConfig(pollIntervalSeconds = 2, isEventEnabled = { it !in disabled }),
+        scope = scope
     )
 
     private fun progress(percent: Double) =

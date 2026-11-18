@@ -12,6 +12,7 @@ import app.hononeko.notifier.domain.service.PayloadCards
 import app.hononeko.notifier.domain.service.SeerrCards
 import app.hononeko.notifier.domain.service.ServarrCards
 import app.hononeko.notifier.domain.service.TemplateEngine
+import app.hononeko.notifier.domain.service.isEnabled
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive

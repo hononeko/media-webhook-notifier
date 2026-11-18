@@ -131,18 +131,13 @@ internal object TemplateConfigMapper {
             stateText = eventProps["state_text"]?.toString(),
             silent = silent,
             actions = actionsList,
-            enabled = parseEnabledFlag(eventProps),
-            preferPoster = parsePreferPosterFlag(eventProps)
+            // `disabled: true` and `use_uploaded_thumb: false` are the inverse aliases.
+            enabled = parseBooleanValue(eventProps["enabled"]) ?: parseBooleanValue(eventProps["disabled"])?.not(),
+            preferPoster =
+                parseBooleanValue(eventProps["prefer_poster"])
+                    ?: parseBooleanValue(eventProps["use_uploaded_thumb"])?.not()
         )
     }
-
-    /** `enabled: false`, or its inverse alias `disabled: true`, turns the event off. */
-    private fun parseEnabledFlag(eventProps: Map<String, Any?>): Boolean? =
-        parseBooleanValue(eventProps["enabled"]) ?: parseBooleanValue(eventProps["disabled"])?.not()
-
-    /** `prefer_poster: true`, or its inverse alias `use_uploaded_thumb: false`. */
-    private fun parsePreferPosterFlag(eventProps: Map<String, Any?>): Boolean? =
-        parseBooleanValue(eventProps["prefer_poster"]) ?: parseBooleanValue(eventProps["use_uploaded_thumb"])?.not()
 
     private fun parseBooleanValue(v: Any?): Boolean? {
         if (v == null) return null
