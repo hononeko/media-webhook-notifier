@@ -445,7 +445,6 @@ events:
       title: "🟢 {media_server_name} — Online"
       body: |
         ▪ <b>Back up at:</b> {since} (downtime: {downtime})
-        ▪ <b>Last checked:</b> {checked_at}
 
     status_offline:
       silent: true

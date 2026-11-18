@@ -17,8 +17,7 @@ object MediaServerStatusCards {
     const val OFFLINE_EVENT = "media_server.status_offline"
 
     private const val ONLINE_BODY =
-        "▪ <b>Back up at:</b> {since} (downtime: {downtime})\n" +
-            "▪ <b>Last checked:</b> {checked_at}"
+        "▪ <b>Back up at:</b> {since} (downtime: {downtime})"
     private const val OFFLINE_BODY =
         "▪ <b>Down since:</b> {since}\n" +
             "▪ <b>Downtime:</b> {downtime}\n" +

@@ -91,8 +91,8 @@ class MediaServerStatusMonitorTest {
             assertEquals("🟢 Kerrlab Plex — Online", card.title)
             assertTrue(card.silent)
             assertEquals(listOf("msg1" to true), publisher.pinned)
-            // Before any outage there is no "back up" line.
-            assertEquals("▪ <b>Last checked:</b> 14:00", card.customBody)
+            // Before any outage the steady-state online card has no body lines.
+            assertEquals("", card.customBody)
         }
 
     @Test
@@ -146,7 +146,7 @@ class MediaServerStatusMonitorTest {
             assertEquals("🟢 Kerrlab Plex — Online", online.title)
             assertFalse(online.silent)
             assertEquals(
-                "▪ <b>Back up at:</b> 14:04 (downtime: 4m 18s)\n▪ <b>Last checked:</b> 14:04",
+                "▪ <b>Back up at:</b> 14:04 (downtime: 4m 18s)",
                 online.customBody
             )
             assertEquals(2, publisher.sent.size)
@@ -211,7 +211,7 @@ class MediaServerStatusMonitorTest {
             assertEquals(2, publisher.sent.size)
             assertEquals(editsBeforeExpiry + 2, publisher.edits.size)
             val cleared = publisher.edits.last().second
-            assertEquals("▪ <b>Last checked:</b> 14:10", cleared.customBody)
+            assertEquals("", cleared.customBody)
         }
 
     @Test
@@ -228,7 +228,7 @@ class MediaServerStatusMonitorTest {
 
             val online = publisher.sent.last()
             assertFalse(online.silent)
-            assertEquals("▪ <b>Last checked:</b> 14:04", online.customBody)
+            assertEquals("", online.customBody)
         }
 
     @Test
