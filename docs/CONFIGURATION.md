@@ -104,6 +104,24 @@ Running several replicas permanently isn't a tuned setup yet: grab webhooks and 
 | `MEDIA_SERVER_TYPE` | `plex` | Active media server (`plex` or `jellyfin`) |
 | `MEDIA_SERVER_URL` | `""` | Internal network URL of the media server |
 | `MEDIA_SERVER_PUBLIC_URL` | `""` | Public URL used for "Watch on Plex/Jellyfin" action buttons |
+| `MEDIA_SERVER_NAME` | `Plex` / `Jellyfin` | Name shown on the status message (`{media_server_name}`), e.g. `Kerrlab Plex` |
+
+### Server status message
+A single pinned message shows whether the media server is up, and is edited in place instead of posting separate "down" and "back up" messages. Short restarts within the grace period don't change it; a real outage turns it 🔴 with the time it started, and recovery turns it back 🟢 with how long the outage lasted. Edits are silent.
+
+| Variable | Default | Description |
+|---|---|---|
+| `MEDIA_SERVER_STATUS_MONITOR_ENABLED` | `false` | Polls `MEDIA_SERVER_URL` and keeps the status message up to date. Stays off without `MEDIA_SERVER_URL` |
+| `MEDIA_SERVER_STATUS_POLL_INTERVAL_SECONDS` | `30` | Seconds between health checks (Plex `GET /identity`, Jellyfin `GET /System/Info/Public`, 5 s timeout) |
+| `MEDIA_SERVER_STATUS_GRACE_SECONDS` | `90` | How long checks must keep failing before the status turns offline (alias `MEDIA_SERVER_HEALTH_GRACE_SECONDS`) |
+| `MEDIA_SERVER_STATUS_REFRESH_SECONDS` | `300` | How often an unchanged message is refreshed (last check time, running downtime) |
+| `MEDIA_SERVER_STATUS_PIN_ENABLED` | `true` | Pins the message (silently). Needs the bot's **Pin Messages** right; without it a warning is logged once and the message is still kept up to date |
+
+- **Restarts and rollouts:** the message id and status are kept in the state store, so with `STATE_STORE_TYPE=valkey` a restarted instance keeps editing the same message. With the `memory` store, every restart sends (and pins) a new one.
+- **Replicas:** only one instance polls at a time, through a lock in the state store.
+- **Deleted message:** if someone deletes the message, the next update sends and pins a new one. The same happens when the configured chat changes. Moving to another forum topic in the same chat (`?topic=`) isn't detected: delete the old message and a new one is posted in the new topic.
+- **Network:** the notifier must reach `MEDIA_SERVER_URL` (e.g. allow egress to `plex:32400` in a network policy).
+- Customize the message with the `media_server.status_online` and `media_server.status_offline` templates ([TEMPLATES.md](TEMPLATES.md#7-media-server-status-message)).
 
 ## Card Templates
 | Variable | Default | Description |

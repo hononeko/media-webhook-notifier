@@ -409,3 +409,48 @@ events:
     body: |
       {resolution} • {video_codec} • {audio_codec} • ⭐ {rating} • {duration}
 ```
+
+---
+
+## 7. Media Server Status Message
+
+With `MEDIA_SERVER_STATUS_MONITOR_ENABLED=true` (see [CONFIGURATION.md](CONFIGURATION.md#server-status-message)), one pinned message shows whether the media server is up. It's edited in place with one of two templates:
+
+```yaml
+events:
+  media_server:
+    status_online:
+      silent: true
+      title: "🟢 {media_server_name} — Online"
+      body: |
+        ▪ <b>Back up at:</b> {since} (downtime: {downtime})
+        ▪ <b>Last checked:</b> {checked_at}
+
+    status_offline:
+      silent: true
+      title: "🔴 {media_server_name} — Offline"
+      body: |
+        ▪ <b>Down since:</b> {since}
+        ▪ <b>Downtime:</b> {downtime}
+        ▪ <b>Error:</b> {error}
+        ▪ <b>Last checked:</b> {checked_at}
+```
+
+Edits never notify anyone; `silent` only applies when the message is first sent (or sent again after someone deleted it). As everywhere, a body line whose tag is empty is left out: before the first outage, the online card has no "Back up at" line.
+
+| Tag | Description | Example Output |
+| :--- | :--- | :--- |
+| `{media_server_name}` | `MEDIA_SERVER_NAME`, or the server type | `Kerrlab Plex` |
+| `{status}` | `Online` or `Offline` | `Offline` |
+| `{status_icon}` | `🟢` or `🔴` | `🔴` |
+| `{since}` | Offline: when checks started failing. Online: when it came back (empty before the first outage) | `14:10` |
+| `{downtime}` | Offline: the outage so far. Online: the last outage's length (empty before the first outage) | `4m 18s`, `1h 12m` |
+| `{checked_at}` | Time of the last check | `14:20` |
+| `{error}` | Why the last check failed (offline only) | `HTTP 503`, `Connection refused` |
+| `{source_name}` | `Plex` or `Jellyfin` | `Plex` |
+
+Times on the current day show as `HH:mm`; older ones use `theme.date_format`. They're in the container's time zone (`TZ`).
+
+The message is switched on and off with `MEDIA_SERVER_STATUS_MONITOR_ENABLED`; `enabled: false` (section 4.4) doesn't apply to these two templates.
+
+Preview them with `"event_type": "status_online"` or `"status_offline"` on the preview endpoint.

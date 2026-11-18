@@ -98,7 +98,8 @@ internal object TemplateConfigMapper {
         events["${category}_$subKey"] = template
         events[subKey] = template
 
-        if (category == "media_server" || category == "media") {
+        // Only `available` is the "now available" card; other media server events (status) keep their own names.
+        if ((category == "media_server" || category == "media") && subKey == "available") {
             events["media_available"] = template
             events["media.available"] = template
             events["media_server.available"] = template

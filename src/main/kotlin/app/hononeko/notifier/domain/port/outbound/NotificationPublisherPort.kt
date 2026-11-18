@@ -62,6 +62,18 @@ interface NotificationPublisherPort {
         return recipients.associateWith { Either.Left(failure) }
     }
 
+    /**
+     * Pins an already sent message in its chat, notifying members only when [silent] is false. Publishers without
+     * pinned messages report it as a failure.
+     */
+    suspend fun pinMessage(
+        handle: NotificationHandle,
+        silent: Boolean = true
+    ): Either<DomainError.NotificationError, Unit> {
+        val reason = "pinMessage is not supported by $providerId"
+        return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
+    }
+
     suspend fun cancelProgress(
         handle: NotificationHandle,
         reasonCard: NotificationCard

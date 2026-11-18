@@ -78,6 +78,8 @@ class TemplateEngine(
                         "available"
                     ),
                 "request" to listOf("request", "seerr.request", "seerr_request"),
+                "media_server.status_online" to listOf("media_server_status_online", "status_online"),
+                "media_server.status_offline" to listOf("media_server_status_offline", "status_offline"),
                 "issue" to
                     listOf(
                         "issue",

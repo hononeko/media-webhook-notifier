@@ -1183,4 +1183,74 @@ class TelegramPublisherAdapterTest {
             assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
             assertTrue(sent.isEmpty())
         }
+
+    @Test
+    fun `pinMessage pins silently in the message's chat`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter =
+                TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent, response = """{"ok":true}"""))
+
+            val result = adapter.pinMessage(NotificationHandle("telegram", "-1002", "77"), silent = true)
+
+            assertEquals(Either.Right(Unit), result)
+            assertTrue(sent.single().path.endsWith("/pinChatMessage"), sent.single().path)
+            val body = sent.single().json
+            assertEquals("-1002", body["chat_id"]!!.jsonPrimitive.content)
+            assertEquals("77", body["message_id"]!!.jsonPrimitive.content)
+            assertEquals("true", body["disable_notification"]!!.jsonPrimitive.content)
+        }
+
+    @Test
+    fun `pinMessage without the right to pin fails`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val forbidden = """{"ok":false,"error_code":400,"description":"Bad Request: not enough rights"}"""
+            val adapter =
+                TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent, HttpStatusCode.BadRequest, forbidden))
+
+            val result = adapter.pinMessage(NotificationHandle("telegram", "-1001", "77"))
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+        }
+
+    @Test
+    fun `editing a deleted message reports MessageNotFound`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val gone = """{"ok":false,"error_code":400,"description":"Bad Request: message to edit not found"}"""
+            val adapter =
+                TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent, HttpStatusCode.BadRequest, gone))
+
+            val result =
+                adapter.editCard(
+                    NotificationHandle("telegram", "-1001", "5"),
+                    NotificationCard(title = "Status")
+                )
+
+            assertIs<Either.Left<DomainError.NotificationError.MessageNotFound>>(result)
+        }
+
+    @Test
+    fun `pinMessage refuses a handle that isn't a Telegram message id`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter = TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent))
+
+            val result = adapter.pinMessage(NotificationHandle("telegram", "-1001", "not-a-number"))
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+            assertTrue(sent.isEmpty())
+        }
+
+    @Test
+    fun `pinMessage reports a network failure`() =
+        runTest {
+            val adapter =
+                TelegramPublisherAdapter(interactiveConfig, MockEngine { throw IOException("connection reset") })
+
+            val result = adapter.pinMessage(NotificationHandle("telegram", "-1001", "5"))
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+        }
 }

@@ -8,6 +8,7 @@ import app.hononeko.notifier.adapter.inbound.web.controller.HealthController
 import app.hononeko.notifier.adapter.inbound.web.provider.WebhookProviderRegistry
 import app.hononeko.notifier.adapter.outbound.downloadclient.DownloadClientFactory
 import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerAdapter
+import app.hononeko.notifier.adapter.outbound.mediaserver.MediaServerHealthAdapter
 import app.hononeko.notifier.adapter.outbound.seerr.SeerrClientAdapter
 import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
 import app.hononeko.notifier.adapter.outbound.state.ValkeyStateStore
@@ -33,6 +34,8 @@ import app.hononeko.notifier.domain.service.MediaAvailableDeduplicator
 import app.hononeko.notifier.domain.service.MediaAvailableService
 import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.MediaRequestService
+import app.hononeko.notifier.domain.service.MediaServerStatusConfig
+import app.hononeko.notifier.domain.service.MediaServerStatusMonitor
 import app.hononeko.notifier.domain.service.ReconciliationConfig
 import app.hononeko.notifier.domain.service.SeasonDebouncer
 import app.hononeko.notifier.domain.service.SystemHealthService
@@ -72,7 +75,8 @@ data class AppDependencies(
     val stateStore: StateStorePort = InMemoryStateStore(),
     val deadLetterPersistence: DeadLetterPersistence? = null,
     val telegramInteractions: TelegramInteractionModule? = null,
-    val seerrClient: SeerrClientAdapter? = null
+    val seerrClient: SeerrClientAdapter? = null,
+    val mediaServerStatus: MediaServerStatus? = null
 ) {
     fun close() {
         logger.info("Closing application dependencies and draining queues...")
@@ -82,9 +86,11 @@ data class AppDependencies(
             deadLetterPersistence?.flush()
             // Before the state store closes: stopping loops release their tracking leases.
             downloadTracker.stopAll()
+            mediaServerStatus?.monitor?.stop()
         }
         telegramInteractions?.close()
         seerrClient?.close()
+        mediaServerStatus?.health?.close()
         stateStore.close()
         scope.cancel()
         logger.info("Application dependencies closed")
@@ -92,6 +98,47 @@ data class AppDependencies(
 }
 
 private const val LEASE_RETRY_MARGIN_SECONDS = 5L
+
+/** The pinned media server status message and the health checks behind it (`MEDIA_SERVER_STATUS_MONITOR_ENABLED`). */
+class MediaServerStatus(
+    val monitor: MediaServerStatusMonitor,
+    val health: MediaServerHealthAdapter
+)
+
+/** The status monitor, started here, or `null` when it's off or there is no `MEDIA_SERVER_URL` to check. */
+private fun buildMediaServerStatus(
+    config: AppConfig,
+    publisher: NotificationPublisherPort,
+    stateStore: StateStorePort,
+    scope: CoroutineScope
+): MediaServerStatus? {
+    val mediaServer = config.mediaServer
+    val settings = mediaServer.status
+    if (!settings.enabled) return null
+    if (mediaServer.url.isBlank()) {
+        logger.warn("MEDIA_SERVER_STATUS_MONITOR_ENABLED is on but MEDIA_SERVER_URL is empty; the monitor stays off")
+        return null
+    }
+    val health = MediaServerHealthAdapter(mediaServer)
+    val monitor =
+        MediaServerStatusMonitor(
+            healthCheck = health,
+            publisher = publisher,
+            stateStore = stateStore,
+            config =
+                MediaServerStatusConfig(
+                    serverName = mediaServer.displayName,
+                    sourceName = mediaServer.typeName,
+                    ownerId = trackingOwnerId(),
+                    pollIntervalSeconds = settings.pollIntervalSeconds,
+                    graceSeconds = settings.graceSeconds,
+                    refreshSeconds = settings.refreshSeconds,
+                    pinEnabled = settings.pinEnabled
+                )
+        )
+    monitor.start(scope)
+    return MediaServerStatus(monitor, health)
+}
 
 /** The pod name for readable logs, plus a suffix so a restarted container never assumes it still owns old leases. */
 private fun trackingOwnerId(): String {
@@ -185,7 +232,8 @@ fun buildDependencies(
         stateStore = infra.stateStore,
         deadLetterPersistence = deadLetterPersistence,
         telegramInteractions = buildTelegramInteractions(config, infra, alerts, scope, telegramApiEngine),
-        seerrClient = alerts.seerrClient
+        seerrClient = alerts.seerrClient,
+        mediaServerStatus = buildMediaServerStatus(config, infra.publisher, infra.stateStore, scope)
     )
 }
 

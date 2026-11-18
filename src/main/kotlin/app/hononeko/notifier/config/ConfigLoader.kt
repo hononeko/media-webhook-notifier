@@ -14,7 +14,7 @@ object ConfigLoader {
         val (features, telegramInteraction) = TelegramInteractionConfigLoader.load(reader, notifications)
         return AppConfig(
             server = loadServerConfig(reader),
-            mediaServer = loadMediaServerConfig(reader),
+            mediaServer = MediaServerConfigLoader.load(reader),
             downloadClient = downloadClients.downloadClient,
             qbittorrent = downloadClients.qbittorrent,
             transmission = downloadClients.transmission,
@@ -130,21 +130,6 @@ object ConfigLoader {
         }
         return TemplateConfig(theme = override.theme, events = mergedEvents)
     }
-
-    private fun loadMediaServerConfig(reader: EnvReader): MediaServerConfig =
-        MediaServerConfig(
-            type = reader.get("MEDIA_SERVER_TYPE", "mediaServer.type") ?: "plex",
-            url = reader.get("MEDIA_SERVER_URL", "mediaServer.url") ?: "",
-            publicUrl = reader.get("MEDIA_SERVER_PUBLIC_URL", "mediaServer.publicUrl") ?: "",
-            maxAvailableAgeSeconds =
-                reader.getLong(
-                    86_400L,
-                    "MEDIA_SERVER_MAX_AVAILABLE_AGE_SECONDS",
-                    "MEDIA_SERVER_MAX_AGE_SECONDS",
-                    "mediaServer.maxAvailableAgeSeconds",
-                    "mediaServer.maxAgeSeconds"
-                )
-        )
 
     private fun loadStateConfig(reader: EnvReader): StateConfig {
         val url =
