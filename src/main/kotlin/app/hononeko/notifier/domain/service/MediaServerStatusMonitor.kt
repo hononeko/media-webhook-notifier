@@ -7,7 +7,6 @@ import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.MediaServerHealthPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
-import app.hononeko.notifier.domain.port.outbound.resolveDestination
 import arrow.core.Either
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -198,19 +197,14 @@ class MediaServerStatusMonitor(
         now: Long
     ): MediaServerStatusState {
         val status = state.status ?: return state
-        val eventName =
-            if (status == ServerStatus.UP) MediaServerStatusCards.ONLINE_EVENT else MediaServerStatusCards.OFFLINE_EVENT
-        val template = engine().getEventTemplate(eventName)
-        val target = publisher.resolveDestination(template?.chatId, template?.topicId)
+        val templateEngine = engine()
         // A message in another chat or topic (the config changed) is left behind and replaced.
         val handle =
-            state.handle?.takeIf {
-                target.chatId.isBlank() || (it.channelOrChatId == target.chatId && it.topicId == target.topicId)
-            }
+            MediaServerStatusCards.matchingHandle(state.handle, status == ServerStatus.UP, publisher, templateEngine)
         val due = state.renderedAt == null || now - state.renderedAt >= refreshMillis
         if (handle != null && state.renderedStatus == status && !due) return state
 
-        val card = MediaServerStatusCards.build(viewOf(state, status, now), config.zone, engine())
+        val card = MediaServerStatusCards.build(viewOf(state, status, now), config.zone, templateEngine)
         val rendered = state.copy(renderedStatus = status, renderedAt = now)
         val editFailure = handle?.let { publisher.editCard(it, card).leftOrNull() }
         return when {

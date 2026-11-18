@@ -43,8 +43,6 @@ class TelegramPublisherAdapter(
     // Serializes outbound deliveries to avoid socket contention, rate-limiting drops, and out-of-order race conditions
     private val sendMutex = Mutex()
 
-    private val channel: Destination get() = Destination(config.chatId, config.topicId)
-
     override val defaultTopicId: Long? get() = config.topicId
 
     private fun destinationFor(card: NotificationCard): Destination {

@@ -31,7 +31,24 @@ data class EventTemplate(
     val preferPoster: Boolean? = null,
     val chatId: String? = null,
     val topicId: Long? = null
-)
+) {
+    /** Returns a copy where null or empty fields fall back to [base]. */
+    fun withDefaults(base: EventTemplate): EventTemplate =
+        EventTemplate(
+            title = title ?: base.title,
+            subtitle = subtitle ?: base.subtitle,
+            body = body ?: base.body,
+            artworkUrl = artworkUrl ?: base.artworkUrl,
+            imageEmbed = imageEmbed ?: base.imageEmbed,
+            stateText = stateText ?: base.stateText,
+            silent = silent ?: base.silent,
+            actions = actions.ifEmpty { base.actions },
+            enabled = enabled ?: base.enabled,
+            preferPoster = preferPoster ?: base.preferPoster,
+            chatId = chatId ?: base.chatId,
+            topicId = topicId ?: base.topicId
+        )
+}
 
 data class TemplateActionConfig(
     val label: String,
