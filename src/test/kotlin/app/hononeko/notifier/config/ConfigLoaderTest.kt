@@ -268,4 +268,27 @@ class ConfigLoaderTest {
         assertEquals(true, grabTemplate.imageEmbed)
         assertEquals("⏳ Downloading {title} from {indexer}", grabTemplate.title)
     }
+
+    @Test
+    fun `should preserve default template fields while merging chat_id and topic_id overrides`() {
+        val env =
+            mapOf(
+                "TEMPLATES_YAML" to
+                    """
+                    events:
+                      servarr:
+                        grab:
+                          chat_id: "-1004451040571"
+                          topic_id: 12
+                    """.trimIndent()
+            )
+        val config = ConfigLoader.load(env)
+        val grabTemplate = config.templates.events["grab"]
+        assertNotNull(grabTemplate)
+        assertEquals("-1004451040571", grabTemplate.chatId)
+        assertEquals(12L, grabTemplate.topicId)
+        assertEquals("⏳ Downloading {title} from {indexer}", grabTemplate.title)
+        assertNull(config.templates.events["media_available"]?.chatId)
+        assertNull(config.templates.events["media_available"]?.topicId)
+    }
 }

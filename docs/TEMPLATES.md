@@ -56,6 +56,8 @@ theme:
 # - `enabled: true|false` (Turn an event off entirely; alias: `disabled: true`)
 # - `image_embed: true|false` (Control photo attachment per event type)
 # - `silent: true|false` (Send without sound/vibration; aliases: `silent_send`, `disable_notification`)
+# - `chat_id: "-1001234567890"` (Route this event to a specific Telegram chat/channel ID)
+# - `topic_id: 42` (Route to a forum topic ID; `0` clears a global topic; aliases: `thread_id`, `topic`)
 # - `artwork_url: "{custom_url}"` (Custom artwork image URL)
 # - `actions:` (Custom inline button links)
 events:
@@ -323,6 +325,26 @@ events:
     available:
       prefer_poster: true
 ```
+
+### 4.6 Per-Event Destination Routing (`chat_id`, `topic_id`)
+By default every event delivers to the global `NOTIFICATION_URL` destination (`chat_id` and optional `topic`). You can override `chat_id` and/or `topic_id` (aliases `thread_id`, `topic`) on individual events — for example keeping `"Now available"` announcements in a quiet broadcast channel while routing live downloads and auxiliary Servarr/Seerr events to a separate group or forum topic:
+
+```yaml
+events:
+  servarr:
+    grab:
+      chat_id: "-1001234567890"
+    import:
+      chat_id: "-1001234567890"
+      topic_id: 42
+    manual_interaction:
+      chat_id: "-1001234567890"
+  # media_server.available omits chat_id/topic_id -> uses global default
+```
+
+- **Sensible defaults:** Omitting `chat_id` and `topic_id` keeps the global defaults. Overriding `chat_id` without specifying `topic_id` sends to that chat without inheriting the global `?topic=` (preventing thread mismatch errors). Setting `topic_id: 0` (or `<= 0`) explicitly clears a global topic back to General/no thread.
+- **Live downloads:** `download.progress`, `download.complete`, and `download.stalled` edit the original `servarr.grab` message in place, so they stay in whatever chat and topic `grab` was delivered to.
+- **Interactive callbacks:** Inline buttons (such as **✅ Acknowledge**) are accepted from any `chat_id` configured in `templates.yaml`, in addition to the global chat and admin DMs.
 
 ---
 

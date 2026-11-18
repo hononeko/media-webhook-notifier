@@ -28,7 +28,9 @@ data class EventTemplate(
     val silent: Boolean? = null,
     val actions: List<TemplateActionConfig> = emptyList(),
     val enabled: Boolean? = null,
-    val preferPoster: Boolean? = null
+    val preferPoster: Boolean? = null,
+    val chatId: String? = null,
+    val topicId: Long? = null
 )
 
 data class TemplateActionConfig(

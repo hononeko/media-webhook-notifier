@@ -86,13 +86,17 @@ class TelegramInteractionModule private constructor(
         ): TelegramInteractionModule {
             val interaction = config.telegramInteraction
             val api = TelegramBotApi(config.notifications.botToken, engine)
+            val eventChatIds =
+                config.templates.events.values
+                    .mapNotNullTo(linkedSetOf()) { it.chatId }
             val processor =
                 TelegramCallbackProcessor(
                     guard =
                         TelegramCallbackGuard(
                             interaction.allowedUserIds,
                             config.notifications.chatId,
-                            interaction.adminUserIds
+                            interaction.adminUserIds,
+                            eventChatIds
                         ),
                     useCase =
                         BotInteractionService(handlers = handlers, refRegistry = refRegistry),

@@ -2,13 +2,16 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
 import app.hononeko.notifier.domain.error.DomainError
+import app.hononeko.notifier.domain.model.EventTemplate
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
+import app.hononeko.notifier.domain.model.TemplateConfig
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.MediaServerHealthPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import app.hononeko.notifier.domain.port.outbound.resolveDestination
 import app.hononeko.notifier.testing.RecordingPublisher
 import arrow.core.Either
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -43,7 +46,8 @@ class MediaServerStatusMonitorTest {
         stateStore: StateStorePort = store,
         refreshSeconds: Long = 300,
         pinEnabled: Boolean = true,
-        graceSeconds: Long = 90
+        graceSeconds: Long = 90,
+        engine: () -> TemplateEngine = { TemplateEngine() }
     ) = MediaServerStatusMonitor(
         healthCheck =
             MediaServerHealthPort {
@@ -64,7 +68,7 @@ class MediaServerStatusMonitorTest {
                 zone = ZoneOffset.UTC
             ),
         clock = { now },
-        engine = { TemplateEngine() }
+        engine = engine
     )
 
     /** Runs [count] checks, 30 s apart, the first one at the current time. */
@@ -434,12 +438,61 @@ class MediaServerStatusMonitorTest {
         assertNull(back.lastError)
     }
 
+    @Test
+    fun `changing the status template chat_id or topic_id sends and pins a new status message`() =
+        runTest {
+            var currentEngine = TemplateEngine()
+            val monitor = monitor(engine = { currentEngine })
+
+            monitor.tick()
+            assertEquals(1, publisher.sent.size)
+            assertEquals("chat", publisher.sentHandles.single().channelOrChatId)
+            assertNull(publisher.sentHandles.single().topicId)
+
+            // Same destination skips unnecessary edits
+            now += 30_000
+            monitor.tick()
+            assertEquals(1, publisher.sent.size)
+            assertTrue(publisher.edits.isEmpty())
+
+            // Overriding topic_id replaces the pinned message even within the same chat
+            currentEngine =
+                TemplateEngine(
+                    TemplateConfig(
+                        events = mapOf(MediaServerStatusCards.ONLINE_EVENT to EventTemplate(topicId = 42L))
+                    )
+                )
+            now += 30_000
+            monitor.tick()
+            assertEquals(2, publisher.sent.size)
+            assertEquals("chat", publisher.sentHandles[1].channelOrChatId)
+            assertEquals(42L, publisher.sentHandles[1].topicId)
+            assertEquals(listOf("msg1" to true, "msg2" to true), publisher.pinned)
+
+            // Overriding chat_id without topic_id replaces again in the new chat with topicId = null
+            currentEngine =
+                TemplateEngine(
+                    TemplateConfig(
+                        events = mapOf(MediaServerStatusCards.ONLINE_EVENT to EventTemplate(chatId = "-1004451040571"))
+                    )
+                )
+            now += 30_000
+            monitor.tick()
+            assertEquals(3, publisher.sent.size)
+            assertEquals("-1004451040571", publisher.sentHandles[2].channelOrChatId)
+            assertNull(publisher.sentHandles[2].topicId)
+            assertEquals(listOf("msg1" to true, "msg2" to true, "msg3" to true), publisher.pinned)
+        }
+
     /** Records sends, edits and pins; message ids count up from msg1. */
     private class StatusPublisher : NotificationPublisherPort {
         override val providerId = "fake"
         var chat = "chat"
+        var topic: Long? = null
         override val defaultChannelOrChatId: String get() = chat
+        override val defaultTopicId: Long? get() = topic
         val sent = CopyOnWriteArrayList<NotificationCard>()
+        val sentHandles = CopyOnWriteArrayList<NotificationHandle>()
         val edits = CopyOnWriteArrayList<Pair<NotificationHandle, NotificationCard>>()
         val pinned = CopyOnWriteArrayList<Pair<String, Boolean>>()
         var messageGone = false
@@ -451,9 +504,12 @@ class MediaServerStatusMonitorTest {
             card: NotificationCard
         ): Either<DomainError.NotificationError, NotificationHandle> {
             if (sendFails) return Either.Left(DomainError.NotificationError.RateLimited(providerId, 30))
+            val dest = resolveDestination(card.chatId, card.topicId)
             sent += card
             messageGone = false
-            return Either.Right(NotificationHandle(providerId, chat, "msg${sent.size}"))
+            val handle = NotificationHandle(providerId, dest.chatId, "msg${sent.size}", topicId = dest.topicId)
+            sentHandles += handle
+            return Either.Right(handle)
         }
 
         override suspend fun editCard(

@@ -7,5 +7,6 @@ data class NotificationHandle(
     val providerId: String,
     val channelOrChatId: String,
     val messageReferenceId: String,
-    val isPhoto: Boolean = false
+    val isPhoto: Boolean = false,
+    val topicId: Long? = null
 )

@@ -122,7 +122,9 @@ object ConfigLoader {
                         silent = tpl.silent ?: baseTpl.silent,
                         actions = if (tpl.actions.isNotEmpty()) tpl.actions else baseTpl.actions,
                         enabled = tpl.enabled ?: baseTpl.enabled,
-                        preferPoster = tpl.preferPoster ?: baseTpl.preferPoster
+                        preferPoster = tpl.preferPoster ?: baseTpl.preferPoster,
+                        chatId = tpl.chatId ?: baseTpl.chatId,
+                        topicId = tpl.topicId ?: baseTpl.topicId
                     )
                 } else {
                     tpl

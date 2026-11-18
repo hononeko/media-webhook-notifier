@@ -17,7 +17,9 @@ data class ResolvedTemplateCard(
     val actions: List<ActionLink>,
     val customBody: String?,
     val imageEmbedEnabled: Boolean = true,
-    val silent: Boolean = false
+    val silent: Boolean = false,
+    val chatId: String? = null,
+    val topicId: Long? = null
 )
 
 data class ResolvedTemplateProgress(
@@ -232,7 +234,9 @@ class TemplateEngine(
             actions = actions,
             customBody = customBody,
             imageEmbedEnabled = imageEmbedEnabled,
-            silent = silent
+            silent = silent,
+            chatId = customTemplate?.chatId?.trim()?.takeIf { it.isNotEmpty() },
+            topicId = customTemplate?.topicId
         )
     }
 
@@ -294,7 +298,9 @@ class TemplateEngine(
             artworkUrl = resolved.artworkUrl,
             actions = resolved.actions,
             eventType = eventName,
-            silent = resolved.silent
+            silent = resolved.silent,
+            chatId = resolved.chatId,
+            topicId = resolved.topicId
         )
     }
 

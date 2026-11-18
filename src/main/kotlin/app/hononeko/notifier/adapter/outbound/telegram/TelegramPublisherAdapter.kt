@@ -7,6 +7,7 @@ import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.domain.port.outbound.resolveDestination
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
 import arrow.core.Either
 import io.ktor.client.engine.HttpClientEngine
@@ -44,15 +45,22 @@ class TelegramPublisherAdapter(
 
     private val channel: Destination get() = Destination(config.chatId, config.topicId)
 
+    override val defaultTopicId: Long? get() = config.topicId
+
+    private fun destinationFor(card: NotificationCard): Destination {
+        val resolved = resolveDestination(card.chatId, card.topicId)
+        return Destination(resolved.chatId, resolved.topicId)
+    }
+
     // The keyboard (and its callback ref) is built outside the mutex so a slow state store never holds up other
     // deliveries.
     override suspend fun sendCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle> =
-        deliver(card, keyboards.forCard(card), channel)
+        deliver(card, keyboards.forCard(card), destinationFor(card))
 
     override suspend fun startLiveProgress(
         initialCard: NotificationCard
     ): Either<DomainError.NotificationError, NotificationHandle> =
-        deliver(initialCard, keyboards.forCard(initialCard), channel)
+        deliver(initialCard, keyboards.forCard(initialCard), destinationFor(initialCard))
 
     /** One ref for all copies, so a button pressed on one copy can find, and update, every other one. */
     @Suppress("TooGenericExceptionCaught")

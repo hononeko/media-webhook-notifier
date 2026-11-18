@@ -243,4 +243,30 @@ class YamlParserTest {
         assertEquals(false, stringBoolConfig.events["import"]?.silent)
         assertEquals(true, stringBoolConfig.events["health"]?.silent)
     }
+
+    @Test
+    fun `parse event template chat_id and topic_id with aliases`() {
+        val yaml =
+            """
+            events:
+              servarr:
+                grab:
+                  chat_id: "-1004451040571"
+                  topic_id: 42
+                import:
+                  chat_id: -1003755896456
+                  thread_id: "7"
+                health:
+                  chat_id: "   "
+                  topic: 0
+            """.trimIndent()
+
+        val config = YamlParser.parseTemplateConfig(yaml)
+        assertEquals("-1004451040571", config.events["grab"]?.chatId)
+        assertEquals(42L, config.events["grab"]?.topicId)
+        assertEquals("-1003755896456", config.events["import"]?.chatId)
+        assertEquals(7L, config.events["import"]?.topicId)
+        assertNull(config.events["health"]?.chatId)
+        assertEquals(0L, config.events["health"]?.topicId)
+    }
 }

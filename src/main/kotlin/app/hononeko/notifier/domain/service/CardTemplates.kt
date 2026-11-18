@@ -37,7 +37,9 @@ internal inline fun ResolvedTemplateCard.toCard(
             artworkBytes = artworkBytes,
             actions = actions,
             eventType = eventType,
-            silent = silent
+            silent = silent,
+            chatId = chatId,
+            topicId = topicId
         )
     return if (customBody != null) card else card.defaultBody()
 }

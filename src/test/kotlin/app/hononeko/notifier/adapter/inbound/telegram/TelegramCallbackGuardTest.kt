@@ -89,4 +89,18 @@ class TelegramCallbackGuardTest {
         assertEquals("42", rejection(adminGuard.check(query(userId = 42, chat = TelegramChat(42)))).userId)
         assertEquals("7", rejection(adminGuard.check(query(userId = 7, chat = TelegramChat(8)))).userId)
     }
+
+    @Test
+    fun `callbacks from event-configured chat ids are allowed`() {
+        val multiChatGuard =
+            TelegramCallbackGuard(
+                allowedUserIds = setOf(42L),
+                chatId = "-1001",
+                extraChatIds = setOf("-1004451040571", "@EventsGroup")
+            )
+
+        assertTrue(multiChatGuard.check(query(chat = TelegramChat(-1004451040571))).isRight())
+        assertTrue(multiChatGuard.check(query(chat = TelegramChat(-1002, "eventsgroup"))).isRight())
+        assertTrue(multiChatGuard.check(query(chat = TelegramChat(-100999))).isLeft())
+    }
 }

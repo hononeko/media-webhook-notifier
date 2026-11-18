@@ -14,7 +14,8 @@ import org.slf4j.LoggerFactory
 internal class TelegramCallbackGuard(
     allowedUserIds: Set<Long>,
     private val chatId: String,
-    private val adminUserIds: Set<Long> = emptySet()
+    private val adminUserIds: Set<Long> = emptySet(),
+    extraChatIds: Set<String> = emptySet()
 ) {
     private val authorizedUserIds = allowedUserIds + adminUserIds
 
@@ -53,12 +54,18 @@ internal class TelegramCallbackGuard(
     ): Boolean = chat.id == userId && userId in adminUserIds
 
     // TELEGRAM_CHAT_ID may be a numeric id or a public "@channelname"; callbacks always carry the numeric id.
-    private fun isConfiguredChat(chat: TelegramChat): Boolean {
-        val configured = chatId.trim()
-        return if (configured.startsWith("@")) {
-            chat.username.equals(configured.removePrefix("@"), ignoreCase = true)
-        } else {
-            chat.id.toString() == configured
+    private val configuredChats: Set<String> =
+        buildSet {
+            add(chatId.trim())
+            extraChatIds.forEach { add(it.trim()) }
+        }.filterTo(linkedSetOf()) { it.isNotEmpty() }
+
+    private fun isConfiguredChat(chat: TelegramChat): Boolean =
+        configuredChats.any { configured ->
+            if (configured.startsWith("@")) {
+                chat.username.equals(configured.removePrefix("@"), ignoreCase = true)
+            } else {
+                chat.id.toString() == configured
+            }
         }
-    }
 }

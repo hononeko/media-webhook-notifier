@@ -58,7 +58,11 @@ data class RenderedCardDto(
     @SerialName("artwork_url")
     val artworkUrl: String? = null,
     val actions: List<ActionLinkDto> = emptyList(),
-    val silent: Boolean = false
+    val silent: Boolean = false,
+    @SerialName("chat_id")
+    val chatId: String? = null,
+    @SerialName("topic_id")
+    val topicId: Long? = null
 )
 
 @Serializable
@@ -305,7 +309,9 @@ class TemplatePreviewController {
             fields = fields.map { CardFieldDto(it.name, it.value, it.inline) },
             artworkUrl = artworkUrl,
             actions = actions.map { ActionLinkDto(it.label, it.url, it.style.name) },
-            silent = silent
+            silent = silent,
+            chatId = chatId,
+            topicId = topicId
         )
 
     private fun ProgressUpdate.toDto() =
