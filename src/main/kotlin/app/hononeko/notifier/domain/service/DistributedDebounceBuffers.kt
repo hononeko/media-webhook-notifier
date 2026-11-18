@@ -101,24 +101,26 @@ internal class DistributedDebounceBuffers<P>(
                 }
             }
         val allStoreKeys = (localKeys.map { "$keyPrefix$it" } + clusterStore.listKeys(keyPrefix, clock())).distinct()
-        for (storeKey in allStoreKeys) {
-            val raw = stateStore.get(storeKey, clock()) ?: continue
-            val entry = decode(raw) ?: continue
-            popAndFlush(storeKey, storeKey.removePrefix(keyPrefix), raw, entry.payload)
+        allStoreKeys.forEach { storeKey ->
+            val raw = stateStore.get(storeKey, clock())
+            val entry = raw?.let(::decode)
+            if (raw != null && entry != null) {
+                popAndFlush(storeKey, storeKey.removePrefix(keyPrefix), raw, entry.payload)
+            }
         }
     }
 
     override suspend fun sweepExpired() {
         val now = clock()
-        for (storeKey in clusterStore.listKeys(keyPrefix, now)) {
-            val raw = stateStore.get(storeKey, now) ?: continue
-            val entry = decode(raw)
-            if (entry == null) {
-                clusterStore.deleteIfEquals(storeKey, raw)
-                continue
-            }
-            if (entry.flushAtMillis <= now) {
-                popAndFlush(storeKey, storeKey.removePrefix(keyPrefix), raw, entry.payload)
+        clusterStore.listKeys(keyPrefix, now).forEach { storeKey ->
+            val raw = stateStore.get(storeKey, now)
+            if (raw != null) {
+                val entry = decode(raw)
+                if (entry == null) {
+                    clusterStore.deleteIfEquals(storeKey, raw)
+                } else if (entry.flushAtMillis <= now) {
+                    popAndFlush(storeKey, storeKey.removePrefix(keyPrefix), raw, entry.payload)
+                }
             }
         }
     }
@@ -180,14 +182,15 @@ internal class DistributedDebounceBuffers<P>(
 
     private suspend fun findById(normalized: String): Triple<String, String, Entry<P>>? {
         val now = clock()
-        for (storeKey in clusterStore.listKeys(keyPrefix, now)) {
-            val raw = stateStore.get(storeKey, now) ?: continue
-            val entry = decode(raw) ?: continue
-            if (matchesId(entry.payload, normalized)) {
-                return Triple(storeKey, raw, entry)
+        return clusterStore.listKeys(keyPrefix, now).firstNotNullOfOrNull { storeKey ->
+            val raw = stateStore.get(storeKey, now)
+            val entry = raw?.let(::decode)
+            if (raw != null && entry != null && matchesId(entry.payload, normalized)) {
+                Triple(storeKey, raw, entry)
+            } else {
+                null
             }
         }
-        return null
     }
 
     private suspend fun scheduleTimer(

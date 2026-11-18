@@ -226,83 +226,82 @@ class HealthController(
 
     suspend fun buildPrometheusMetrics(): String {
         val runtime = Runtime.getRuntime()
-        val totalMemory = runtime.totalMemory()
-        val freeMemory = runtime.freeMemory()
-        val usedMemory = totalMemory - freeMemory
-        val maxMemory = runtime.maxMemory()
+        val usedMemory = runtime.totalMemory() - runtime.freeMemory()
         val uptimeSeconds = (System.currentTimeMillis() - startTimeMillis) / 1000.0
-        val activeTrackers = downloadTracker?.activeTrackerCount() ?: 0
-        val railRunning = if (eventRail?.isRunning == true) 1 else 0
-        val railClosed = if (eventRail?.isClosed == true) 1 else 0
-        val workers = eventRail?.activeWorkersCount ?: 0
-        val deadLetterCount = eventRail?.deadLetterBuffer?.size() ?: 0
-        val reconRuns = reconciliationService?.runCount ?: 0L
-        val reconResumed = reconciliationService?.resumedCount ?: 0L
-        val stateHealthy = stateStore?.healthCheck()
         val clusterActiveTrackers = sharedTrackers?.allSnapshots()?.size
-
-        return buildString {
-            promMetric("process_uptime_seconds", "Process uptime in seconds", "gauge", uptimeSeconds)
-            promMetric("jvm_memory_used_bytes", "Used JVM memory in bytes", "gauge", usedMemory)
-            promMetric("jvm_memory_free_bytes", "Free JVM memory in bytes", "gauge", freeMemory)
-            promMetric("jvm_memory_total_bytes", "Total allocated JVM memory in bytes", "gauge", totalMemory)
-            promMetric("jvm_memory_max_bytes", "Maximum JVM memory limit in bytes", "gauge", maxMemory)
-            promMetric(
-                "media_webhook_active_tracking_jobs",
-                "Number of active torrent tracking jobs",
-                "gauge",
-                activeTrackers
-            )
-            if (clusterActiveTrackers != null) {
-                promMetric(
-                    "media_webhook_cluster_active_tracking_jobs",
-                    "Active tracking jobs across all replicas",
-                    "gauge",
-                    clusterActiveTrackers
+        val stateHealthy = stateStore?.healthCheck()
+        val gauges =
+            buildList {
+                add(Triple("process_uptime_seconds", "Process uptime in seconds", uptimeSeconds))
+                add(Triple("jvm_memory_used_bytes", "Used JVM memory in bytes", usedMemory))
+                add(Triple("jvm_memory_free_bytes", "Free JVM memory in bytes", runtime.freeMemory()))
+                add(Triple("jvm_memory_total_bytes", "Total allocated JVM memory in bytes", runtime.totalMemory()))
+                add(Triple("jvm_memory_max_bytes", "Maximum JVM memory limit in bytes", runtime.maxMemory()))
+                add(
+                    Triple(
+                        "media_webhook_active_tracking_jobs",
+                        "Number of active torrent tracking jobs",
+                        downloadTracker?.activeTrackerCount() ?: 0
+                    )
+                )
+                clusterActiveTrackers?.let {
+                    add(
+                        Triple(
+                            "media_webhook_cluster_active_tracking_jobs",
+                            "Active tracking jobs across all replicas",
+                            it
+                        )
+                    )
+                }
+                add(
+                    Triple(
+                        "media_webhook_event_rail_running",
+                        "Event rail running state (1 = running, 0 = stopped)",
+                        if (eventRail?.isRunning == true) 1 else 0
+                    )
+                )
+                add(
+                    Triple(
+                        "media_webhook_event_rail_closed",
+                        "Event rail closed state (1 = closed, 0 = open)",
+                        if (eventRail?.isClosed == true) 1 else 0
+                    )
+                )
+                add(
+                    Triple(
+                        "media_webhook_event_rail_workers",
+                        "Number of active EventRail worker coroutines",
+                        eventRail?.activeWorkersCount ?: 0
+                    )
+                )
+                add(
+                    Triple(
+                        "media_webhook_dead_letter_total",
+                        "Number of items currently in the Dead Letter Buffer",
+                        eventRail?.deadLetterBuffer?.size() ?: 0
+                    )
                 )
             }
-            promMetric(
-                "media_webhook_event_rail_running",
-                "Event rail running state (1 = running, 0 = stopped)",
-                "gauge",
-                railRunning
-            )
-            promMetric(
-                "media_webhook_event_rail_closed",
-                "Event rail closed state (1 = closed, 0 = open)",
-                "gauge",
-                railClosed
-            )
-            promMetric(
-                "media_webhook_event_rail_workers",
-                "Number of active EventRail worker coroutines",
-                "gauge",
-                workers
-            )
-            promMetric(
-                "media_webhook_dead_letter_total",
-                "Number of items currently in the Dead Letter Buffer",
-                "gauge",
-                deadLetterCount
-            )
+        return buildString {
+            gauges.forEach { (name, help, value) -> promMetric(name, help, "gauge", value) }
             promMetric(
                 "media_webhook_reconciliation_runs_total",
                 "Total reconciliation sweeps executed",
                 "counter",
-                reconRuns
+                reconciliationService?.runCount ?: 0L
             )
             promMetric(
                 "media_webhook_reconciliation_resumed_total",
                 "Total downloads resumed by reconciliation",
                 "counter",
-                reconResumed
+                reconciliationService?.resumedCount ?: 0L
             )
-            if (stateHealthy != null) {
+            stateHealthy?.let {
                 promMetric(
                     "media_webhook_state_store_healthy",
                     "State store health (1 = healthy, 0 = unhealthy)",
                     "gauge",
-                    if (stateHealthy) 1 else 0
+                    if (it) 1 else 0
                 )
             }
         }

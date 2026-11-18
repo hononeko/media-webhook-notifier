@@ -42,7 +42,9 @@ data class MediaServerStatusConfig(
     /** The time zone the card's times are shown in. */
     val zone: ZoneId = ZoneId.systemDefault(),
     /** How often a standby replica checks the lock for a crashed leader when heartbeats are active. */
-    val standbyCheckSeconds: Long = 5L
+    val standbyCheckSeconds: Long = 5L,
+    /** Optional liveness predicate for fast takeover when another replica dies without releasing its lock. */
+    val isOwnerAlive: (suspend (String) -> Boolean)? = null
 )
 
 enum class ServerStatus { UP, DOWN }
@@ -106,13 +108,14 @@ class MediaServerStatusMonitor(
     private val stateStore: StateStorePort,
     private val config: MediaServerStatusConfig,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val engine: () -> TemplateEngine = { CardTemplates.templateEngine },
-    private val isOwnerAlive: (suspend (String) -> Boolean)? = null
+    private val engine: () -> TemplateEngine = { CardTemplates.templateEngine }
 ) {
     companion object {
         const val STATE_KEY = "media_server:status"
         const val LOCK_KEY = "lock:media_server:status"
     }
+
+    private val isOwnerAlive get() = config.isOwnerAlive
 
     private val logger = LoggerFactory.getLogger(MediaServerStatusMonitor::class.java)
     private val states = StatusStates(stateStore, clock)
@@ -170,29 +173,29 @@ class MediaServerStatusMonitor(
 
     /** One check: polls the server, moves the status on, and renders the message when it needs it. */
     suspend fun tick(): Boolean {
-        when (stateStore.renewOrTakeoverStatusLock(config.ownerId, lockTtlSeconds, clock(), isOwnerAlive)) {
-            LockRenewal.RENEWED -> Unit
-            LockRenewal.LOST -> {
-                logger.debug("Another instance monitors the media server")
-                return false
-            }
-            // Without the store, the message id is unknown and a new message would be pinned on every check.
-            LockRenewal.STORE_UNAVAILABLE -> {
-                logger.debug("State store unavailable; skipping status check")
-                return false
-            }
+        val initialLock = stateStore.renewOrTakeoverStatusLock(config.ownerId, lockTtlSeconds, clock(), isOwnerAlive)
+        if (initialLock != LockRenewal.RENEWED) {
+            val msg =
+                if (initialLock == LockRenewal.LOST) {
+                    "Another instance monitors the media server"
+                } else {
+                    "State store unavailable; skipping status check"
+                }
+            logger.debug(msg)
+            return false
         }
         val health = healthCheck.checkHealth()
         // Re-check lock after the health check HTTP call so a paused pod cannot send a duplicate recovery card.
-        if (stateStore.renewLock(LOCK_KEY, config.ownerId, lockTtlSeconds, clock()) == LockRenewal.LOST) {
+        val stillHeld = stateStore.renewLock(LOCK_KEY, config.ownerId, lockTtlSeconds, clock()) != LockRenewal.LOST
+        if (stillHeld) {
+            val now = clock()
+            val loaded = states.loadWithRaw()
+            val next = advance(loaded.state, health, now)
+            states.save(render(next, now), loaded.raw)
+        } else {
             logger.warn("Lost media server status lock during health check; skipping render")
-            return false
         }
-        val now = clock()
-        val loaded = states.loadWithRaw()
-        val next = advance(loaded.state, health, now)
-        states.save(render(next, now), loaded.raw)
-        return true
+        return stillHeld
     }
 
     /** The state after a check at [now] with [health]. */

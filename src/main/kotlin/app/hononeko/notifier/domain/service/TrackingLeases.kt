@@ -49,12 +49,18 @@ class TrackingLeases(
 
     private suspend fun acquireSingle(key: String): Boolean {
         val now = clock()
-        if (stateStore.acquireLock(key, ownerId, ttlSeconds, now)) return true
-        val liveness = isOwnerAlive ?: return false
-        val cluster = stateStore as? ClusterStatePort ?: return false
-        val currentOwner = stateStore.get(key, now) ?: return stateStore.acquireLock(key, ownerId, ttlSeconds, now)
-        if (currentOwner == ownerId || liveness(currentOwner)) return false
-        return cluster.takeoverLock(key, currentOwner, ownerId, ttlSeconds, now)
+        val acquired = stateStore.acquireLock(key, ownerId, ttlSeconds, now)
+        val liveness = isOwnerAlive
+        val cluster = stateStore as? ClusterStatePort
+        val currentOwner =
+            if (!acquired && liveness != null && cluster != null) stateStore.get(key, now) else null
+        return when {
+            acquired -> true
+            liveness == null || cluster == null -> false
+            currentOwner == null -> stateStore.acquireLock(key, ownerId, ttlSeconds, now)
+            currentOwner == ownerId || liveness(currentOwner) -> false
+            else -> cluster.takeoverLock(key, currentOwner, ownerId, ttlSeconds, now)
+        }
     }
 
     /** [LockRenewal.LOST] if any hash now belongs to someone else; otherwise unavailable if any couldn't be checked. */

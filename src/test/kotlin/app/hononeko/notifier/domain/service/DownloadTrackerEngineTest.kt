@@ -990,9 +990,8 @@ class DownloadTrackerEngineTest {
                     activeTrackerStore = localA,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 5),
                     scope = crashedScope,
-                    leases = TrackingLeases(store, "pod-a", 30, { now }, hbA::isAlive),
-                    sharedTrackers = sharedA
-                )
+                    leases = TrackingLeases(store, "pod-a", 30, { now }, hbA::isAlive)
+                ).apply { sharedTrackers = sharedA }
             val engineB =
                 DownloadTrackerEngine(
                     downloadClient = client,
@@ -1000,9 +999,8 @@ class DownloadTrackerEngineTest {
                     activeTrackerStore = localB,
                     config = DownloadTrackerConfig(pollIntervalSeconds = 5),
                     scope = standbyScope,
-                    leases = TrackingLeases(store, "pod-b", 30, { now }, hbB::isAlive),
-                    sharedTrackers = sharedB
-                )
+                    leases = TrackingLeases(store, "pod-b", 30, { now }, hbB::isAlive)
+                ).apply { sharedTrackers = sharedB }
 
             assertEquals(Either.Right(TrackingStart.STARTED), engineA.track("h1", leaseGrab))
             assertEquals(1, publisher.sentCards.size)

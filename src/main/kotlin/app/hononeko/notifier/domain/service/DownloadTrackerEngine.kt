@@ -51,9 +51,9 @@ class DownloadTrackerEngine(
     private val config: DownloadTrackerConfig = DownloadTrackerConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     // Null with the in-memory state store: locks there can't coordinate separate instances.
-    private val leases: TrackingLeases? = null,
-    private val sharedTrackers: SharedTrackerRegistry? = null
+    private val leases: TrackingLeases? = null
 ) : TrackDownloadUseCase {
+    internal var sharedTrackers: SharedTrackerRegistry? = null
     private val pollIntervalSeconds: Long get() = config.pollIntervalSeconds
     private val maxPollingMinutes: Long get() = config.maxPollingMinutes
     private val stalledTimeoutMinutes: Long get() = config.stalledTimeoutMinutes

@@ -153,10 +153,12 @@ class SharedTrackerRegistry(
         val keys = cluster?.listKeys(KEY_PREFIX, clock()).orEmpty()
         if (keys.isEmpty()) return 0
         val now = clock()
+        val orphaned =
+            keys
+                .mapNotNull { key -> loadRecord(key, now)?.second }
+                .filter { isOrphaned(it, now) }
         var resumed = 0
-        for (key in keys) {
-            val record = loadRecord(key, now)?.second ?: continue
-            if (!isOrphaned(record, now)) continue
+        for (record in orphaned) {
             val result =
                 trackDownloadUseCase.trackExisting(
                     record.hash,

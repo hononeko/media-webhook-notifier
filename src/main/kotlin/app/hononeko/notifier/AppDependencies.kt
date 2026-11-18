@@ -142,9 +142,9 @@ private fun buildMediaServerStatus(
                     graceSeconds = settings.graceSeconds,
                     refreshSeconds = settings.refreshSeconds,
                     recoverySeconds = settings.recoverySeconds,
-                    pinEnabled = settings.pinEnabled
-                ),
-            isOwnerAlive = heartbeat?.let { hb -> { owner -> hb.isAlive(owner) } }
+                    pinEnabled = settings.pinEnabled,
+                    isOwnerAlive = heartbeat?.let { hb -> { owner -> hb.isAlive(owner) } }
+                )
         )
     monitor.start(scope)
     return MediaServerStatus(monitor, health)
@@ -248,16 +248,17 @@ fun buildDependencies(
 
 /** The outbound side every feature shares: state store, download client, media server, and the Telegram publisher. */
 private class Infrastructure(
-    val ownerId: String,
     val stateStore: StateStorePort,
-    val podHeartbeat: PodHeartbeat?,
     /** Shared by the publisher (registers button refs) and the listener (resolves them); null without interactions. */
     val callbackRefs: CallbackRefRegistry?,
     val publisher: TelegramPublisherAdapter,
     val downloadClient: DownloadClientPort,
     val mediaServerPort: MediaServerAdapter,
-    val activeTrackerStore: ActiveTrackerStore
-)
+    val podHeartbeat: PodHeartbeat?
+) {
+    val activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore()
+    val ownerId: String = podHeartbeat?.ownerId ?: trackingOwnerId()
+}
 
 private fun buildInfrastructure(
     config: AppConfig,
@@ -279,9 +280,7 @@ private fun buildInfrastructure(
         }
     val callbackRefs = if (config.features.telegramInteractive) CallbackRefRegistry(stateStore) else null
     return Infrastructure(
-        ownerId = ownerId,
         stateStore = stateStore,
-        podHeartbeat = podHeartbeat,
         callbackRefs = callbackRefs,
         publisher =
             TelegramPublisherAdapter(
@@ -291,7 +290,7 @@ private fun buildInfrastructure(
             ),
         downloadClient = DownloadClientFactory.create(config),
         mediaServerPort = MediaServerAdapter(config = config.mediaServer),
-        activeTrackerStore = InMemoryActiveTrackerStore()
+        podHeartbeat = podHeartbeat
     )
 }
 
@@ -342,7 +341,7 @@ private fun buildTracking(
 ): Tracking {
     // Only a shared store can coordinate instances; with the in-memory store each instance would just lock itself.
     val trackingLeases = Tracking.leasesFor(config, infra)
-    val sharedTrackers = Tracking.sharedFor(config, infra)
+    val trackingSharedTrackers = Tracking.sharedFor(config, infra)
     val dc = config.downloadClient
     val downloadTracker =
         DownloadTrackerEngine(
@@ -359,10 +358,9 @@ private fun buildTracking(
                     dc.tagPrefix
                 ),
             scope = scope,
-            leases = trackingLeases,
-            sharedTrackers = sharedTrackers
-        )
-    sharedTrackers?.startWatcher(scope, downloadTracker)
+            leases = trackingLeases
+        ).apply { sharedTrackers = trackingSharedTrackers }
+    trackingSharedTrackers?.startWatcher(scope, downloadTracker)
     val reconciliation =
         DownloadReconciliationService(
             downloadClient = infra.downloadClient,
@@ -378,7 +376,7 @@ private fun buildTracking(
                 )
         )
     reconciliation.start(scope)
-    return Tracking(downloadTracker, reconciliation, sharedTrackers)
+    return Tracking(downloadTracker, reconciliation, trackingSharedTrackers)
 }
 
 private class MediaAnnouncements(

@@ -583,10 +583,10 @@ class MediaServerStatusMonitorTest {
                             ownerId = "pod-a",
                             pollIntervalSeconds = 30,
                             graceSeconds = 90,
-                            zone = ZoneOffset.UTC
+                            zone = ZoneOffset.UTC,
+                            isOwnerAlive = { ownerAlive }
                         ),
-                    clock = { now },
-                    isOwnerAlive = { ownerAlive }
+                    clock = { now }
                 )
             val podB =
                 MediaServerStatusMonitor(
@@ -600,10 +600,10 @@ class MediaServerStatusMonitorTest {
                             ownerId = "pod-b",
                             pollIntervalSeconds = 30,
                             graceSeconds = 90,
-                            zone = ZoneOffset.UTC
+                            zone = ZoneOffset.UTC,
+                            isOwnerAlive = { ownerAlive }
                         ),
-                    clock = { now },
-                    isOwnerAlive = { ownerAlive }
+                    clock = { now }
                 )
 
             assertTrue(podA.tick())
