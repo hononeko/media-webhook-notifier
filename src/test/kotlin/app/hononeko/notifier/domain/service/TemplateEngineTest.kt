@@ -367,4 +367,41 @@ class TemplateEngineTest {
             )
         assertEquals(false, resolvedHealth.silent)
     }
+
+    @Test
+    fun `resolveCard and renderCard forward chatId and topicId onto cards`() {
+        val yaml =
+            """
+            events:
+              servarr:
+                grab:
+                  chat_id: "-1004451040571"
+                  topic_id: 99
+            """.trimIndent()
+        val engine = TemplateEngine(YamlParser.parseTemplateConfig(yaml))
+
+        val card =
+            engine.renderCard(
+                eventName = "grab",
+                defaults =
+                    DefaultCardSpec(
+                        title = "Default Grab",
+                        subtitle = null,
+                        level = NotificationLevel.PROGRESS,
+                        body = null
+                    ),
+                context = emptyMap()
+            )
+        assertEquals("-1004451040571", card.chatId)
+        assertEquals(99L, card.topicId)
+
+        val resolved =
+            engine.resolveCard(
+                eventName = "grab",
+                defaults = DefaultCardSpec(title = "Grab", subtitle = null),
+                context = emptyMap()
+            )
+        assertEquals("-1004451040571", resolved.chatId)
+        assertEquals(99L, resolved.topicId)
+    }
 }

@@ -36,6 +36,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TelegramPublisherAdapterTest {
@@ -1252,5 +1253,59 @@ class TelegramPublisherAdapterTest {
             val result = adapter.pinMessage(NotificationHandle("telegram", "-1001", "5"))
 
             assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(result)
+        }
+
+    @Test
+    fun `sendCard and startLiveProgress resolve per-event chat_id and topic_id cleanly`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val topicConfig = interactiveConfig.copy(topicId = 5L)
+            val adapter = TelegramPublisherAdapter(topicConfig, recordingEngine(sent))
+
+            val defaultHandle =
+                assertIs<Either.Right<NotificationHandle>>(
+                    adapter.sendCard(NotificationCard(title = "Default"))
+                ).value
+            assertEquals("-1001", defaultHandle.channelOrChatId)
+            assertEquals(5L, defaultHandle.topicId)
+            assertEquals("-1001", sent[0].json["chat_id"]!!.jsonPrimitive.content)
+            assertEquals("5", sent[0].json["message_thread_id"]!!.jsonPrimitive.content)
+
+            // Overriding chat_id without topic_id must not leak global topic_id = 5
+            val otherChatHandle =
+                assertIs<Either.Right<NotificationHandle>>(
+                    adapter.sendCard(NotificationCard(title = "Aux", chatId = "-1004451040571"))
+                ).value
+            assertEquals("-1004451040571", otherChatHandle.channelOrChatId)
+            assertNull(otherChatHandle.topicId)
+            assertEquals("-1004451040571", sent[1].json["chat_id"]!!.jsonPrimitive.content)
+            assertNull(sent[1].json["message_thread_id"])
+
+            // Explicitly setting topic_id = 0 clears global topicId back to General
+            val clearedTopicHandle =
+                assertIs<Either.Right<NotificationHandle>>(
+                    adapter.sendCard(NotificationCard(title = "General", topicId = 0L))
+                ).value
+            assertEquals("-1001", clearedTopicHandle.channelOrChatId)
+            assertNull(clearedTopicHandle.topicId)
+            assertNull(sent[2].json["message_thread_id"])
+
+            // Live progress stays in the resolved overridden chat and topic
+            val progressHandle =
+                assertIs<Either.Right<NotificationHandle>>(
+                    adapter.startLiveProgress(
+                        NotificationCard(title = "Grab", chatId = "-1003755896456", topicId = 42L)
+                    )
+                ).value
+            assertEquals("-1003755896456", progressHandle.channelOrChatId)
+            assertEquals(42L, progressHandle.topicId)
+            assertEquals("-1003755896456", sent[3].json["chat_id"]!!.jsonPrimitive.content)
+            assertEquals("42", sent[3].json["message_thread_id"]!!.jsonPrimitive.content)
+
+            adapter.updateProgress(
+                progressHandle,
+                ProgressUpdate("k", "Downloading", 50.0, "█", "1M", "1m", "1G", "1", "DL")
+            )
+            assertEquals("-1003755896456", sent[4].json["chat_id"]!!.jsonPrimitive.content)
         }
 }

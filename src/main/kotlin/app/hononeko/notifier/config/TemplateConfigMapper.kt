@@ -29,7 +29,11 @@ internal object TemplateConfigMapper {
             "enabled",
             "disabled",
             "prefer_poster",
-            "use_uploaded_thumb"
+            "use_uploaded_thumb",
+            "chat_id",
+            "topic_id",
+            "thread_id",
+            "topic"
         )
 
     @Suppress("UNCHECKED_CAST")
@@ -135,7 +139,13 @@ internal object TemplateConfigMapper {
             enabled = parseBooleanValue(eventProps["enabled"]) ?: parseBooleanValue(eventProps["disabled"])?.not(),
             preferPoster =
                 parseBooleanValue(eventProps["prefer_poster"])
-                    ?: parseBooleanValue(eventProps["use_uploaded_thumb"])?.not()
+                    ?: parseBooleanValue(eventProps["use_uploaded_thumb"])?.not(),
+            chatId = eventProps["chat_id"]?.toString()?.trim()?.takeIf { it.isNotEmpty() },
+            topicId =
+                (eventProps["topic_id"] ?: eventProps["thread_id"] ?: eventProps["topic"])
+                    ?.toString()
+                    ?.trim()
+                    ?.toLongOrNull()
         )
     }
 

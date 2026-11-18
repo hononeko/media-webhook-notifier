@@ -1,7 +1,10 @@
 package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.model.NotificationCard
+import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.NotificationLevel
+import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.domain.port.outbound.resolveDestination
 import app.hononeko.notifier.domain.service.CardTemplates.templateEngine
 import java.time.Instant
 import java.time.ZoneId
@@ -74,6 +77,22 @@ object MediaServerStatusCards {
         val body = engine.interpolateBody(bodyTemplate, context.mapValues { (_, value) -> value?.let(::escapeHtml) })
         val level = if (view.online) NotificationLevel.SUCCESS else NotificationLevel.ERROR
         return resolved.copy(customBody = body).toCard(level, eventName, artworkUrl = null)
+    }
+
+    /** Returns [handle] if it still targets the resolved chat and topic for the current status, else `null`. */
+    internal fun matchingHandle(
+        handle: NotificationHandle?,
+        online: Boolean,
+        publisher: NotificationPublisherPort,
+        engine: TemplateEngine
+    ): NotificationHandle? {
+        if (handle == null) return null
+        val eventName = if (online) ONLINE_EVENT else OFFLINE_EVENT
+        val template = engine.getEventTemplate(eventName)
+        val target = publisher.resolveDestination(template?.chatId, template?.topicId)
+        return handle.takeIf {
+            target.chatId.isBlank() || (it.channelOrChatId == target.chatId && it.topicId == target.topicId)
+        }
     }
 
     private fun escapeHtml(text: String): String = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

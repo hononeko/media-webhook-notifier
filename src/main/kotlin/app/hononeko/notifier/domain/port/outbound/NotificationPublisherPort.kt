@@ -11,6 +11,8 @@ interface NotificationPublisherPort {
 
     val defaultChannelOrChatId: String get() = ""
 
+    val defaultTopicId: Long? get() = null
+
     fun supportsLiveProgress(): Boolean = true
 
     suspend fun sendCard(card: NotificationCard): Either<DomainError.NotificationError, NotificationHandle>
@@ -78,4 +80,29 @@ interface NotificationPublisherPort {
         handle: NotificationHandle,
         reasonCard: NotificationCard
     ): Either<DomainError.NotificationError, Unit>
+}
+
+internal data class ResolvedDestination(
+    val chatId: String,
+    val topicId: Long?
+)
+
+/**
+ * Resolves a card's target `(chatId, topicId)` against this publisher's defaults: an overridden `chatId` never inherits
+ * [NotificationPublisherPort.defaultTopicId], and an explicit `topicId <= 0` resets a global topic back to `null`.
+ */
+internal fun NotificationPublisherPort.resolveDestination(
+    cardChatId: String?,
+    cardTopicId: Long?
+): ResolvedDestination {
+    val overrideChat = cardChatId?.trim()?.takeIf { it.isNotEmpty() }
+    val targetChat = overrideChat ?: defaultChannelOrChatId
+    val chatOverridden = overrideChat != null && overrideChat != defaultChannelOrChatId
+    val targetTopic =
+        when {
+            cardTopicId != null -> cardTopicId.takeIf { it > 0L }
+            chatOverridden -> null
+            else -> defaultTopicId
+        }
+    return ResolvedDestination(targetChat, targetTopic)
 }

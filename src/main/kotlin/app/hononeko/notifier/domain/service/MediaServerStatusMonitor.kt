@@ -197,13 +197,14 @@ class MediaServerStatusMonitor(
         now: Long
     ): MediaServerStatusState {
         val status = state.status ?: return state
-        // A message in another chat (the configured chat changed) is left behind and replaced.
-        val chat = publisher.defaultChannelOrChatId
-        val handle = state.handle?.takeIf { chat.isBlank() || it.channelOrChatId == chat }
+        val templateEngine = engine()
+        // A message in another chat or topic (the config changed) is left behind and replaced.
+        val handle =
+            MediaServerStatusCards.matchingHandle(state.handle, status == ServerStatus.UP, publisher, templateEngine)
         val due = state.renderedAt == null || now - state.renderedAt >= refreshMillis
         if (handle != null && state.renderedStatus == status && !due) return state
 
-        val card = MediaServerStatusCards.build(viewOf(state, status, now), config.zone, engine())
+        val card = MediaServerStatusCards.build(viewOf(state, status, now), config.zone, templateEngine)
         val rendered = state.copy(renderedStatus = status, renderedAt = now)
         val editFailure = handle?.let { publisher.editCard(it, card).leftOrNull() }
         return when {

@@ -1,7 +1,6 @@
 package app.hononeko.notifier.config
 
 import app.hononeko.notifier.adapter.outbound.notification.NotificationUrlParser
-import app.hononeko.notifier.domain.model.EventTemplate
 import app.hononeko.notifier.domain.model.TemplateConfig
 import java.io.File
 import java.net.URI
@@ -110,23 +109,7 @@ object ConfigLoader {
         val mergedEvents = base.events.toMutableMap()
         for ((key, tpl) in override.events) {
             val baseTpl = mergedEvents[key]
-            mergedEvents[key] =
-                if (baseTpl != null) {
-                    EventTemplate(
-                        title = tpl.title ?: baseTpl.title,
-                        subtitle = tpl.subtitle ?: baseTpl.subtitle,
-                        body = tpl.body ?: baseTpl.body,
-                        artworkUrl = tpl.artworkUrl ?: baseTpl.artworkUrl,
-                        imageEmbed = tpl.imageEmbed ?: baseTpl.imageEmbed,
-                        stateText = tpl.stateText ?: baseTpl.stateText,
-                        silent = tpl.silent ?: baseTpl.silent,
-                        actions = if (tpl.actions.isNotEmpty()) tpl.actions else baseTpl.actions,
-                        enabled = tpl.enabled ?: baseTpl.enabled,
-                        preferPoster = tpl.preferPoster ?: baseTpl.preferPoster
-                    )
-                } else {
-                    tpl
-                }
+            mergedEvents[key] = if (baseTpl != null) tpl.withDefaults(baseTpl) else tpl
         }
         return TemplateConfig(theme = override.theme, events = mergedEvents)
     }

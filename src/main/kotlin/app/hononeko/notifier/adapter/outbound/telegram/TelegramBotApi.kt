@@ -387,7 +387,7 @@ internal class TelegramBotApi(
                 ensureNotNull(parsed.result?.messageId) {
                     DomainError.NotificationError.DeliveryFailed(providerId, "No messageId in response")
                 }
-            NotificationHandle(providerId, destination.chatId, msgId.toString())
+            NotificationHandle(providerId, destination.chatId, msgId.toString(), topicId = destination.topicId)
         }
 
     private suspend fun handleEditResponse(response: HttpResponse): Either<DomainError.NotificationError, Unit> =

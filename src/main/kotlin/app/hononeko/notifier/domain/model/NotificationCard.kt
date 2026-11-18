@@ -18,7 +18,9 @@ data class NotificationCard(
     val eventType: String? = null,
     val silent: Boolean = false,
     val interactions: List<CardInteraction> = emptyList(),
-    val footnote: String? = null
+    val footnote: String? = null,
+    val chatId: String? = null,
+    val topicId: Long? = null
 ) {
     @Suppress("CyclomaticComplexMethod")
     override fun equals(other: Any?): Boolean {
@@ -43,6 +45,8 @@ data class NotificationCard(
         if (silent != other.silent) return false
         if (interactions != other.interactions) return false
         if (footnote != other.footnote) return false
+        if (chatId != other.chatId) return false
+        if (topicId != other.topicId) return false
         return true
     }
 
@@ -61,6 +65,8 @@ data class NotificationCard(
         result = 31 * result + silent.hashCode()
         result = 31 * result + interactions.hashCode()
         result = 31 * result + (footnote?.hashCode() ?: 0)
+        result = 31 * result + (chatId?.hashCode() ?: 0)
+        result = 31 * result + (topicId?.hashCode() ?: 0)
         return result
     }
 }

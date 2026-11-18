@@ -372,4 +372,26 @@ class TemplatePreviewRoutesTest {
             assertTrue(offline.contains("Connection refused"), offline)
             assertTrue(offline.contains("checked_at"), offline)
         }
+
+    @Test
+    fun `preview endpoint includes configured chat_id and topic_id on rendered card`() =
+        withPreviewApp { client ->
+            val response =
+                client.post("/api/v1/templates/preview") {
+                    header(HttpHeaders.Authorization, "Bearer $testToken")
+                    contentType(ContentType.Application.Json)
+                    setBody(
+                        TemplatePreviewRequestDto(
+                            eventType = "grab",
+                            templateYaml =
+                                "events:\n  servarr:\n    grab:\n      chat_id: \"-1004451040571\"\n      topic_id: 42"
+                        )
+                    )
+                }
+
+            assertEquals(HttpStatusCode.OK, response.status)
+            val dto = testJson.decodeFromString<TemplatePreviewResponseDto>(response.bodyAsText())
+            assertEquals("-1004451040571", dto.renderedCard.chatId)
+            assertEquals(42L, dto.renderedCard.topicId)
+        }
 }
