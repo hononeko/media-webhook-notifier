@@ -98,9 +98,6 @@ class TemplateEngine(
         return direct ?: aliases?.firstNotNullOfOrNull { config.events[it] }
     }
 
-    /** Whether [eventName] is announced at all: only an explicit `enabled: false` (or `disabled: true`) turns it off. */
-    fun isEnabled(eventName: String): Boolean = getEventTemplate(eventName)?.enabled != false
-
     fun interpolate(
         template: String?,
         context: Map<String, Any?>
@@ -304,3 +301,6 @@ class TemplateEngine(
         return lower.startsWith("http://") || lower.startsWith("https://")
     }
 }
+
+/** Whether [eventName] is announced at all: only `enabled: false` (or `disabled: true`) turns it off. */
+fun TemplateEngine.isEnabled(eventName: String): Boolean = getEventTemplate(eventName)?.enabled != false
