@@ -223,6 +223,19 @@ class ValkeyStateStoreIntegrationTest {
                 assertFalse(store.acquireLock("release", "b", 30))
                 assertTrue(store.releaseLock("release", "a"))
                 assertTrue(store.acquireLock("release", "b", 30))
+
+                // ClusterStatePort: CAS, deleteIfEquals, takeoverLock, listKeys
+                store.set("cluster:cas", "v1", ttlSeconds = 30)
+                assertFalse(store.compareAndSet("cluster:cas", "wrong", "v2", ttlSeconds = 30))
+                assertTrue(store.compareAndSet("cluster:cas", "v1", "v2", ttlSeconds = 30))
+                assertEquals(listOf("cluster:cas"), store.listKeys("cluster:"))
+                assertFalse(store.deleteIfEquals("cluster:cas", "v1"))
+                assertTrue(store.deleteIfEquals("cluster:cas", "v2"))
+
+                assertTrue(store.acquireLock("takeover", "pod-a", 30))
+                assertFalse(store.takeoverLock("takeover", "other", "pod-b", 30))
+                assertTrue(store.takeoverLock("takeover", "pod-a", "pod-b", 30))
+                assertEquals(LockRenewal.RENEWED, store.renewLock("takeover", "pod-b", 30))
             } finally {
                 store.clear()
                 store.close()

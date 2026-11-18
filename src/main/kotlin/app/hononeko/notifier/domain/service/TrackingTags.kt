@@ -24,6 +24,8 @@ internal class TrackingTags(
                 if (handle.channelOrChatId.isNotBlank()) {
                     add("${tagPrefix}chat:${handle.channelOrChatId}")
                 }
+                handle.topicId?.let { add("${tagPrefix}topic:$it") }
+                handle.topicId?.let { add("${tagPrefix}topic:$it") }
             }
         downloadClient.addTags(hash, tags)
     }
@@ -51,6 +53,8 @@ internal class TrackingTags(
                 if (handle.channelOrChatId.isNotBlank()) {
                     add("${tagPrefix}chat:${handle.channelOrChatId}")
                 }
+                handle.topicId?.let { add("${tagPrefix}topic:$it") }
+                handle.topicId?.let { add("${tagPrefix}topic:$it") }
             }.toList()
 
         downloadClient.removeTags(hash, tagsToRemove)

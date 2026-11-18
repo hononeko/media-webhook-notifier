@@ -18,7 +18,7 @@ internal class DebounceBuffers<P>(
     private val scope: CoroutineScope,
     private val onFlush: (suspend (P) -> Unit)?,
     private val matchesId: (P, String) -> Boolean = { _, _ -> false }
-) {
+) : DebounceBackend<P> {
     class Buffer<P>(
         var payload: P,
         var timerJob: Job
@@ -27,10 +27,10 @@ internal class DebounceBuffers<P>(
     private val buffers = ConcurrentHashMap<String, Buffer<P>>()
     private val mutex = Mutex()
 
-    val size: Int get() = buffers.size
+    override val size: Int get() = buffers.size
 
     /** Buffers [initial] under [key], or replaces what's buffered there with [merge] of it; restarts the timer. */
-    suspend fun submit(
+    override suspend fun submit(
         key: String,
         initial: P,
         merge: (P) -> P
@@ -47,7 +47,7 @@ internal class DebounceBuffers<P>(
         }
     }
 
-    suspend fun flush(key: String) {
+    override suspend fun flush(key: String) {
         val normalized = key.trim().lowercase()
         val buffer =
             mutex.withLock {
@@ -57,6 +57,10 @@ internal class DebounceBuffers<P>(
                         ?.let { buffers.remove(it.key) }
             }
         buffer?.let { release(it) }
+    }
+
+    override suspend fun flushAll() {
+        drain().forEach { release(it) }
     }
 
     /** Removes every buffer without sending it; [release] each to send it. */

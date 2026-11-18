@@ -3,6 +3,7 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
+import app.hononeko.notifier.domain.port.outbound.ClusterStatePort
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.MediaServerHealthPort
 import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
@@ -39,7 +40,9 @@ data class MediaServerStatusConfig(
     val recoverySeconds: Long = 3600,
     val pinEnabled: Boolean = true,
     /** The time zone the card's times are shown in. */
-    val zone: ZoneId = ZoneId.systemDefault()
+    val zone: ZoneId = ZoneId.systemDefault(),
+    /** How often a standby replica checks the lock for a crashed leader when heartbeats are active. */
+    val standbyCheckSeconds: Long = 5L
 )
 
 enum class ServerStatus { UP, DOWN }
@@ -67,7 +70,9 @@ data class MediaServerStatusState(
     /** Whether the message is pinned; a message sent while pinning was off is pinned once it's turned on. */
     val pinned: Boolean = false,
     /** Whether the currently rendered message still includes the `"Back up at ... (downtime: ...)"` banner. */
-    val renderedRecovery: Boolean = false
+    val renderedRecovery: Boolean = false,
+    /** Monotonic state version used for fenced compare-and-set saves across replicas. */
+    val version: Long = 0L
 ) {
     fun needsRender(
         nextStatus: ServerStatus,
@@ -101,7 +106,8 @@ class MediaServerStatusMonitor(
     private val stateStore: StateStorePort,
     private val config: MediaServerStatusConfig,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val engine: () -> TemplateEngine = { CardTemplates.templateEngine }
+    private val engine: () -> TemplateEngine = { CardTemplates.templateEngine },
+    private val isOwnerAlive: (suspend (String) -> Boolean)? = null
 ) {
     companion object {
         const val STATE_KEY = "media_server:status"
@@ -133,8 +139,14 @@ class MediaServerStatusMonitor(
         job =
             scope.launch {
                 while (isActive) {
-                    tickSafely()
-                    delay(config.pollIntervalSeconds * 1000)
+                    val activeOwner = tickSafely()
+                    val delaySeconds =
+                        if (!activeOwner && isOwnerAlive != null) {
+                            minOf(config.pollIntervalSeconds, config.standbyCheckSeconds)
+                        } else {
+                            config.pollIntervalSeconds
+                        }
+                    delay(delaySeconds * 1000)
                 }
             }
     }
@@ -146,28 +158,41 @@ class MediaServerStatusMonitor(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private suspend fun tickSafely() {
+    private suspend fun tickSafely(): Boolean =
         try {
             tick()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.warn("Media server status check failed unexpectedly: {}", e.message, e)
+            true
         }
-    }
 
     /** One check: polls the server, moves the status on, and renders the message when it needs it. */
-    suspend fun tick() {
-        when (stateStore.renewLock(LOCK_KEY, config.ownerId, lockTtlSeconds, clock())) {
+    suspend fun tick(): Boolean {
+        when (stateStore.renewOrTakeoverStatusLock(config.ownerId, lockTtlSeconds, clock(), isOwnerAlive)) {
             LockRenewal.RENEWED -> Unit
-            LockRenewal.LOST -> return logger.debug("Another instance monitors the media server")
+            LockRenewal.LOST -> {
+                logger.debug("Another instance monitors the media server")
+                return false
+            }
             // Without the store, the message id is unknown and a new message would be pinned on every check.
-            LockRenewal.STORE_UNAVAILABLE -> return logger.debug("State store unavailable; skipping status check")
+            LockRenewal.STORE_UNAVAILABLE -> {
+                logger.debug("State store unavailable; skipping status check")
+                return false
+            }
         }
         val health = healthCheck.checkHealth()
+        // Re-check lock after the health check HTTP call so a paused pod cannot send a duplicate recovery card.
+        if (stateStore.renewLock(LOCK_KEY, config.ownerId, lockTtlSeconds, clock()) == LockRenewal.LOST) {
+            logger.warn("Lost media server status lock during health check; skipping render")
+            return false
+        }
         val now = clock()
-        val next = advance(states.load(), health, now)
-        states.save(render(next, now))
+        val loaded = states.loadWithRaw()
+        val next = advance(loaded.state, health, now)
+        states.save(render(next, now), loaded.raw)
+        return true
     }
 
     /** The state after a check at [now] with [health]. */
@@ -331,6 +356,34 @@ private fun DomainError.MediaServerError.describe(): String =
         is DomainError.MediaServerError.Unreachable -> reason.take(MAX_ERROR_LENGTH)
     }
 
+private suspend fun StateStorePort.renewOrTakeoverStatusLock(
+    ownerId: String,
+    ttlSeconds: Long,
+    now: Long,
+    isOwnerAlive: (suspend (String) -> Boolean)?
+): LockRenewal {
+    val renewal = renewLock(MediaServerStatusMonitor.LOCK_KEY, ownerId, ttlSeconds, now)
+    if (renewal != LockRenewal.LOST || isOwnerAlive == null) return renewal
+    val cluster = this as? ClusterStatePort ?: return renewal
+    val currentOwner = get(MediaServerStatusMonitor.LOCK_KEY, now)
+    val dead = currentOwner != null && currentOwner != ownerId && !isOwnerAlive(currentOwner)
+    val taken =
+        dead &&
+            cluster.takeoverLock(
+                MediaServerStatusMonitor.LOCK_KEY,
+                currentOwner,
+                ownerId,
+                ttlSeconds,
+                now
+            )
+    return if (taken) LockRenewal.RENEWED else LockRenewal.LOST
+}
+
+private data class LoadedStatusState(
+    val state: MediaServerStatusState,
+    val raw: String?
+)
+
 /** The monitor's state in the state store, as JSON under [MediaServerStatusMonitor.STATE_KEY]. */
 private class StatusStates(
     private val stateStore: StateStorePort,
@@ -338,18 +391,34 @@ private class StatusStates(
 ) {
     private val logger = LoggerFactory.getLogger(MediaServerStatusMonitor::class.java)
     private val json = Json { ignoreUnknownKeys = true }
+    private val cluster = stateStore as? ClusterStatePort
 
-    suspend fun load(): MediaServerStatusState {
-        val raw = stateStore.get(MediaServerStatusMonitor.STATE_KEY, clock()) ?: return MediaServerStatusState()
-        return runCatching { json.decodeFromString(MediaServerStatusState.serializer(), raw) }
-            .getOrElse {
-                logger.warn("Ignoring unreadable media server status state: {}", it.message)
-                MediaServerStatusState()
-            }
+    suspend fun loadWithRaw(): LoadedStatusState {
+        val raw =
+            stateStore.get(MediaServerStatusMonitor.STATE_KEY, clock())
+                ?: return LoadedStatusState(MediaServerStatusState(), null)
+        val parsed =
+            runCatching { json.decodeFromString(MediaServerStatusState.serializer(), raw) }
+                .getOrElse {
+                    logger.warn("Ignoring unreadable media server status state: {}", it.message)
+                    MediaServerStatusState()
+                }
+        return LoadedStatusState(parsed, raw)
     }
 
-    suspend fun save(state: MediaServerStatusState) {
-        val encoded = json.encodeToString(MediaServerStatusState.serializer(), state)
-        stateStore.set(MediaServerStatusMonitor.STATE_KEY, encoded, null, clock())
+    suspend fun save(
+        state: MediaServerStatusState,
+        previousRaw: String?
+    ) {
+        val versioned = state.copy(version = state.version + 1)
+        val encoded = json.encodeToString(MediaServerStatusState.serializer(), versioned)
+        val now = clock()
+        if (previousRaw != null && cluster != null) {
+            if (!cluster.compareAndSet(MediaServerStatusMonitor.STATE_KEY, previousRaw, encoded, null, now)) {
+                logger.warn("Media server status state changed concurrently; skipping stale write")
+            }
+        } else {
+            stateStore.set(MediaServerStatusMonitor.STATE_KEY, encoded, null, now)
+        }
     }
 }

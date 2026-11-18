@@ -916,4 +916,109 @@ class DownloadTrackerEngineTest {
             assertFalse(survivorJob.isCancelled, "the surviving loop must keep running")
             assertTrue(store.get("h1")?.job === survivorJob)
         }
+
+    @Test
+    fun `fencing aborts stale card edit if lease was lost during fetchProgress`() =
+        runTest {
+            val store = InMemoryStateStore()
+            val scope = TestScope(StandardTestDispatcher(testScheduler))
+            var stolen = false
+            val slowClient =
+                FakeTorrentClient { hash ->
+                    if (!stolen) {
+                        stolen = true
+                        kotlinx.coroutines.runBlocking {
+                            store.releaseLock("lock:track:$hash", "pod-a")
+                            store.acquireLock("lock:track:$hash", "pod-b", 30)
+                        }
+                    }
+                    halfway(hash)
+                }
+            val a = Pod("pod-a", store, scope, client = slowClient)
+            a.engine.track("h1", leaseGrab)
+
+            scope.advanceTimeBy(6_000)
+
+            assertFalse(a.engine.isTracking("h1"))
+            assertTrue(a.publisher.progressUpdates.isEmpty(), "stale pod must not edit the card after losing lease")
+            assertTrue(a.publisher.completedCards.isEmpty())
+            assertTrue(a.publisher.cancelledCards.isEmpty())
+        }
+
+    @Test
+    fun `killing pod A lets pod B take over via SharedTrackerRegistry and complete the card`() =
+        runTest {
+            var now = 1_000_000L
+            val crashedScope = TestScope(StandardTestDispatcher(testScheduler))
+            val standbyScope = TestScope(StandardTestDispatcher(testScheduler))
+            val store = InMemoryStateStore()
+            val publisher = newPublisher()
+
+            val hbA = PodHeartbeat(store, "pod-a", ttlSeconds = 9L, clock = { now })
+            val hbB = PodHeartbeat(store, "pod-b", ttlSeconds = 9L, clock = { now })
+            hbA.beat()
+            hbB.beat()
+
+            val localA = InMemoryActiveTrackerStore()
+            val localB = InMemoryActiveTrackerStore()
+            val sharedA = SharedTrackerRegistry(store, localA, "pod-a", hbA::isAlive, clock = { now })
+            val sharedB = SharedTrackerRegistry(store, localB, "pod-b", hbB::isAlive, clock = { now })
+
+            var complete = false
+            val client =
+                FakeTorrentClient { hash ->
+                    Either.Right(
+                        DownloadItemProgress(
+                            id = hash,
+                            name = "Severance",
+                            progressPercent = if (complete) 100.0 else 40.0,
+                            progressRatio = if (complete) 1.0 else 0.4,
+                            downloadSpeedBytesPerSec = 1_000L,
+                            uploadSpeedBytesPerSec = 0L,
+                            etaSeconds = 30L,
+                            totalSizeBytes = 1_000L,
+                            downloadedBytes = if (complete) 1_000L else 400L,
+                            state = if (complete) DownloadState.COMPLETED else DownloadState.DOWNLOADING
+                        )
+                    )
+                }
+
+            val engineA =
+                DownloadTrackerEngine(
+                    downloadClient = client,
+                    notificationPublisher = publisher,
+                    activeTrackerStore = localA,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 5),
+                    scope = crashedScope,
+                    leases = TrackingLeases(store, "pod-a", 30, { now }, hbA::isAlive),
+                    sharedTrackers = sharedA
+                )
+            val engineB =
+                DownloadTrackerEngine(
+                    downloadClient = client,
+                    notificationPublisher = publisher,
+                    activeTrackerStore = localB,
+                    config = DownloadTrackerConfig(pollIntervalSeconds = 5),
+                    scope = standbyScope,
+                    leases = TrackingLeases(store, "pod-b", 30, { now }, hbB::isAlive),
+                    sharedTrackers = sharedB
+                )
+
+            assertEquals(Either.Right(TrackingStart.STARTED), engineA.track("h1", leaseGrab))
+            assertEquals(1, publisher.sentCards.size)
+            assertEquals(1, sharedB.allSnapshots().size)
+
+            // Pod A crashes (stops heartbeating); 10s later Pod B sees dead owner and takes over immediately.
+            now += 10_000L
+            hbB.beat()
+            assertEquals(1, sharedB.sweepOrphanedTrackers(engineB))
+            assertTrue(engineB.isTracking("h1"))
+
+            // Pod B finishes the download on the existing live card (still only 1 initial card sent).
+            complete = true
+            standbyScope.advanceTimeBy(6_000L)
+            assertEquals(1, publisher.sentCards.size)
+            assertEquals(1, publisher.completedCards.size)
+            assertEquals(0, sharedB.allSnapshots().size)
+        }
 }

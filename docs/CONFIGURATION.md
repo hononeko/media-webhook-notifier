@@ -86,17 +86,17 @@ Persistent state storage across restarts and rollouts, enabling multi-instance t
 | `STATE_TIMEOUT_MILLIS` | `2000` | Connection and socket timeout in milliseconds |
 | `STATE_MAX_POOL_SIZE` | `16` | Maximum connection pool size |
 
-### Rollouts and replicas
-With `STATE_STORE_TYPE=valkey` (or `redis`), each live download card is edited by one instance at a time. Instances coordinate through a short lease per download, renewed on every progress tick, so a rolling update needs no downtime:
+### Rollouts and multi-replica HA
+With `STATE_STORE_TYPE=valkey` (or `redis`), you can run **2 or more permanent replicas** behind a single Service (recommended: **2 replicas**; use `TELEGRAM_UPDATES_MODE=webhook` if `TELEGRAM_INTERACTIVE_ENABLED=true`):
 
-- **Rollout:** the new instance leaves the old instance's cards alone while it's still running, and continues the *same* cards within about 35 seconds of the old one stopping.
-- **Crash:** if an instance dies without shutting down, another instance takes its cards over within about 65 seconds, once the leases expire.
-- **Valkey hiccups:** tracking carries on; a lease that lapsed during an outage is taken back on the next tick.
-- **Finished while nobody watched:** a download that completes during a handoff or downtime gets its completion card, and its tags removed, at the next sweep.
+- **Pod heartbeats & fast crash takeover:** each replica refreshes a short-lived `pod:alive:<id>` key every 3s (9s TTL) and removes it on graceful shutdown. When a replica stops or crashes, a peer detects the dead owner and takes over live download cards and `MediaServerStatusMonitor` polling within ~3–12 seconds instead of waiting for long lease TTLs.
+- **Fencing:** replicas re-verify lease ownership after download-client or media-server I/O before sending card edits, and persist `MediaServerStatusState` / shared tracker updates via atomic compare-and-set so a paused pod cannot send duplicate recovery cards or overwrite newer state.
+- **Cross-pod event deduplication:** Servarr `Grab` and `Import` webhook retries carrying a `downloadId` are deduplicated in Valkey (`EventDeduplicator`) before entering the debouncer or tracker, complementing `MediaAvailableDeduplicator` for Plex / Jellyfin.
+- **Distributed season-pack debouncing:** rapid multi-episode bursts (`servarr.grab`, `servarr.import`, `media_server.available`) share their 5s sliding-window buffers in Valkey so episodes split across replicas still merge into one card and flush exactly once.
+- **Shared tracker view & rate limiting:** `SharedTrackerRegistry` aggregates active trackers across all pods (`/metrics` reports `clusterActiveTrackersCount` and `media_webhook_cluster_active_tracking_jobs`). `InboundRateLimiter` remains per-replica (`N × SERVER_RATE_LIMIT_PER_MINUTE` total cluster capacity).
+- **Finished while nobody watched:** a download that completes during a handoff or downtime gets its completion card, and its tags removed, on takeover or the next reconciliation sweep.
 
-With the default `memory` store, instances can't see each other: during a rollout overlap both may update the same card for a moment. After a restart the same card still continues, because shutdown keeps the download's resume tags.
-
-Running several replicas permanently isn't a tuned setup yet: grab webhooks and season-pack batching are handled per instance.
+With the default `memory` store, instances can't see each other: during a rollout overlap both may update the same card for a moment, and permanent multi-replica deployments are not supported. After a single-pod restart the same card still continues, because shutdown keeps the download's resume tags.
 
 ## Media Server (Plex & Jellyfin)
 | Variable | Default | Description |

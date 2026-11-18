@@ -220,4 +220,51 @@ class ValkeyStateStoreTest {
             assertTrue(store.acquireLock("k", "a", 30))
             assertFalse(store.acquireLock("k", "b", 30))
         }
+
+    @Test
+    fun `cluster operations work in fallback mode and delegate to Jedis when connected`() =
+        runTest {
+            val fallbackOnly = ValkeyStateStore(config = StateConfig(url = ""))
+            fallbackOnly.set("debounce:grab:1", "a")
+            assertTrue(fallbackOnly.compareAndSet("debounce:grab:1", "a", "b", ttlSeconds = 30))
+            assertEquals(listOf("debounce:grab:1"), fallbackOnly.listKeys("debounce:grab:"))
+            assertTrue(fallbackOnly.takeoverLock("lock:x", "old", "new", 30))
+            assertTrue(fallbackOnly.deleteIfEquals("debounce:grab:1", "b"))
+
+            val mockJedis = mockk<UnifiedJedis>(relaxed = true)
+            val store =
+                ValkeyStateStore(
+                    config = StateConfig(url = "redis://localhost:6379", keyPrefix = "mwn:"),
+                    injectedJedis = mockJedis
+                )
+
+            every { mockJedis.eval(any<String>(), eq(listOf("mwn:k")), eq(listOf("v1", "v2", "30"))) } returns 1L
+            assertTrue(store.compareAndSet("k", "v1", "v2", ttlSeconds = 30))
+
+            every { mockJedis.eval(any<String>(), eq(listOf("mwn:k")), eq(listOf("v2"))) } returns 1L
+            assertTrue(store.deleteIfEquals("k", "v2"))
+
+            every {
+                mockJedis.eval(
+                    any<String>(),
+                    eq(listOf("mwn:lock:1")),
+                    eq(listOf("pod-a", "pod-b", "30"))
+                )
+            } returns
+                1L
+            assertTrue(store.takeoverLock("lock:1", "pod-a", "pod-b", 30))
+
+            val scanResult = ScanResult(ScanParams.SCAN_POINTER_START, listOf("mwn:tracker:active:h1"))
+            every { mockJedis.scan(eq(ScanParams.SCAN_POINTER_START), any<ScanParams>()) } returns scanResult
+            assertEquals(listOf("tracker:active:h1"), store.listKeys("tracker:active:"))
+
+            every { mockJedis.eval(any<String>(), any<List<String>>(), any<List<String>>()) } throws
+                JedisConnectionException("down")
+            assertFalse(store.compareAndSet("k", "v1", "v2"))
+            assertFalse(store.deleteIfEquals("k", "v2"))
+            assertFalse(store.takeoverLock("lock:1", "pod-a", "pod-b", 30))
+
+            every { mockJedis.scan(any<String>(), any<ScanParams>()) } throws JedisConnectionException("down")
+            assertEquals(emptyList(), store.listKeys("tracker:active:"))
+        }
 }

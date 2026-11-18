@@ -4,6 +4,7 @@ import app.hononeko.notifier.adapter.inbound.web.EventRail
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
+import app.hononeko.notifier.domain.service.SharedTrackerRegistry
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -60,6 +61,7 @@ data class MetricsDto(
     val status: String = "UP",
     val uptimeMillis: Long,
     val activeTrackersCount: Int,
+    val clusterActiveTrackersCount: Int? = null,
     val eventRail: EventRailMetricsDto,
     val reconciliation: ReconciliationMetricsDto = ReconciliationMetricsDto(),
     val memory: MemoryMetricsDto,
@@ -72,7 +74,8 @@ class HealthController(
     private val downloadTracker: DownloadTrackerEngine? = null,
     private val reconciliationService: DownloadReconciliationService? = null,
     private val stateStore: StateStorePort? = null,
-    private val startTimeMillis: Long = System.currentTimeMillis()
+    private val startTimeMillis: Long = System.currentTimeMillis(),
+    private val sharedTrackers: SharedTrackerRegistry? = null
 ) {
     companion object {
         const val SERVICE_NAME = app.hononeko.notifier.adapter.inbound.web.controller.SERVICE_NAME
@@ -180,12 +183,14 @@ class HealthController(
 
         val uptime = System.currentTimeMillis() - startTimeMillis
         val activeTrackers = downloadTracker?.activeTrackerCount() ?: 0
+        val clusterActiveTrackers = sharedTrackers?.allSnapshots()?.size
 
         return MetricsDto(
             service = SERVICE_NAME,
             status = "UP",
             uptimeMillis = uptime,
             activeTrackersCount = activeTrackers,
+            clusterActiveTrackersCount = clusterActiveTrackers,
             eventRail =
                 EventRailMetricsDto(
                     closed = eventRail?.isClosed ?: false,
@@ -234,49 +239,83 @@ class HealthController(
         val reconRuns = reconciliationService?.runCount ?: 0L
         val reconResumed = reconciliationService?.resumedCount ?: 0L
         val stateHealthy = stateStore?.healthCheck()
+        val clusterActiveTrackers = sharedTrackers?.allSnapshots()?.size
 
         return buildString {
-            appendLine("# HELP process_uptime_seconds Process uptime in seconds")
-            appendLine("# TYPE process_uptime_seconds gauge")
-            appendLine("process_uptime_seconds $uptimeSeconds")
-            appendLine("# HELP jvm_memory_used_bytes Used JVM memory in bytes")
-            appendLine("# TYPE jvm_memory_used_bytes gauge")
-            appendLine("jvm_memory_used_bytes $usedMemory")
-            appendLine("# HELP jvm_memory_free_bytes Free JVM memory in bytes")
-            appendLine("# TYPE jvm_memory_free_bytes gauge")
-            appendLine("jvm_memory_free_bytes $freeMemory")
-            appendLine("# HELP jvm_memory_total_bytes Total allocated JVM memory in bytes")
-            appendLine("# TYPE jvm_memory_total_bytes gauge")
-            appendLine("jvm_memory_total_bytes $totalMemory")
-            appendLine("# HELP jvm_memory_max_bytes Maximum JVM memory limit in bytes")
-            appendLine("# TYPE jvm_memory_max_bytes gauge")
-            appendLine("jvm_memory_max_bytes $maxMemory")
-            appendLine("# HELP media_webhook_active_tracking_jobs Number of active torrent tracking jobs")
-            appendLine("# TYPE media_webhook_active_tracking_jobs gauge")
-            appendLine("media_webhook_active_tracking_jobs $activeTrackers")
-            appendLine("# HELP media_webhook_event_rail_running Event rail running state (1 = running, 0 = stopped)")
-            appendLine("# TYPE media_webhook_event_rail_running gauge")
-            appendLine("media_webhook_event_rail_running $railRunning")
-            appendLine("# HELP media_webhook_event_rail_closed Event rail closed state (1 = closed, 0 = open)")
-            appendLine("# TYPE media_webhook_event_rail_closed gauge")
-            appendLine("media_webhook_event_rail_closed $railClosed")
-            appendLine("# HELP media_webhook_event_rail_workers Number of active EventRail worker coroutines")
-            appendLine("# TYPE media_webhook_event_rail_workers gauge")
-            appendLine("media_webhook_event_rail_workers $workers")
-            appendLine("# HELP media_webhook_dead_letter_total Number of items currently in the Dead Letter Buffer")
-            appendLine("# TYPE media_webhook_dead_letter_total gauge")
-            appendLine("media_webhook_dead_letter_total $deadLetterCount")
-            appendLine("# HELP media_webhook_reconciliation_runs_total Total reconciliation sweeps executed")
-            appendLine("# TYPE media_webhook_reconciliation_runs_total counter")
-            appendLine("media_webhook_reconciliation_runs_total $reconRuns")
-            appendLine("# HELP media_webhook_reconciliation_resumed_total Total downloads resumed by reconciliation")
-            appendLine("# TYPE media_webhook_reconciliation_resumed_total counter")
-            appendLine("media_webhook_reconciliation_resumed_total $reconResumed")
+            promMetric("process_uptime_seconds", "Process uptime in seconds", "gauge", uptimeSeconds)
+            promMetric("jvm_memory_used_bytes", "Used JVM memory in bytes", "gauge", usedMemory)
+            promMetric("jvm_memory_free_bytes", "Free JVM memory in bytes", "gauge", freeMemory)
+            promMetric("jvm_memory_total_bytes", "Total allocated JVM memory in bytes", "gauge", totalMemory)
+            promMetric("jvm_memory_max_bytes", "Maximum JVM memory limit in bytes", "gauge", maxMemory)
+            promMetric(
+                "media_webhook_active_tracking_jobs",
+                "Number of active torrent tracking jobs",
+                "gauge",
+                activeTrackers
+            )
+            if (clusterActiveTrackers != null) {
+                promMetric(
+                    "media_webhook_cluster_active_tracking_jobs",
+                    "Active tracking jobs across all replicas",
+                    "gauge",
+                    clusterActiveTrackers
+                )
+            }
+            promMetric(
+                "media_webhook_event_rail_running",
+                "Event rail running state (1 = running, 0 = stopped)",
+                "gauge",
+                railRunning
+            )
+            promMetric(
+                "media_webhook_event_rail_closed",
+                "Event rail closed state (1 = closed, 0 = open)",
+                "gauge",
+                railClosed
+            )
+            promMetric(
+                "media_webhook_event_rail_workers",
+                "Number of active EventRail worker coroutines",
+                "gauge",
+                workers
+            )
+            promMetric(
+                "media_webhook_dead_letter_total",
+                "Number of items currently in the Dead Letter Buffer",
+                "gauge",
+                deadLetterCount
+            )
+            promMetric(
+                "media_webhook_reconciliation_runs_total",
+                "Total reconciliation sweeps executed",
+                "counter",
+                reconRuns
+            )
+            promMetric(
+                "media_webhook_reconciliation_resumed_total",
+                "Total downloads resumed by reconciliation",
+                "counter",
+                reconResumed
+            )
             if (stateHealthy != null) {
-                appendLine("# HELP media_webhook_state_store_healthy State store health (1 = healthy, 0 = unhealthy)")
-                appendLine("# TYPE media_webhook_state_store_healthy gauge")
-                appendLine("media_webhook_state_store_healthy ${if (stateHealthy) 1 else 0}")
+                promMetric(
+                    "media_webhook_state_store_healthy",
+                    "State store health (1 = healthy, 0 = unhealthy)",
+                    "gauge",
+                    if (stateHealthy) 1 else 0
+                )
             }
         }
     }
+}
+
+private fun StringBuilder.promMetric(
+    name: String,
+    help: String,
+    type: String,
+    value: Any
+) {
+    appendLine("# HELP $name $help")
+    appendLine("# TYPE $name $type")
+    appendLine("$name $value")
 }

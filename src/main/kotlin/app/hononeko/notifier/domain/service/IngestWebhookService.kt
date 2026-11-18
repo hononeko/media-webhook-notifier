@@ -29,6 +29,12 @@ class IngestWebhookService(
     private val isEventEnabled: (String) -> Boolean = { CardTemplates.templateEngine.isEnabled(it) }
 ) : IngestWebhookUseCase {
     private val logger = LoggerFactory.getLogger(IngestWebhookService::class.java)
+    private var eventDeduplicator: EventDeduplicator? = null
+
+    fun withDeduplicator(deduplicator: EventDeduplicator): IngestWebhookService =
+        apply {
+            this.eventDeduplicator = deduplicator
+        }
 
     override suspend fun execute(payload: MediaPayload): Either<DomainError, Unit> =
         either {
@@ -40,27 +46,24 @@ class IngestWebhookService(
                 return@either
             }
 
+            if (eventDeduplicator?.tryAcquire(payload) == false) {
+                logger.info(
+                    "Skipping duplicate {} from {}: {}",
+                    payload.eventType,
+                    payload.source,
+                    eventDeduplicator?.computeKey(payload)
+                )
+                return@either
+            }
+
+            dispatch(payload).bind()
+        }
+
+    private suspend fun dispatch(payload: MediaPayload): Either<DomainError, Unit> =
+        either {
             when (payload) {
-                is MediaPayload.ArrGrab -> {
-                    if (seasonDebouncer != null) {
-                        logger.debug("Routing ArrGrab to SeasonDebouncer for hash: {}", payload.downloadId)
-                        seasonDebouncer.submit(payload)
-                    } else {
-                        trackDownloadUseCase.track(payload.downloadId, payload).bind()
-                    }
-                }
-                is MediaPayload.ArrDownload -> {
-                    if (seasonDebouncer != null) {
-                        logger.debug(
-                            "Routing ArrDownload to SeasonDebouncer for: {} (season {})",
-                            payload.seriesOrMovieTitle,
-                            payload.seasonNumber
-                        )
-                        seasonDebouncer.submit(payload)
-                    } else {
-                        announceMediaImportedUseCase.announce(payload).bind()
-                    }
-                }
+                is MediaPayload.ArrGrab -> dispatchGrab(payload).bind()
+                is MediaPayload.ArrDownload -> dispatchDownload(payload).bind()
                 is MediaPayload.PlexLibraryNew,
                 is MediaPayload.JellyfinItemAdded -> {
                     if (seasonDebouncer != null && seasonDebouncer.supportsAvailable) {
@@ -70,15 +73,39 @@ class IngestWebhookService(
                         announceMediaAvailableUseCase.announce(payload).bind()
                     }
                 }
-                is MediaPayload.ServarrHealth -> {
-                    alertUseCases.systemHealth?.announce(payload)?.bind()
-                }
-                is MediaPayload.ServarrManualInteraction -> {
-                    alertUseCases.manualInteraction?.announce(payload)?.bind()
-                }
-                is MediaPayload.SeerrEvent -> {
-                    alertUseCases.mediaRequest?.announce(payload)?.bind()
-                }
+                is MediaPayload.ServarrHealth -> alertUseCases.systemHealth?.announce(payload)?.bind()
+                is MediaPayload.ServarrManualInteraction -> alertUseCases.manualInteraction?.announce(payload)?.bind()
+                is MediaPayload.SeerrEvent -> alertUseCases.mediaRequest?.announce(payload)?.bind()
+            }
+        }
+
+    private suspend fun dispatchGrab(payload: MediaPayload.ArrGrab): Either<DomainError, Unit> =
+        either {
+            if (seasonDebouncer != null) {
+                logger.debug("Routing ArrGrab to SeasonDebouncer for hash: {}", payload.downloadId)
+                seasonDebouncer.submit(payload)
+            } else {
+                trackDownloadUseCase
+                    .track(payload.downloadId, payload)
+                    .onLeft { eventDeduplicator?.release(payload) }
+                    .bind()
+            }
+        }
+
+    private suspend fun dispatchDownload(payload: MediaPayload.ArrDownload): Either<DomainError, Unit> =
+        either {
+            if (seasonDebouncer != null) {
+                logger.debug(
+                    "Routing ArrDownload to SeasonDebouncer for: {} (season {})",
+                    payload.seriesOrMovieTitle,
+                    payload.seasonNumber
+                )
+                seasonDebouncer.submit(payload)
+            } else {
+                announceMediaImportedUseCase
+                    .announce(payload)
+                    .onLeft { eventDeduplicator?.release(payload) }
+                    .bind()
             }
         }
 }

@@ -105,14 +105,16 @@ class DownloadReconciliationService(
     /** The card a tagged download belongs to: its message, in its own chat or the default one. */
     private data class CardRef(
         val channelOrChatId: String,
-        val messageId: String
+        val messageId: String,
+        val topicId: Long? = null
     )
 
     private fun cardOf(torrent: DownloadItemProgress): CardRef =
         CardRef(
             channelOrChatId =
                 torrent.tag(tagPrefix, "chat")?.ifBlank { null } ?: notificationPublisher.defaultChannelOrChatId,
-            messageId = torrent.tag(tagPrefix, "msg").orEmpty()
+            messageId = torrent.tag(tagPrefix, "msg").orEmpty(),
+            topicId = torrent.tag(tagPrefix, "topic")?.toLongOrNull()
         )
 
     /** Resumes the live card that one or more tagged downloads (a season pack, say) belong to. */
@@ -128,7 +130,8 @@ class DownloadReconciliationService(
                 providerId = notificationPublisher.providerId,
                 channelOrChatId = card.channelOrChatId,
                 messageReferenceId = card.messageId,
-                isPhoto = isPhoto
+                isPhoto = isPhoto,
+                topicId = card.topicId
             )
         logger.info(
             "Reconciliation found existing tracked torrent(s): {} (hashes: {}, msgId: {}, isPhoto: {}). " +
