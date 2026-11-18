@@ -162,16 +162,33 @@ class TelegramPublisherAdapter(
     override suspend fun pinMessage(
         handle: NotificationHandle,
         silent: Boolean
-    ): Either<DomainError.NotificationError, Unit> {
-        val msgId =
-            handle.messageReferenceId.toLongOrNull()
-                ?: return Either.Left(
-                    DomainError.NotificationError.DeliveryFailed(
-                        providerId,
-                        "cannot pin '${handle.messageReferenceId}': not a Telegram message id"
-                    )
+    ): Either<DomainError.NotificationError, Unit> =
+        when (val msgId = requireTelegramMsgId(handle, "pin")) {
+            is Either.Left -> msgId
+            is Either.Right -> api.pinChatMessage(handle.channelOrChatId.ifBlank { config.chatId }, msgId.value, silent)
+        }
+
+    override suspend fun deleteMessage(handle: NotificationHandle): Either<DomainError.NotificationError, Unit> =
+        when (val msgId = requireTelegramMsgId(handle, "delete")) {
+            is Either.Left -> msgId
+            is Either.Right -> api.deleteMessage(handle.channelOrChatId.ifBlank { config.chatId }, msgId.value)
+        }
+
+    private fun requireTelegramMsgId(
+        handle: NotificationHandle,
+        action: String
+    ): Either<DomainError.NotificationError, Long> {
+        val msgId = handle.messageReferenceId.toLongOrNull()
+        return if (msgId != null) {
+            Either.Right(msgId)
+        } else {
+            Either.Left(
+                DomainError.NotificationError.DeliveryFailed(
+                    providerId,
+                    "cannot $action '${handle.messageReferenceId}': not a Telegram message id"
                 )
-        return api.pinChatMessage(handle.channelOrChatId.ifBlank { config.chatId }, msgId, silent)
+            )
+        }
     }
 
     override suspend fun cancelProgress(

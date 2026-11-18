@@ -34,12 +34,14 @@ internal object MediaServerConfigLoader {
                         "MEDIA_SERVER_HEALTH_GRACE_SECONDS"
                     ),
                 refreshSeconds = reader.getLong(defaults.refreshSeconds, "MEDIA_SERVER_STATUS_REFRESH_SECONDS"),
+                recoverySeconds = reader.getLong(defaults.recoverySeconds, "MEDIA_SERVER_STATUS_RECOVERY_SECONDS"),
                 pinEnabled = reader.getBoolean(defaults.pinEnabled, "MEDIA_SERVER_STATUS_PIN_ENABLED")
             )
         if (settings.enabled) {
             require(settings.pollIntervalSeconds > 0) { "MEDIA_SERVER_STATUS_POLL_INTERVAL_SECONDS must be positive" }
             require(settings.graceSeconds >= 0) { "MEDIA_SERVER_STATUS_GRACE_SECONDS must not be negative" }
             require(settings.refreshSeconds > 0) { "MEDIA_SERVER_STATUS_REFRESH_SECONDS must be positive" }
+            require(settings.recoverySeconds >= 0) { "MEDIA_SERVER_STATUS_RECOVERY_SECONDS must not be negative" }
         }
         return settings
     }

@@ -76,6 +76,14 @@ interface NotificationPublisherPort {
         return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
     }
 
+    /**
+     * Deletes an already sent message in its chat. Publishers without message deletion report it as a failure.
+     */
+    suspend fun deleteMessage(handle: NotificationHandle): Either<DomainError.NotificationError, Unit> {
+        val reason = "deleteMessage is not supported by $providerId"
+        return Either.Left(DomainError.NotificationError.DeliveryFailed(providerId, reason))
+    }
+
     suspend fun cancelProgress(
         handle: NotificationHandle,
         reasonCard: NotificationCard

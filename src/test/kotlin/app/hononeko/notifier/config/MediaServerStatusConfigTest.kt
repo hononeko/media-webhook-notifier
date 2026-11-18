@@ -17,6 +17,7 @@ class MediaServerStatusConfigTest {
         assertEquals(30, mediaServer.status.pollIntervalSeconds)
         assertEquals(90, mediaServer.status.graceSeconds)
         assertEquals(300, mediaServer.status.refreshSeconds)
+        assertEquals(3600, mediaServer.status.recoverySeconds)
         assertTrue(mediaServer.status.pinEnabled)
         assertEquals("Plex", mediaServer.displayName)
     }
@@ -32,15 +33,28 @@ class MediaServerStatusConfigTest {
                         "MEDIA_SERVER_STATUS_POLL_INTERVAL_SECONDS" to "15",
                         "MEDIA_SERVER_HEALTH_GRACE_SECONDS" to "60",
                         "MEDIA_SERVER_STATUS_REFRESH_SECONDS" to "120",
+                        "MEDIA_SERVER_STATUS_RECOVERY_SECONDS" to "900",
                         "MEDIA_SERVER_STATUS_PIN_ENABLED" to "false"
                     )
                 ).mediaServer
-        assertEquals(MediaServerStatusSettings(true, 15, 60, 120, false), mediaServer.status)
+        assertEquals(MediaServerStatusSettings(true, 15, 60, 120, 900, false), mediaServer.status)
         assertEquals("Jellyfin", mediaServer.displayName)
 
         val named = ConfigLoader.load(mapOf("MEDIA_SERVER_NAME" to "Kerrlab Plex")).mediaServer
         assertEquals("Kerrlab Plex", named.displayName)
         assertEquals("Plex", named.typeName)
+    }
+
+    @Test
+    fun `negative recovery seconds fails boot when the monitor is on`() {
+        assertFailsWith<IllegalArgumentException> {
+            ConfigLoader.load(
+                mapOf(
+                    "MEDIA_SERVER_STATUS_MONITOR_ENABLED" to "true",
+                    "MEDIA_SERVER_STATUS_RECOVERY_SECONDS" to "-1"
+                )
+            )
+        }
     }
 
     @Test

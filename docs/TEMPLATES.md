@@ -442,7 +442,6 @@ With `MEDIA_SERVER_STATUS_MONITOR_ENABLED=true` (see [CONFIGURATION.md](CONFIGUR
 events:
   media_server:
     status_online:
-      silent: true
       title: "🟢 {media_server_name} — Online"
       body: |
         ▪ <b>Back up at:</b> {since} (downtime: {downtime})
@@ -458,7 +457,7 @@ events:
         ▪ <b>Last checked:</b> {checked_at}
 ```
 
-Edits never notify anyone; `silent` only applies when the message is first sent (or sent again after someone deleted it). As everywhere, a body line whose tag is empty is left out: before the first outage, the online card has no "Back up at" line.
+Edits never notify anyone. On initial startup or routine refreshes, `status_online` is silent and edited in place; on recovery (`DOWN` → `UP`), unless `status_online.silent: true` is explicitly set, the old pinned message is replaced with a fresh audible message and silently re-pinned so you get a notification. After `MEDIA_SERVER_STATUS_RECOVERY_SECONDS` (default `3600` s), `{since}` and `{downtime}` are cleared and the card is edited in place to drop the "Back up at" line. Before the first outage, the online card likewise omits the "Back up at" line.
 
 | Tag | Description | Example Output |
 | :--- | :--- | :--- |

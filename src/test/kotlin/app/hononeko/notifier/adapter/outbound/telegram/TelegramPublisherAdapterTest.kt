@@ -1308,4 +1308,30 @@ class TelegramPublisherAdapterTest {
             )
             assertEquals("-1003755896456", sent[4].json["chat_id"]!!.jsonPrimitive.content)
         }
+
+    @Test
+    fun `deleteMessage deletes the message in its chat and handles missing or invalid ids`() =
+        runTest {
+            val sent = mutableListOf<Sent>()
+            val adapter =
+                TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent, response = """{"ok":true}"""))
+
+            val result = adapter.deleteMessage(NotificationHandle("telegram", "-1002", "77"))
+            assertEquals(Either.Right(Unit), result)
+            assertTrue(sent.single().path.endsWith("/deleteMessage"), sent.single().path)
+            val payload = sent.single().json
+            assertEquals("-1002", payload["chat_id"]!!.jsonPrimitive.content)
+            assertEquals("77", payload["message_id"]!!.jsonPrimitive.content)
+
+            val gone = """{"ok":false,"error_code":400,"description":"Bad Request: message to delete not found"}"""
+            val goneAdapter =
+                TelegramPublisherAdapter(interactiveConfig, recordingEngine(sent, HttpStatusCode.BadRequest, gone))
+            assertIs<Either.Left<DomainError.NotificationError.MessageNotFound>>(
+                goneAdapter.deleteMessage(NotificationHandle("telegram", "-1002", "77"))
+            )
+
+            assertIs<Either.Left<DomainError.NotificationError.DeliveryFailed>>(
+                adapter.deleteMessage(NotificationHandle("telegram", "-1001", "not-a-number"))
+            )
+        }
 }

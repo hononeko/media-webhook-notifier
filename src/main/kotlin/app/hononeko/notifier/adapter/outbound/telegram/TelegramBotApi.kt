@@ -65,7 +65,12 @@ internal class TelegramBotApi(
         private const val NETWORK_ERROR_MSG = "Network error"
         private const val SEND_RETRY_AFTER_SECONDS = 30
         private const val EDIT_RETRY_AFTER_SECONDS = 5
-        private val MESSAGE_GONE = listOf("message to edit not found", "MESSAGE_ID_INVALID")
+        private val MESSAGE_GONE =
+            listOf(
+                "message to edit not found",
+                "message to delete not found",
+                "MESSAGE_ID_INVALID"
+            )
     }
 
     // Logged under the publisher's name, where these calls used to live.
@@ -180,6 +185,14 @@ internal class TelegramBotApi(
         val messageId: Long,
         @SerialName("disable_notification")
         val disableNotification: Boolean
+    )
+
+    @Serializable
+    private data class DeleteMessageRequest(
+        @SerialName("chat_id")
+        val chatId: String,
+        @SerialName("message_id")
+        val messageId: Long
     )
 
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
@@ -351,6 +364,25 @@ internal class TelegramBotApi(
             either { ensureSuccess(response.status, response.bodyAsText(), EDIT_RETRY_AFTER_SECONDS) }
         } catch (e: IOException) {
             handleDeliveryException("pin", e)
+        }
+    }
+
+    /** Deletes a message; Telegram rejects deletion in supergroups after 48 hours or without permission. */
+    suspend fun deleteMessage(
+        chatId: String,
+        messageId: Long
+    ): Either<DomainError.NotificationError, Unit> {
+        val request = DeleteMessageRequest(chatId = chatId, messageId = messageId)
+        return try {
+            val payload = jsonConfig.encodeToString(DeleteMessageRequest.serializer(), request)
+            val response =
+                httpClient.post("$apiBaseUrl/deleteMessage") {
+                    contentType(ContentType.Application.Json)
+                    setBody(payload)
+                }
+            handleEditResponse(response)
+        } catch (e: IOException) {
+            handleDeliveryException("delete", e)
         }
     }
 
