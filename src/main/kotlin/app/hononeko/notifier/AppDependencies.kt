@@ -133,6 +133,7 @@ private fun buildMediaServerStatus(
                     pollIntervalSeconds = settings.pollIntervalSeconds,
                     graceSeconds = settings.graceSeconds,
                     refreshSeconds = settings.refreshSeconds,
+                    recoverySeconds = settings.recoverySeconds,
                     pinEnabled = settings.pinEnabled
                 )
         )

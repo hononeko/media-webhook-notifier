@@ -162,16 +162,27 @@ class TelegramPublisherAdapter(
     override suspend fun pinMessage(
         handle: NotificationHandle,
         silent: Boolean
+    ): Either<DomainError.NotificationError, Unit> = controlMessage(handle, "pinChatMessage", "pin", silent)
+
+    override suspend fun deleteMessage(handle: NotificationHandle): Either<DomainError.NotificationError, Unit> =
+        controlMessage(handle, "deleteMessage", "delete")
+
+    private suspend fun controlMessage(
+        handle: NotificationHandle,
+        endpoint: String,
+        action: String,
+        silent: Boolean? = null
     ): Either<DomainError.NotificationError, Unit> {
         val msgId =
             handle.messageReferenceId.toLongOrNull()
                 ?: return Either.Left(
                     DomainError.NotificationError.DeliveryFailed(
                         providerId,
-                        "cannot pin '${handle.messageReferenceId}': not a Telegram message id"
+                        "cannot $action '${handle.messageReferenceId}': not a Telegram message id"
                     )
                 )
-        return api.pinChatMessage(handle.channelOrChatId.ifBlank { config.chatId }, msgId, silent)
+        val chatId = handle.channelOrChatId.ifBlank { config.chatId }
+        return api.controlMessage(endpoint, chatId, msgId, silent)
     }
 
     override suspend fun cancelProgress(

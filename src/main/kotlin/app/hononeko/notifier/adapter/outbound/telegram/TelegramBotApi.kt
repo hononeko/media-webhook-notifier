@@ -65,7 +65,12 @@ internal class TelegramBotApi(
         private const val NETWORK_ERROR_MSG = "Network error"
         private const val SEND_RETRY_AFTER_SECONDS = 30
         private const val EDIT_RETRY_AFTER_SECONDS = 5
-        private val MESSAGE_GONE = listOf("message to edit not found", "MESSAGE_ID_INVALID")
+        private val MESSAGE_GONE =
+            listOf(
+                "message to edit not found",
+                "message to delete not found",
+                "MESSAGE_ID_INVALID"
+            )
     }
 
     // Logged under the publisher's name, where these calls used to live.
@@ -173,13 +178,13 @@ internal class TelegramBotApi(
     )
 
     @Serializable
-    private data class PinChatMessageRequest(
+    private data class MessageControlRequest(
         @SerialName("chat_id")
         val chatId: String,
         @SerialName("message_id")
         val messageId: Long,
         @SerialName("disable_notification")
-        val disableNotification: Boolean
+        val disableNotification: Boolean? = null
     )
 
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
@@ -334,23 +339,24 @@ internal class TelegramBotApi(
         }
     }
 
-    /** Pins a message; the bot needs the Pin Messages right in groups and channels. */
-    suspend fun pinChatMessage(
+    /** Sends a message-management call such as `/pinChatMessage` or `/deleteMessage`. */
+    suspend fun controlMessage(
+        endpoint: String,
         chatId: String,
         messageId: Long,
-        silent: Boolean
+        silent: Boolean? = null
     ): Either<DomainError.NotificationError, Unit> {
-        val request = PinChatMessageRequest(chatId = chatId, messageId = messageId, disableNotification = silent)
+        val request = MessageControlRequest(chatId = chatId, messageId = messageId, disableNotification = silent)
         return try {
-            val payload = jsonConfig.encodeToString(PinChatMessageRequest.serializer(), request)
+            val payload = jsonConfig.encodeToString(MessageControlRequest.serializer(), request)
             val response =
-                httpClient.post("$apiBaseUrl/pinChatMessage") {
+                httpClient.post("$apiBaseUrl/$endpoint") {
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }
-            either { ensureSuccess(response.status, response.bodyAsText(), EDIT_RETRY_AFTER_SECONDS) }
+            handleEditResponse(response)
         } catch (e: IOException) {
-            handleDeliveryException("pin", e)
+            handleDeliveryException(endpoint, e)
         }
     }
 

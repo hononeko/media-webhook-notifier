@@ -94,6 +94,7 @@ data class MediaServerStatusSettings(
     val pollIntervalSeconds: Long = 30,
     val graceSeconds: Long = 90,
     val refreshSeconds: Long = 300,
+    val recoverySeconds: Long = 3600,
     val pinEnabled: Boolean = true
 )
 

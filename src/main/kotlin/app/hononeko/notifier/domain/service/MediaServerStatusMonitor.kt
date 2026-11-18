@@ -33,6 +33,10 @@ data class MediaServerStatusConfig(
     val graceSeconds: Long = 90,
     /** How often an unchanged card is refreshed (last check time, the running downtime). */
     val refreshSeconds: Long = 300,
+    /**
+     * How long after recovery the `"Back up at ... (downtime: ...)"` line is kept before editing back to steady state.
+     */
+    val recoverySeconds: Long = 3600,
     val pinEnabled: Boolean = true,
     /** The time zone the card's times are shown in. */
     val zone: ZoneId = ZoneId.systemDefault()
@@ -61,8 +65,28 @@ data class MediaServerStatusState(
     val renderedStatus: ServerStatus? = null,
     val renderedAt: Long? = null,
     /** Whether the message is pinned; a message sent while pinning was off is pinned once it's turned on. */
-    val pinned: Boolean = false
-)
+    val pinned: Boolean = false,
+    /** Whether the currently rendered message still includes the `"Back up at ... (downtime: ...)"` banner. */
+    val renderedRecovery: Boolean = false
+) {
+    fun needsRender(
+        nextStatus: ServerStatus,
+        now: Long,
+        refreshMillis: Long
+    ): Boolean {
+        val due = renderedAt == null || now - renderedAt >= refreshMillis
+        val recoveryExpired = renderedRecovery && lastDowntimeMillis == null
+        return renderedStatus != nextStatus || due || recoveryExpired
+    }
+
+    fun isRecovery(nextStatus: ServerStatus): Boolean =
+        nextStatus == ServerStatus.UP && (lastDowntimeMillis != null || renderedStatus == ServerStatus.DOWN)
+
+    fun shouldReplaceForAlert(
+        nextStatus: ServerStatus,
+        card: NotificationCard
+    ): Boolean = renderedStatus != null && renderedStatus != nextStatus && !card.silent
+}
 
 /**
  * Polls the media server and keeps one pinned status message up to date, edited in place: 🟢 online, or 🔴 offline
@@ -93,6 +117,7 @@ class MediaServerStatusMonitor(
     private val staleGapMillis =
         maxOf(graceMillis, config.pollIntervalSeconds * 1000) + config.pollIntervalSeconds * 1000
     private val refreshMillis = config.refreshSeconds * 1000
+    private val recoveryMillis = config.recoverySeconds * 1000
 
     @Volatile private var job: Job? = null
 
@@ -161,9 +186,17 @@ class MediaServerStatusMonitor(
                         config.serverName,
                         MediaFormat.formatDuration(downtime / 1000)
                     )
-                    state.copy(status = ServerStatus.UP, since = now, lastDowntimeMillis = downtime)
+                    state.copy(
+                        status = ServerStatus.UP,
+                        since = now,
+                        lastDowntimeMillis = downtime.takeIf { config.recoverySeconds > 0 }
+                    )
                 }
-                ServerStatus.UP -> state
+                ServerStatus.UP -> {
+                    val expired =
+                        state.lastDowntimeMillis != null && now - (state.since ?: now) >= recoveryMillis
+                    if (expired) state.copy(lastDowntimeMillis = null) else state
+                }
                 null -> state.copy(status = ServerStatus.UP, since = now)
             }
         return up.copy(firstFailedAt = null, lastError = null, checkedAt = now)
@@ -201,18 +234,28 @@ class MediaServerStatusMonitor(
         // A message in another chat or topic (the config changed) is left behind and replaced.
         val handle =
             MediaServerStatusCards.matchingHandle(state.handle, status == ServerStatus.UP, publisher, templateEngine)
-        val due = state.renderedAt == null || now - state.renderedAt >= refreshMillis
-        if (handle != null && state.renderedStatus == status && !due) return state
+        if (handle != null && !state.needsRender(status, now, refreshMillis)) return state
 
         val card = MediaServerStatusCards.build(viewOf(state, status, now), config.zone, templateEngine)
-        val rendered = state.copy(renderedStatus = status, renderedAt = now)
-        val editFailure = handle?.let { publisher.editCard(it, card).leftOrNull() }
+        val rendered =
+            state.copy(
+                renderedStatus = status,
+                renderedAt = now,
+                renderedRecovery = state.lastDowntimeMillis != null
+            )
+        val replaceForAlert = handle != null && state.shouldReplaceForAlert(status, card)
+        val editFailure =
+            if (handle != null && !replaceForAlert) {
+                publisher.editCard(handle, card).leftOrNull()
+            } else {
+                null
+            }
         return when {
-            handle == null -> send(card, rendered)
+            handle == null || replaceForAlert -> send(card, rendered, previous = state, replaceHandle = handle)
             editFailure == null -> if (state.pinned) rendered else rendered.copy(pinned = pin(handle))
             editFailure is DomainError.NotificationError.MessageNotFound -> {
                 logger.info("The media server status message is gone; sending a new one")
-                send(card, rendered)
+                send(card, rendered, previous = state)
             }
             else -> {
                 // Kept unrendered, so the next check tries again.
@@ -222,17 +265,26 @@ class MediaServerStatusMonitor(
         }
     }
 
-    /** Sends [card] as a new message and pins it; [rendered] is the state once that worked. */
+    /** Sends [card] as a new message, deletes [replaceHandle] if replaced for an audible alert, and pins it. */
     private suspend fun send(
         card: NotificationCard,
-        rendered: MediaServerStatusState
+        rendered: MediaServerStatusState,
+        previous: MediaServerStatusState,
+        replaceHandle: NotificationHandle? = null
     ): MediaServerStatusState =
         when (val sent = publisher.sendCard(card)) {
-            is Either.Right -> rendered.copy(handle = sent.value, pinned = pin(sent.value))
+            is Either.Right -> {
+                if (replaceHandle != null) {
+                    publisher.deleteMessage(replaceHandle).onLeft { err ->
+                        logger.debug("Could not delete previous media server status message: {}", err)
+                    }
+                }
+                rendered.copy(handle = sent.value, pinned = pin(sent.value))
+            }
             is Either.Left -> {
                 logger.warn("Could not send the media server status message: {}", sent.value)
-                // Nothing to edit: the next check sends again.
-                rendered.copy(handle = null, renderedStatus = null)
+                // Keep any existing handle when replacing for an alert fails; otherwise clear so next tick retries.
+                if (replaceHandle != null) previous else rendered.copy(handle = null, renderedStatus = null)
             }
         }
 
@@ -266,7 +318,8 @@ class MediaServerStatusMonitor(
                 ServerStatus.DOWN -> now - (state.since ?: now)
             },
         checkedAt = now,
-        error = state.lastError
+        error = state.lastError,
+        recovery = state.isRecovery(status)
     )
 }
 

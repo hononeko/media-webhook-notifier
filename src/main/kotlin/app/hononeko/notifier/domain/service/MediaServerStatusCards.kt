@@ -17,8 +17,7 @@ object MediaServerStatusCards {
     const val OFFLINE_EVENT = "media_server.status_offline"
 
     private const val ONLINE_BODY =
-        "▪ <b>Back up at:</b> {since} (downtime: {downtime})\n" +
-            "▪ <b>Last checked:</b> {checked_at}"
+        "▪ <b>Back up at:</b> {since} (downtime: {downtime})"
     private const val OFFLINE_BODY =
         "▪ <b>Down since:</b> {since}\n" +
             "▪ <b>Downtime:</b> {downtime}\n" +
@@ -36,7 +35,11 @@ object MediaServerStatusCards {
         /** The outage so far when offline; the last outage's length when online (null before any outage). */
         val downtimeMillis: Long?,
         val checkedAt: Long,
-        val error: String? = null
+        val error: String? = null,
+        /**
+         * True on a `DOWN -> UP` recovery transition; makes recovery alerts audible by default unless `silent: true`.
+         */
+        val recovery: Boolean = false
     )
 
     fun build(
@@ -66,7 +69,7 @@ object MediaServerStatusCards {
         val resolved =
             engine.resolveCard(
                 eventName = eventName,
-                defaults = DefaultCardSpec(title = "$icon ${view.serverName} — $status", silent = true),
+                defaults = DefaultCardSpec(title = "$icon ${view.serverName} — $status", silent = !view.recovery),
                 context = context
             )
         // The body is sent as HTML, so its values are escaped: an error message may well contain `<` or `&`. The title

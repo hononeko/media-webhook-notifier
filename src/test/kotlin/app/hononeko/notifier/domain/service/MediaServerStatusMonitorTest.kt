@@ -22,6 +22,7 @@ import java.time.ZoneOffset
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -45,6 +46,7 @@ class MediaServerStatusMonitorTest {
         owner: String = "pod-a",
         stateStore: StateStorePort = store,
         refreshSeconds: Long = 300,
+        recoverySeconds: Long = 3600,
         pinEnabled: Boolean = true,
         graceSeconds: Long = 90,
         engine: () -> TemplateEngine = { TemplateEngine() }
@@ -64,6 +66,7 @@ class MediaServerStatusMonitorTest {
                 pollIntervalSeconds = 30,
                 graceSeconds = graceSeconds,
                 refreshSeconds = refreshSeconds,
+                recoverySeconds = recoverySeconds,
                 pinEnabled = pinEnabled,
                 zone = ZoneOffset.UTC
             ),
@@ -88,8 +91,8 @@ class MediaServerStatusMonitorTest {
             assertEquals("🟢 Kerrlab Plex — Online", card.title)
             assertTrue(card.silent)
             assertEquals(listOf("msg1" to true), publisher.pinned)
-            // Before any outage there is no "back up" line.
-            assertEquals("▪ <b>Last checked:</b> 14:00", card.customBody)
+            // Before any outage the steady-state online card has no body lines.
+            assertEquals("", card.customBody)
         }
 
     @Test
@@ -128,7 +131,7 @@ class MediaServerStatusMonitorTest {
         }
 
     @Test
-    fun `recovery edits the message back to online with the downtime`() =
+    fun `recovery replaces and re-pins the message audibly with the downtime`() =
         runTest {
             val monitor = monitor()
             monitor.tick()
@@ -139,13 +142,93 @@ class MediaServerStatusMonitorTest {
             healthy = true
             monitor.tick()
 
-            val online = publisher.edits.last().second
+            val online = publisher.sent.last()
             assertEquals("🟢 Kerrlab Plex — Online", online.title)
+            assertFalse(online.silent)
             assertEquals(
-                "▪ <b>Back up at:</b> 14:04 (downtime: 4m 18s)\n▪ <b>Last checked:</b> 14:04",
+                "▪ <b>Back up at:</b> 14:04 (downtime: 4m 18s)",
                 online.customBody
             )
+            assertEquals(2, publisher.sent.size)
+            assertEquals(listOf("msg1"), publisher.deleted.map { it.messageReferenceId })
+            assertEquals(listOf("msg1" to true, "msg2" to true), publisher.pinned)
+        }
+
+    @Test
+    fun `recovery edits in place silently when status_online template sets silent true`() =
+        runTest {
+            val silentEngine =
+                TemplateEngine(
+                    TemplateConfig(
+                        events = mapOf(MediaServerStatusCards.ONLINE_EVENT to EventTemplate(silent = true))
+                    )
+                )
+            val monitor = monitor(engine = { silentEngine })
+            monitor.tick()
+            healthy = false
+            now += 10_000
+            monitor.checks(4)
+            now += 168_000
+            healthy = true
+            monitor.tick()
+
             assertEquals(1, publisher.sent.size)
+            assertTrue(publisher.deleted.isEmpty())
+            val edited = publisher.edits.last().second
+            assertEquals("🟢 Kerrlab Plex — Online", edited.title)
+            assertTrue(edited.silent)
+        }
+
+    @Test
+    fun `after the recovery window expires the back-up banner is edited away in place`() =
+        runTest {
+            val monitor = monitor(refreshSeconds = 300, recoverySeconds = 360)
+            monitor.tick()
+            healthy = false
+            now += 10_000
+            monitor.checks(4)
+            now += 168_000 // 14:04:28 recovery
+            healthy = true
+            monitor.tick()
+            assertEquals(2, publisher.sent.size)
+            val editsBeforeExpiry = publisher.edits.size
+
+            // 5 minutes later: periodic refresh still keeps the "Back up at" line
+            now += 300_000
+            monitor.tick()
+            assertEquals(editsBeforeExpiry + 1, publisher.edits.size)
+            assertTrue(
+                publisher.edits
+                    .last()
+                    .second.customBody!!
+                    .contains("Back up at")
+            )
+
+            // 1 minute later (total 6 min == recoverySeconds, 4 min before next refresh):
+            // immediately edits the same message in place to strip the back-up banner.
+            now += 60_000
+            monitor.tick()
+            assertEquals(2, publisher.sent.size)
+            assertEquals(editsBeforeExpiry + 2, publisher.edits.size)
+            val cleared = publisher.edits.last().second
+            assertEquals("", cleared.customBody)
+        }
+
+    @Test
+    fun `when recoverySeconds is zero recovery alerts cleanly without a back-up banner`() =
+        runTest {
+            val monitor = monitor(recoverySeconds = 0)
+            monitor.tick()
+            healthy = false
+            now += 10_000
+            monitor.checks(4)
+            now += 168_000
+            healthy = true
+            monitor.tick()
+
+            val online = publisher.sent.last()
+            assertFalse(online.silent)
+            assertEquals("", online.customBody)
         }
 
     @Test
@@ -495,6 +578,7 @@ class MediaServerStatusMonitorTest {
         val sentHandles = CopyOnWriteArrayList<NotificationHandle>()
         val edits = CopyOnWriteArrayList<Pair<NotificationHandle, NotificationCard>>()
         val pinned = CopyOnWriteArrayList<Pair<String, Boolean>>()
+        val deleted = CopyOnWriteArrayList<NotificationHandle>()
         var messageGone = false
         var editFailures = 0
         var pinFails = false
@@ -536,6 +620,11 @@ class MediaServerStatusMonitorTest {
                 )
             }
             pinned += handle.messageReferenceId to silent
+            return Either.Right(Unit)
+        }
+
+        override suspend fun deleteMessage(handle: NotificationHandle): Either<DomainError.NotificationError, Unit> {
+            deleted += handle
             return Either.Right(Unit)
         }
 
