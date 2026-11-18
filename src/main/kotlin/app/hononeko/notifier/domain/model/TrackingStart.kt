@@ -8,5 +8,8 @@ enum class TrackingStart {
     ALREADY_TRACKED,
 
     /** Another instance holds the download's tracking lease, so no card was sent and no loop started. */
-    TRACKED_ELSEWHERE
+    TRACKED_ELSEWHERE,
+
+    /** The grab template is disabled (`enabled: false`), so downloads aren't tracked at all. */
+    DISABLED
 }

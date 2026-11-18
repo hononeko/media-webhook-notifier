@@ -320,4 +320,33 @@ class TemplatePreviewRoutesTest {
                 CardTemplates.templateEngine = prevEngine
             }
         }
+
+    @Test
+    fun `preview endpoint reports whether the event is enabled`() =
+        withPreviewApp { client ->
+            suspend fun preview(eventType: String): TemplatePreviewResponseDto {
+                val response =
+                    client.post("/api/v1/templates/preview") {
+                        header(HttpHeaders.Authorization, "Bearer $testToken")
+                        contentType(ContentType.Application.Json)
+                        setBody(
+                            TemplatePreviewRequestDto(
+                                eventType = eventType,
+                                templateYaml =
+                                    "events:\n  servarr:\n    import:\n      enabled: false\n" +
+                                        "  download:\n    progress:\n      disabled: true"
+                            )
+                        )
+                    }
+                assertEquals(HttpStatusCode.OK, response.status)
+                return testJson.decodeFromString(response.bodyAsText())
+            }
+
+            val import = preview("import")
+            assertEquals(false, import.enabled)
+            assertTrue(import.renderedCard.title.isNotBlank())
+            assertEquals(false, preview("download_progress_multi").enabled)
+            assertEquals(true, preview("grab").enabled)
+            assertEquals(true, preview("media_available").enabled)
+        }
 }

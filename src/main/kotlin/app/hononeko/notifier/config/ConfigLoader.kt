@@ -120,7 +120,9 @@ object ConfigLoader {
                         imageEmbed = tpl.imageEmbed ?: baseTpl.imageEmbed,
                         stateText = tpl.stateText ?: baseTpl.stateText,
                         silent = tpl.silent ?: baseTpl.silent,
-                        actions = if (tpl.actions.isNotEmpty()) tpl.actions else baseTpl.actions
+                        actions = if (tpl.actions.isNotEmpty()) tpl.actions else baseTpl.actions,
+                        enabled = tpl.enabled ?: baseTpl.enabled,
+                        preferPoster = tpl.preferPoster ?: baseTpl.preferPoster
                     )
                 } else {
                     tpl

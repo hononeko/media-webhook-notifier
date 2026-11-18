@@ -301,3 +301,6 @@ class TemplateEngine(
         return lower.startsWith("http://") || lower.startsWith("https://")
     }
 }
+
+/** Whether [eventName] is announced at all: only `enabled: false` (or `disabled: true`) turns it off. */
+fun TemplateEngine.isEnabled(eventName: String): Boolean = getEventTemplate(eventName)?.enabled != false

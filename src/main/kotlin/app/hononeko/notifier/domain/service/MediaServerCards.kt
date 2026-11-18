@@ -69,7 +69,11 @@ object MediaServerCards {
                 context = context
             )
 
-        val finalArtworkBytes = if (resolved.imageEmbedEnabled) details.artworkBytes else null
+        // The uploaded image is often a blurred 16:9 composite when an episode has no still; prefer_poster uses the
+        // poster instead, whenever there is one.
+        val preferPoster =
+            engine.getEventTemplate("media_available")?.preferPoster == true && !resolved.artworkUrl.isNullOrBlank()
+        val finalArtworkBytes = if (resolved.imageEmbedEnabled && !preferPoster) details.artworkBytes else null
 
         return resolved.toCard(NotificationLevel.SUCCESS, "media_available", artworkBytes = finalArtworkBytes) {
             copy(overview = truncateOverview(defaults.body, engine.theme.maxOverviewLength), mediaSpecs = details.specs)
