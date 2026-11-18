@@ -66,4 +66,20 @@ class TrackingLeasesTest {
         assertEquals(30L, trackingLeaseTtlSeconds(5))
         assertEquals(180L, trackingLeaseTtlSeconds(60))
     }
+
+    @Test
+    fun `acquire steals lease only when current owner is dead`() =
+        runTest {
+            var ownerAlive = true
+            val podAWithLiveness = TrackingLeases(store, "pod-a", 30, { now }) { ownerAlive }
+            val podBWithLiveness = TrackingLeases(store, "pod-b", 30, { now }) { ownerAlive }
+
+            assertTrue(podAWithLiveness.acquire("h1|h2"))
+            assertFalse(podBWithLiveness.acquire("h1|h2"), "live owner must keep its lease")
+
+            ownerAlive = false
+            assertTrue(podBWithLiveness.acquire("h1|h2"), "dead owner's lease should be taken over immediately")
+            assertEquals(LockRenewal.LOST, podAWithLiveness.renew("h1|h2"))
+            assertEquals(LockRenewal.RENEWED, podBWithLiveness.renew("h1|h2"))
+        }
 }

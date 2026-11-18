@@ -1,6 +1,7 @@
 package app.hononeko.notifier.adapter.outbound.state
 
 import app.hononeko.notifier.config.StateConfig
+import app.hononeko.notifier.domain.port.outbound.ClusterStatePort
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +23,8 @@ class ValkeyStateStore(
     private val config: StateConfig,
     private val fallbackStore: StateStorePort = InMemoryStateStore(),
     injectedJedis: UnifiedJedis? = null
-) : StateStorePort {
+) : StateStorePort,
+    ClusterStatePort {
     private val logger = LoggerFactory.getLogger(ValkeyStateStore::class.java)
     private val keyPrefix: String = config.keyPrefix.ifBlank { "mwn:" }
     private val jedis: UnifiedJedis? = injectedJedis ?: initJedis(config)
@@ -272,6 +274,95 @@ class ValkeyStateStore(
             }
         }
 
+    override suspend fun compareAndSet(
+        key: String,
+        expectedValue: String,
+        newValue: String,
+        ttlSeconds: Long?,
+        nowMillis: Long
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val client =
+                jedis ?: return@withContext (fallbackStore as? ClusterStatePort)
+                    ?.compareAndSet(key, expectedValue, newValue, ttlSeconds, nowMillis)
+                    ?: false
+            val ttlArg = ttlSeconds?.takeIf { it > 0 }?.toString().orEmpty()
+            evalBoolean(client, COMPARE_AND_SET_SCRIPT, key, listOf(expectedValue, newValue, ttlArg), "compareAndSet")
+        }
+
+    override suspend fun deleteIfEquals(
+        key: String,
+        expectedValue: String
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val client =
+                jedis ?: return@withContext (fallbackStore as? ClusterStatePort)
+                    ?.deleteIfEquals(key, expectedValue)
+                    ?: false
+            evalBoolean(client, DELETE_IF_EQUALS_SCRIPT, key, listOf(expectedValue), "deleteIfEquals")
+        }
+
+    override suspend fun takeoverLock(
+        key: String,
+        expectedOwner: String,
+        newOwner: String,
+        ttlSeconds: Long,
+        nowMillis: Long
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            val client =
+                jedis ?: return@withContext (fallbackStore as? ClusterStatePort)
+                    ?.takeoverLock(key, expectedOwner, newOwner, ttlSeconds, nowMillis)
+                    ?: false
+            val ttl = ttlSeconds.coerceAtLeast(1L).toString()
+            evalBoolean(client, TAKEOVER_LOCK_SCRIPT, key, listOf(expectedOwner, newOwner, ttl), "takeoverLock")
+        }
+
+    override suspend fun listKeys(
+        prefix: String,
+        nowMillis: Long
+    ): List<String> =
+        withContext(Dispatchers.IO) {
+            val client =
+                jedis ?: return@withContext (fallbackStore as? ClusterStatePort)
+                    ?.listKeys(prefix, nowMillis)
+                    ?: emptyList()
+            try {
+                val pattern = "$keyPrefix$prefix*"
+                val scanParams = ScanParams().match(pattern).count(100)
+                val collected = linkedSetOf<String>()
+                var cursor = ScanParams.SCAN_POINTER_START
+                do {
+                    val scanResult = client.scan(cursor, scanParams)
+                    scanResult.result?.forEach { collected.add(it.removePrefix(keyPrefix)) }
+                    cursor = scanResult.cursor
+                } while (!scanResult.isCompleteIteration && cursor != ScanParams.SCAN_POINTER_START)
+                isHealthy = true
+                collected.sorted()
+            } catch (e: JedisException) {
+                isHealthy = false
+                logger.debug("Valkey listKeys failed for prefix '{}': {}", prefix, e.message)
+                emptyList()
+            }
+        }
+
+    private fun evalBoolean(
+        client: UnifiedJedis,
+        script: String,
+        key: String,
+        args: List<String>,
+        opName: String
+    ): Boolean =
+        try {
+            val result = client.eval(script, listOf(keyPrefix + key), args)
+            isHealthy = true
+            result == 1L
+        } catch (e: JedisException) {
+            isHealthy = false
+            logger.debug("Valkey {} failed for key '{}': {}", opName, key, e.message)
+            false
+        }
+
     override suspend fun healthCheck(): Boolean =
         withContext(Dispatchers.IO) {
             val client = jedis
@@ -331,5 +422,18 @@ class ValkeyStateStore(
 
         const val RELEASE_LOCK_SCRIPT =
             "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0"
+
+        const val COMPARE_AND_SET_SCRIPT =
+            "if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end " +
+                "if ARGV[3] ~= '' then redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) " +
+                "else redis.call('SET', KEYS[1], ARGV[2]) end return 1"
+
+        const val DELETE_IF_EQUALS_SCRIPT =
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0"
+
+        const val TAKEOVER_LOCK_SCRIPT =
+            "local v = redis.call('GET', KEYS[1]) " +
+                "if not v or v == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3]) return 1 end " +
+                "return 0"
     }
 }

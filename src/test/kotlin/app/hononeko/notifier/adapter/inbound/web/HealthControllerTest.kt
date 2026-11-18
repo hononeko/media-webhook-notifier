@@ -305,4 +305,58 @@ class HealthControllerTest {
             assertEquals(HttpStatusCode.OK, promRes.status)
             assertTrue(promRes.bodyAsText().contains("media_webhook_state_store_healthy 0"))
         }
+
+    @Test
+    fun `should report cluster active trackers count when sharedTrackers is configured`() =
+        testApplication {
+            val sharedStore =
+                app.hononeko.notifier.adapter.outbound.state
+                    .InMemoryStateStore()
+            val localStore =
+                app.hononeko.notifier.adapter.outbound.tracker
+                    .InMemoryActiveTrackerStore()
+            val reg =
+                app.hononeko.notifier.domain.service
+                    .SharedTrackerRegistry(sharedStore, localStore, "pod-b")
+            val session =
+                app.hononeko.notifier.domain.model.ActiveTrackerSession(
+                    hash = "h1",
+                    payload =
+                        app.hononeko.notifier.domain.model.MediaPayload.ArrGrab(
+                            source = app.hononeko.notifier.domain.model.AppSource.RADARR,
+                            downloadId = "h1",
+                            title = "Dune",
+                            seriesOrMovieTitle = "Dune"
+                        ),
+                    handle =
+                        app.hononeko.notifier.domain.model
+                            .NotificationHandle("telegram", "-1001", "10"),
+                    isPhoto = false,
+                    job = kotlinx.coroutines.Job()
+                )
+            kotlinx.coroutines.runBlocking {
+                app.hononeko.notifier.domain.service
+                    .SharedTrackerRegistry(sharedStore, localStore, "pod-a")
+                    .recordStarted(session)
+            }
+
+            val eventRail = EventRail(standardCapacity = 10, urgentCapacity = 5)
+            val healthController = HealthController(eventRail = eventRail, sharedTrackers = reg)
+            application {
+                install(ContentNegotiation) { json(testJson) }
+                configureWebhookRouting(
+                    eventRail = eventRail,
+                    serverConfig = ServerConfig(),
+                    healthController = healthController
+                )
+            }
+
+            val metricsRes = client.get("/metrics")
+            assertEquals(HttpStatusCode.OK, metricsRes.status)
+            assertTrue(metricsRes.bodyAsText().contains("\"clusterActiveTrackersCount\":1"))
+
+            val promRes = client.get("/metrics/prometheus")
+            assertEquals(HttpStatusCode.OK, promRes.status)
+            assertTrue(promRes.bodyAsText().contains("media_webhook_cluster_active_tracking_jobs 1"))
+        }
 }

@@ -12,7 +12,7 @@ Cards that need a person's attention carry an **✅ Acknowledge** button, and Se
 > | `polling` | 1 | any | ✅ |
 > | `polling` | more than 1 | any | ❌ **Not supported.** Replicas fight over `getUpdates` (HTTP 409). Enable the flag on exactly one replica. |
 > | `webhook` | 1 | memory or Valkey / Redis | ✅ |
-> | `webhook` | more than 1 | **Valkey / Redis required** | ✅ Button references must be shared. With the in-memory store, a click that reaches another replica answers "button expired". |
+> | `webhook` | 2+ (HA) | **Valkey / Redis required** | ✅ Recommended: 2 replicas with `STATE_STORE_TYPE=valkey` and `TELEGRAM_UPDATES_MODE=webhook`. Button refs (`cb:*`), claim locks (`cb-claim:*`), health snoozes (`snooze:*`), tracking leases, and season-pack debounce buffers are all shared via Valkey, and `TelegramCallbackGuard` accepts callbacks from both `TELEGRAM_CHAT_ID` and any per-event `chat_id` configured in `templates.yaml`. |
 
 ## Enable it
 

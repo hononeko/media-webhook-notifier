@@ -567,6 +567,104 @@ class MediaServerStatusMonitorTest {
             assertEquals(listOf("msg1" to true, "msg2" to true, "msg3" to true), publisher.pinned)
         }
 
+    @Test
+    fun `crash takeover preserves grace period and sends exactly one recovery card`() =
+        runTest {
+            var ownerAlive = true
+            val podA =
+                MediaServerStatusMonitor(
+                    healthCheck = { if (healthy) Either.Right(Unit) else Either.Left(unreachable) },
+                    publisher = publisher,
+                    stateStore = store,
+                    config =
+                        MediaServerStatusConfig(
+                            serverName = "Kerrlab Plex",
+                            sourceName = "Plex",
+                            ownerId = "pod-a",
+                            pollIntervalSeconds = 30,
+                            graceSeconds = 90,
+                            zone = ZoneOffset.UTC,
+                            isOwnerAlive = { ownerAlive }
+                        ),
+                    clock = { now }
+                )
+            val podB =
+                MediaServerStatusMonitor(
+                    healthCheck = { if (healthy) Either.Right(Unit) else Either.Left(unreachable) },
+                    publisher = publisher,
+                    stateStore = store,
+                    config =
+                        MediaServerStatusConfig(
+                            serverName = "Kerrlab Plex",
+                            sourceName = "Plex",
+                            ownerId = "pod-b",
+                            pollIntervalSeconds = 30,
+                            graceSeconds = 90,
+                            zone = ZoneOffset.UTC,
+                            isOwnerAlive = { ownerAlive }
+                        ),
+                    clock = { now }
+                )
+
+            assertTrue(podA.tick())
+            assertFalse(podB.tick(), "pod-b stays standby while pod-a is alive")
+
+            // Pod A records initial failure at 14:00:30, then crashes before grace expires.
+            healthy = false
+            now += 30_000
+            assertTrue(podA.tick())
+            ownerAlive = false
+
+            // Pod B takes over within seconds without waiting for the 90s lock TTL and keeps Pod A's firstFailedAt.
+            now += 10_000
+            assertTrue(podB.tick())
+            now += 80_000 // 14:02:00 -> 90s since Pod A's first failure
+            assertTrue(podB.tick())
+            assertEquals(
+                "🔴 Kerrlab Plex — Offline",
+                publisher.edits
+                    .single()
+                    .second.title
+            )
+
+            // Recovery sends exactly one audible replacement and pins it.
+            healthy = true
+            now += 60_000
+            assertTrue(podB.tick())
+            assertEquals(2, publisher.sent.size)
+            assertEquals(listOf("msg1" to true, "msg2" to true), publisher.pinned)
+        }
+
+    @Test
+    fun `fencing aborts render if status lock is lost during health check`() =
+        runTest {
+            var stealDuringCheck = true
+            val podA =
+                MediaServerStatusMonitor(
+                    healthCheck = {
+                        if (stealDuringCheck) {
+                            stealDuringCheck = false
+                            store.releaseLock(MediaServerStatusMonitor.LOCK_KEY, "pod-a")
+                            store.acquireLock(MediaServerStatusMonitor.LOCK_KEY, "pod-b", 90, now)
+                        }
+                        Either.Right(Unit)
+                    },
+                    publisher = publisher,
+                    stateStore = store,
+                    config =
+                        MediaServerStatusConfig(
+                            serverName = "Kerrlab Plex",
+                            sourceName = "Plex",
+                            ownerId = "pod-a",
+                            zone = ZoneOffset.UTC
+                        ),
+                    clock = { now }
+                )
+
+            assertFalse(podA.tick())
+            assertTrue(publisher.sent.isEmpty(), "paused pod must not send after losing lock during health check")
+        }
+
     /** Records sends, edits and pins; message ids count up from msg1. */
     private class StatusPublisher : NotificationPublisherPort {
         override val providerId = "fake"

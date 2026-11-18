@@ -160,7 +160,7 @@ class ApplicationBootstrapTest {
         }
 
     @Test
-    fun `valkey store enables lease retry`() {
+    fun `valkey store enables lease retry, pod heartbeat, and shared trackers`() {
         val dependencies =
             buildDependencies(
                 AppConfig(state = StateConfig(type = "valkey", url = "")),
@@ -168,16 +168,20 @@ class ApplicationBootstrapTest {
             )
         try {
             assertEquals(35L, dependencies.reconciliationService!!.leaseRetrySeconds)
+            assertNotNull(dependencies.podHeartbeat)
+            assertNotNull(dependencies.sharedTrackers)
         } finally {
             dependencies.close()
         }
     }
 
     @Test
-    fun `memory store disables leases`() {
+    fun `memory store disables leases, pod heartbeat, and shared trackers`() {
         val dependencies = buildDependencies(AppConfig(), CoroutineScope(SupervisorJob() + Dispatchers.Default))
         try {
             assertNull(dependencies.reconciliationService!!.leaseRetrySeconds)
+            assertNull(dependencies.podHeartbeat)
+            assertNull(dependencies.sharedTrackers)
         } finally {
             dependencies.close()
         }

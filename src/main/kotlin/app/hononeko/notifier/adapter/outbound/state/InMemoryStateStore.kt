@@ -1,12 +1,14 @@
 package app.hononeko.notifier.adapter.outbound.state
 
+import app.hononeko.notifier.domain.port.outbound.ClusterStatePort
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import java.util.concurrent.ConcurrentHashMap
 
 class InMemoryStateStore(
     private val maxCapacity: Int = 20_000
-) : StateStorePort {
+) : StateStorePort,
+    ClusterStatePort {
     private data class StoredItem(
         val value: String,
         val expiresAtMillis: Long?,
@@ -124,6 +126,64 @@ class InMemoryStateStore(
         val existing = store[key] ?: return false
         return existing.value == owner && store.remove(key, existing)
     }
+
+    override suspend fun compareAndSet(
+        key: String,
+        expectedValue: String,
+        newValue: String,
+        ttlSeconds: Long?,
+        nowMillis: Long
+    ): Boolean {
+        pruneIfNecessary(nowMillis)
+        var updated = false
+        val expiresAt = if (ttlSeconds != null && ttlSeconds > 0) nowMillis + (ttlSeconds * 1000L) else null
+        store.compute(key) { _, existing ->
+            if (existing != null && !existing.isExpired(nowMillis) && existing.value == expectedValue) {
+                updated = true
+                StoredItem(value = newValue, expiresAtMillis = expiresAt, lastAccessedMillis = nowMillis)
+            } else {
+                existing
+            }
+        }
+        return updated
+    }
+
+    override suspend fun deleteIfEquals(
+        key: String,
+        expectedValue: String
+    ): Boolean {
+        val existing = store[key] ?: return false
+        return existing.value == expectedValue && store.remove(key, existing)
+    }
+
+    override suspend fun takeoverLock(
+        key: String,
+        expectedOwner: String,
+        newOwner: String,
+        ttlSeconds: Long,
+        nowMillis: Long
+    ): Boolean {
+        pruneIfNecessary(nowMillis)
+        var taken = false
+        store.compute(key) { _, existing ->
+            if (existing == null || existing.isExpired(nowMillis) || existing.value == expectedOwner) {
+                taken = true
+                lockItem(newOwner, ttlSeconds, nowMillis)
+            } else {
+                existing
+            }
+        }
+        return taken
+    }
+
+    override suspend fun listKeys(
+        prefix: String,
+        nowMillis: Long
+    ): List<String> =
+        store.entries
+            .filter { (key, item) -> key.startsWith(prefix) && !item.isExpired(nowMillis) }
+            .map { it.key }
+            .sorted()
 
     private fun StoredItem.isExpired(nowMillis: Long): Boolean = expiresAtMillis != null && nowMillis >= expiresAtMillis
 

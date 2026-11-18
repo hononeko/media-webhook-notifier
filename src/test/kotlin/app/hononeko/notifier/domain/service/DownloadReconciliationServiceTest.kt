@@ -150,7 +150,7 @@ class DownloadReconciliationServiceTest {
                     totalSizeBytes = 1000000000L,
                     downloadedBytes = 500000000L,
                     state = DownloadState.DOWNLOADING,
-                    tags = listOf("mwn_msg:9999", "mwn_photo:0", "mwn_chat:-100123456789")
+                    tags = listOf("mwn_msg:9999", "mwn_photo:0", "mwn_chat:-100123456789", "mwn_topic:42")
                 )
 
             val downloadClient =
@@ -177,6 +177,7 @@ class DownloadReconciliationServiceTest {
             assertEquals(1, resumedCount)
             assertEquals("-100123456789", resumedExistingCalls.first().second.channelOrChatId)
             assertEquals("9999", resumedExistingCalls.first().second.messageReferenceId)
+            assertEquals(42L, resumedExistingCalls.first().second.topicId)
             assertEquals(false, resumedExistingCalls.first().second.isPhoto)
         }
 

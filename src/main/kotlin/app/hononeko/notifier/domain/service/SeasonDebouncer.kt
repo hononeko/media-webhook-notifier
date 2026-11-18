@@ -10,22 +10,24 @@ import kotlinx.coroutines.SupervisorJob
  * [debounceMillis], merging them into one payload so a multi-episode batch becomes one notification.
  */
 class SeasonDebouncer(
-    debounceMillis: Long = 5000L,
-    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    internal val debounceMillis: Long = 5000L,
+    internal val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val deduplicator: MediaAvailableDeduplicator? = null,
-    onDebouncedGrab: (suspend (MediaPayload.ArrGrab) -> Unit)? = null,
-    onDebouncedDownload: (suspend (MediaPayload.ArrDownload) -> Unit)? = null,
-    private val onDebouncedAvailable: (suspend (MediaPayload) -> Unit)? = null
+    internal val onDebouncedGrab: (suspend (MediaPayload.ArrGrab) -> Unit)? = null,
+    internal val onDebouncedDownload: (suspend (MediaPayload.ArrDownload) -> Unit)? = null,
+    internal val onDebouncedAvailable: (suspend (MediaPayload) -> Unit)? = null
 ) {
-    private val grabs =
+    internal var grabs: DebounceBackend<MediaPayload.ArrGrab> =
         DebounceBuffers(debounceMillis, scope, onDebouncedGrab) { grab, id ->
-            grab.downloadId.equals(id, ignoreCase = true) || grab.downloadIds.any { it.equals(id, ignoreCase = true) }
+            grabMatchesId(grab, id)
         }
-    private val downloads =
+    internal var downloads: DebounceBackend<MediaPayload.ArrDownload> =
         DebounceBuffers(debounceMillis, scope, onDebouncedDownload) { download, id ->
-            download.downloadId?.equals(id, ignoreCase = true) == true
+            downloadMatchesId(download, id)
         }
-    private val available = DebounceBuffers(debounceMillis, scope, onDebouncedAvailable)
+    internal var available: DebounceBackend<MediaPayload> = DebounceBuffers(debounceMillis, scope, onDebouncedAvailable)
+
+    internal val localArtworkCache = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     val supportsAvailable: Boolean
         get() = onDebouncedAvailable != null
@@ -46,15 +48,20 @@ class SeasonDebouncer(
 
     suspend fun submit(plex: MediaPayload.PlexLibraryNew) {
         if (onDebouncedAvailable == null) return
-        if (deduplicator?.isStale(plex) == true) return
-        available.submit(debounceKey(plex), plex) { prev ->
+        if (deduplicator?.isDuplicate(plex) == true) return
+        val key = debounceKey(plex)
+        plex.artworkBytes?.let { bytes ->
+            if (localArtworkCache.size >= MAX_LOCAL_ARTWORK_CACHE) localArtworkCache.clear()
+            localArtworkCache[key] = bytes
+        }
+        available.submit(key, plex) { prev ->
             (prev as? MediaPayload.PlexLibraryNew)?.let { mergePlexPayload(it, plex) } ?: plex
         }
     }
 
     suspend fun submit(jellyfin: MediaPayload.JellyfinItemAdded) {
         if (onDebouncedAvailable == null) return
-        if (deduplicator?.isStale(jellyfin) == true) return
+        if (deduplicator?.isDuplicate(jellyfin) == true) return
         available.submit(debounceKey(jellyfin), jellyfin) { prev ->
             (prev as? MediaPayload.JellyfinItemAdded)?.let { mergeJellyfin(it, jellyfin) } ?: jellyfin
         }
@@ -84,16 +91,27 @@ class SeasonDebouncer(
     }
 
     suspend fun flushAll() {
-        val allGrabs = grabs.drain()
-        val allDownloads = downloads.drain()
-        val allAvailable = available.drain()
-        allGrabs.forEach { grabs.release(it) }
-        allDownloads.forEach { downloads.release(it) }
-        allAvailable.forEach { available.release(it) }
+        grabs.flushAll()
+        downloads.flushAll()
+        available.flushAll()
     }
 
     fun activeBufferCount(): Int = grabs.size + downloads.size + available.size
 }
+
+private const val MAX_LOCAL_ARTWORK_CACHE = 64
+
+internal fun grabMatchesId(
+    grab: MediaPayload.ArrGrab,
+    id: String
+): Boolean =
+    grab.downloadId.equals(id, ignoreCase = true) ||
+        grab.downloadIds.any { it.equals(id, ignoreCase = true) }
+
+internal fun downloadMatchesId(
+    download: MediaPayload.ArrDownload,
+    id: String
+): Boolean = download.downloadId?.equals(id, ignoreCase = true) == true
 
 /** Merges a grab into the buffered one: episodes and download ids combine, the buffered metadata wins. */
 private fun mergeGrab(

@@ -53,6 +53,7 @@ class DownloadTrackerEngine(
     // Null with the in-memory state store: locks there can't coordinate separate instances.
     private val leases: TrackingLeases? = null
 ) : TrackDownloadUseCase {
+    internal var sharedTrackers: SharedTrackerRegistry? = null
     private val pollIntervalSeconds: Long get() = config.pollIntervalSeconds
     private val maxPollingMinutes: Long get() = config.maxPollingMinutes
     private val stalledTimeoutMinutes: Long get() = config.stalledTimeoutMinutes
@@ -131,6 +132,8 @@ class DownloadTrackerEngine(
             if (!registered) {
                 logger.warn("Session for hash {} was already registered, cancelling duplicate job", normalizedHash)
                 trackingJob.cancel()
+            } else {
+                sharedTrackers?.recordStarted(session)
             }
 
             Either.Right(TrackingStart.STARTED)
@@ -182,6 +185,8 @@ class DownloadTrackerEngine(
                     normalizedHash
                 )
                 trackingJob.cancel()
+            } else {
+                sharedTrackers?.recordStarted(session)
             }
 
             Either.Right(TrackingStart.STARTED)
@@ -217,7 +222,7 @@ class DownloadTrackerEngine(
                 isRunning = processTrackingTick(hash, payload, handle, state)
             }
 
-            if (elapsedSeconds >= maxPollingSeconds) {
+            if (elapsedSeconds >= maxPollingSeconds && leases.stillOwns(hash)) {
                 logger.warn("Tracking for {} reached max limit of {}m. Halting.", hash, maxPollingMinutes)
                 val stalledCard =
                     DownloadCards.buildStalledCard(
@@ -233,6 +238,7 @@ class DownloadTrackerEngine(
                 )
                 trackingTags.cleanup(hash, handle)
                 activeTrackerStore.cancel(hash)
+                sharedTrackers?.recordFinished(hash)
             }
         } catch (e: CancellationException) {
             logger.debug("Tracking loop cancelled for {}", hash)
@@ -261,6 +267,8 @@ class DownloadTrackerEngine(
         state: TrackingLoopState
     ): Boolean {
         val progress = fetchProgress(hash)
+        // Re-check lease after download-client I/O so a paused pod cannot send a stale Telegram edit.
+        if (!leases.stillOwns(hash)) return false
         if (progress == null) {
             state.missingCount++
             val shouldHalt = handleMissingTorrent(hash, payload, handle, state.lastKnownProgress, state.missingCount)
@@ -312,6 +320,7 @@ class DownloadTrackerEngine(
         )
         trackingTags.cleanup(hash, handle)
         activeTrackerStore.cancel(hash)
+        sharedTrackers?.recordFinished(hash)
         return true
     }
 
@@ -333,6 +342,7 @@ class DownloadTrackerEngine(
             )
             trackingTags.cleanup(hash, handle)
             activeTrackerStore.complete(hash)
+            sharedTrackers?.recordFinished(hash)
             state.stalledDurationSeconds = 0L
             state.lastDownloadedBytes = progress.downloadedBytes
             return true
@@ -358,11 +368,13 @@ class DownloadTrackerEngine(
             )
             trackingTags.cleanup(hash, handle)
             activeTrackerStore.cancel(hash)
+            sharedTrackers?.recordFinished(hash)
             return true
         }
 
         dispatchProgressUpdate(hash, payload, handle, progress)
         activeTrackerStore.updateProgress(hash, progress, state.stalledDurationSeconds)
+        sharedTrackers?.recordProgress(hash, progress, state.stalledDurationSeconds)
         return false
     }
 

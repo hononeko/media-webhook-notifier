@@ -163,4 +163,39 @@ class InMemoryStateStoreTest {
             assertTrue(store.releaseLock(lockKey, "a"))
             assertTrue(store.acquireLock(lockKey, "b", 30, lockT0))
         }
+
+    @Test
+    fun `compareAndSet and deleteIfEquals enforce expected value atomically`() =
+        runTest {
+            val store = InMemoryStateStore()
+            store.set("cas", "v1", ttlSeconds = 60, nowMillis = lockT0)
+
+            assertFalse(store.compareAndSet("cas", "wrong", "v2", ttlSeconds = 60, nowMillis = lockT0))
+            assertEquals("v1", store.get("cas", lockT0))
+
+            assertTrue(store.compareAndSet("cas", "v1", "v2", ttlSeconds = 60, nowMillis = lockT0))
+            assertEquals("v2", store.get("cas", lockT0))
+
+            assertFalse(store.deleteIfEquals("cas", "v1"))
+            assertTrue(store.deleteIfEquals("cas", "v2"))
+            assertNull(store.get("cas", lockT0))
+        }
+
+    @Test
+    fun `takeoverLock and listKeys handle dead-owner takeover and prefix filtering`() =
+        runTest {
+            val store = InMemoryStateStore()
+            store.acquireLock(lockKey, "pod-a", 30, lockT0)
+
+            assertFalse(store.takeoverLock(lockKey, "wrong-owner", "pod-b", 30, lockT0))
+            assertTrue(store.takeoverLock(lockKey, "pod-a", "pod-b", 30, lockT0))
+            assertEquals("pod-b", store.get(lockKey, lockT0))
+
+            store.set("debounce:grab:a", "1", ttlSeconds = 30, nowMillis = lockT0)
+            store.set("debounce:grab:b", "2", ttlSeconds = 5, nowMillis = lockT0)
+            store.set("debounce:import:c", "3", ttlSeconds = 30, nowMillis = lockT0)
+
+            assertEquals(listOf("debounce:grab:a", "debounce:grab:b"), store.listKeys("debounce:grab:", lockT0))
+            assertEquals(listOf("debounce:grab:a"), store.listKeys("debounce:grab:", lockT0 + 6_000))
+        }
 }

@@ -308,4 +308,76 @@ class IngestWebhookServiceTest {
             assertEquals(2, debouncedAvailable.size)
             assertEquals(0, directAvailable.size)
         }
+
+    @Test
+    fun `should deduplicate cross-pod grab and import retries while releasing on direct failure`() =
+        runTest {
+            val sharedStore =
+                app.hononeko.notifier.adapter.outbound.state
+                    .InMemoryStateStore()
+            var failGrab = true
+            var trackCount = 0
+            var importCount = 0
+
+            val serviceA =
+                IngestWebhookService(
+                    trackDownloadUseCase = { _, _ ->
+                        if (failGrab) {
+                            Either.Left(
+                                app.hononeko.notifier.domain.error.DomainError.NotificationError
+                                    .RateLimited("tg", 5)
+                            )
+                        } else {
+                            trackCount++
+                            Either.Right(TrackingStart.STARTED)
+                        }
+                    },
+                    announceMediaImportedUseCase = {
+                        importCount++
+                        Either.Right(Unit)
+                    },
+                    announceMediaAvailableUseCase = { Either.Right(Unit) }
+                ).withDeduplicator(EventDeduplicator(sharedStore))
+
+            val serviceB =
+                IngestWebhookService(
+                    trackDownloadUseCase = { _, _ ->
+                        trackCount++
+                        Either.Right(TrackingStart.STARTED)
+                    },
+                    announceMediaImportedUseCase = {
+                        importCount++
+                        Either.Right(Unit)
+                    },
+                    announceMediaAvailableUseCase = { Either.Right(Unit) }
+                ).withDeduplicator(EventDeduplicator(sharedStore))
+
+            val grab =
+                MediaPayload.ArrGrab(
+                    source = AppSource.SONARR,
+                    downloadId = "retry-hash",
+                    title = "Severance S02E01",
+                    seriesOrMovieTitle = "Severance",
+                    seasonNumber = 2,
+                    episodeNumbers = listOf(1)
+                )
+
+            // Failed direct track releases the dedupe key so Pod B's retry succeeds.
+            assertTrue(serviceA.execute(grab).isLeft())
+            failGrab = false
+            assertTrue(serviceB.execute(grab).isRight())
+            assertTrue(serviceA.execute(grab).isRight())
+            assertEquals(1, trackCount)
+
+            val download =
+                MediaPayload.ArrDownload(
+                    source = AppSource.RADARR,
+                    downloadId = "import-hash",
+                    title = "Dune",
+                    seriesOrMovieTitle = "Dune"
+                )
+            assertTrue(serviceA.execute(download).isRight())
+            assertTrue(serviceB.execute(download).isRight())
+            assertEquals(1, importCount)
+        }
 }

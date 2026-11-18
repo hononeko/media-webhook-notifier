@@ -1,7 +1,9 @@
 package app.hononeko.notifier.domain.model
 
 import kotlinx.coroutines.Job
+import kotlinx.serialization.Serializable
 
+@Serializable
 enum class TrackerStatus {
     INITIALIZING,
     TRACKING,

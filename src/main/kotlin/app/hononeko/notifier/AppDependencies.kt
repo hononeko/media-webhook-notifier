@@ -27,6 +27,7 @@ import app.hononeko.notifier.domain.service.CardTemplates
 import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
+import app.hononeko.notifier.domain.service.EventDeduplicator
 import app.hononeko.notifier.domain.service.HealthSnoozes
 import app.hononeko.notifier.domain.service.IngestWebhookService
 import app.hononeko.notifier.domain.service.ManualInteractionService
@@ -36,12 +37,16 @@ import app.hononeko.notifier.domain.service.MediaImportedService
 import app.hononeko.notifier.domain.service.MediaRequestService
 import app.hononeko.notifier.domain.service.MediaServerStatusConfig
 import app.hononeko.notifier.domain.service.MediaServerStatusMonitor
+import app.hononeko.notifier.domain.service.PodHeartbeat
 import app.hononeko.notifier.domain.service.ReconciliationConfig
 import app.hononeko.notifier.domain.service.SeasonDebouncer
+import app.hononeko.notifier.domain.service.SharedTrackerRegistry
 import app.hononeko.notifier.domain.service.SystemHealthService
 import app.hononeko.notifier.domain.service.TemplateEngine
 import app.hononeko.notifier.domain.service.TrackingLeases
+import app.hononeko.notifier.domain.service.startDistributedSweeper
 import app.hononeko.notifier.domain.service.trackingLeaseTtlSeconds
+import app.hononeko.notifier.domain.service.withDistributedStore
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -76,7 +81,9 @@ data class AppDependencies(
     val deadLetterPersistence: DeadLetterPersistence? = null,
     val telegramInteractions: TelegramInteractionModule? = null,
     val seerrClient: SeerrClientAdapter? = null,
-    val mediaServerStatus: MediaServerStatus? = null
+    val mediaServerStatus: MediaServerStatus? = null,
+    val podHeartbeat: PodHeartbeat? = null,
+    val sharedTrackers: SharedTrackerRegistry? = null
 ) {
     fun close() {
         logger.info("Closing application dependencies and draining queues...")
@@ -87,6 +94,7 @@ data class AppDependencies(
             // Before the state store closes: stopping loops release their tracking leases.
             downloadTracker.stopAll()
             mediaServerStatus?.monitor?.stop()
+            podHeartbeat?.stop()
         }
         telegramInteractions?.close()
         seerrClient?.close()
@@ -108,8 +116,7 @@ class MediaServerStatus(
 /** The status monitor, started here, or `null` when it's off or there is no `MEDIA_SERVER_URL` to check. */
 private fun buildMediaServerStatus(
     config: AppConfig,
-    publisher: NotificationPublisherPort,
-    stateStore: StateStorePort,
+    infra: Infrastructure,
     scope: CoroutineScope
 ): MediaServerStatus? {
     val mediaServer = config.mediaServer
@@ -120,21 +127,23 @@ private fun buildMediaServerStatus(
         return null
     }
     val health = MediaServerHealthAdapter(mediaServer)
+    val heartbeat = infra.podHeartbeat
     val monitor =
         MediaServerStatusMonitor(
             healthCheck = health,
-            publisher = publisher,
-            stateStore = stateStore,
+            publisher = infra.publisher,
+            stateStore = infra.stateStore,
             config =
                 MediaServerStatusConfig(
                     serverName = mediaServer.displayName,
                     sourceName = mediaServer.typeName,
-                    ownerId = trackingOwnerId(),
+                    ownerId = infra.ownerId,
                     pollIntervalSeconds = settings.pollIntervalSeconds,
                     graceSeconds = settings.graceSeconds,
                     refreshSeconds = settings.refreshSeconds,
                     recoverySeconds = settings.recoverySeconds,
-                    pinEnabled = settings.pinEnabled
+                    pinEnabled = settings.pinEnabled,
+                    isOwnerAlive = heartbeat?.let { hb -> { owner -> hb.isAlive(owner) } }
                 )
         )
     monitor.start(scope)
@@ -178,7 +187,7 @@ fun buildDependencies(
 ): AppDependencies {
     CardTemplates.templateEngine = TemplateEngine(config.templates)
 
-    val infra = buildInfrastructure(config, telegramApiEngine)
+    val infra = buildInfrastructure(config, telegramApiEngine, scope)
     val tracking = buildTracking(config, infra, scope)
     val media = buildMediaAnnouncements(config, infra, tracking, scope)
     val alerts = buildAlerts(config, infra)
@@ -189,13 +198,8 @@ fun buildDependencies(
             announceMediaImportedUseCase = media.imported,
             announceMediaAvailableUseCase = media.available,
             seasonDebouncer = media.seasonDebouncer,
-            alertUseCases =
-                AlertUseCases(
-                    systemHealth = alerts.systemHealth,
-                    manualInteraction = alerts.manualInteraction,
-                    mediaRequest = alerts.mediaRequest
-                )
-        )
+            alertUseCases = AlertUseCases(alerts.systemHealth, alerts.manualInteraction, alerts.mediaRequest)
+        ).withDeduplicator(EventDeduplicator(infra.stateStore))
 
     val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)
     val deadLetterPersistence =
@@ -203,6 +207,14 @@ fun buildDependencies(
             DeadLetterPersistence(buffer = eventRail.deadLetterBuffer, stateStore = valkey).also { it.start(scope) }
         }
     eventRail.start(scope, ingestWebhookService, workerCount = config.server.eventRailWorkers)
+    val healthController =
+        HealthController(
+            eventRail,
+            tracking.downloadTracker,
+            tracking.reconciliation,
+            infra.stateStore,
+            sharedTrackers = tracking.sharedTrackers
+        )
 
     return AppDependencies(
         config = config,
@@ -223,18 +235,14 @@ fun buildDependencies(
         eventRail = eventRail,
         rateLimiter = InboundRateLimiter(limitPerMinute = config.server.rateLimitPerMinute),
         providerRegistry = WebhookProviderRegistry(),
-        healthController =
-            HealthController(
-                eventRail = eventRail,
-                downloadTracker = tracking.downloadTracker,
-                reconciliationService = tracking.reconciliation,
-                stateStore = infra.stateStore
-            ),
+        healthController = healthController,
         stateStore = infra.stateStore,
         deadLetterPersistence = deadLetterPersistence,
         telegramInteractions = buildTelegramInteractions(config, infra, alerts, scope, telegramApiEngine),
         seerrClient = alerts.seerrClient,
-        mediaServerStatus = buildMediaServerStatus(config, infra.publisher, infra.stateStore, scope)
+        mediaServerStatus = buildMediaServerStatus(config, infra, scope),
+        podHeartbeat = infra.podHeartbeat,
+        sharedTrackers = tracking.sharedTrackers
     )
 }
 
@@ -246,17 +254,29 @@ private class Infrastructure(
     val publisher: TelegramPublisherAdapter,
     val downloadClient: DownloadClientPort,
     val mediaServerPort: MediaServerAdapter,
-    val activeTrackerStore: ActiveTrackerStore
-)
+    val podHeartbeat: PodHeartbeat?
+) {
+    val activeTrackerStore: ActiveTrackerStore = InMemoryActiveTrackerStore()
+    val ownerId: String = podHeartbeat?.ownerId ?: trackingOwnerId()
+}
 
 private fun buildInfrastructure(
     config: AppConfig,
-    telegramApiEngine: HttpClientEngine?
+    telegramApiEngine: HttpClientEngine?,
+    scope: CoroutineScope
 ): Infrastructure {
+    val ownerId = trackingOwnerId()
     val stateStore: StateStorePort =
         when (config.state.type.lowercase()) {
             "valkey", "redis" -> ValkeyStateStore(config = config.state)
             else -> InMemoryStateStore()
+        }
+    val podHeartbeat =
+        (stateStore as? ValkeyStateStore)?.let { valkey ->
+            PodHeartbeat(valkey, ownerId).also { hb ->
+                runBlocking { hb.beat() }
+                hb.start(scope)
+            }
         }
     val callbackRefs = if (config.features.telegramInteractive) CallbackRefRegistry(stateStore) else null
     return Infrastructure(
@@ -270,14 +290,48 @@ private fun buildInfrastructure(
             ),
         downloadClient = DownloadClientFactory.create(config),
         mediaServerPort = MediaServerAdapter(config = config.mediaServer),
-        activeTrackerStore = InMemoryActiveTrackerStore()
+        podHeartbeat = podHeartbeat
     )
 }
 
 private class Tracking(
     val downloadTracker: DownloadTrackerEngine,
-    val reconciliation: DownloadReconciliationService
-)
+    val reconciliation: DownloadReconciliationService,
+    val sharedTrackers: SharedTrackerRegistry?
+) {
+    companion object {
+        fun leasesFor(
+            config: AppConfig,
+            infra: Infrastructure
+        ): TrackingLeases? =
+            (infra.stateStore as? ValkeyStateStore)?.let { store ->
+                val liveness: (suspend (String) -> Boolean)? =
+                    infra.podHeartbeat?.let { hb -> { owner -> hb.isAlive(owner) } }
+                TrackingLeases(
+                    store,
+                    ownerId = infra.ownerId,
+                    ttlSeconds = trackingLeaseTtlSeconds(config.downloadClient.pollIntervalSeconds),
+                    isOwnerAlive = liveness
+                ).also { logger.info("Tracking leases enabled (owner {}, ttl {}s)", it.ownerId, it.ttlSeconds) }
+            }
+
+        fun sharedFor(
+            config: AppConfig,
+            infra: Infrastructure
+        ): SharedTrackerRegistry? =
+            (infra.stateStore as? ValkeyStateStore)?.let { store ->
+                val liveness: suspend (String) -> Boolean =
+                    infra.podHeartbeat?.let { hb -> { owner: String -> hb.isAlive(owner) } } ?: { true }
+                SharedTrackerRegistry(
+                    stateStore = store,
+                    localStore = infra.activeTrackerStore,
+                    ownerId = infra.ownerId,
+                    isOwnerAlive = liveness,
+                    maxPollingMinutes = config.downloadClient.maxPollingMinutes
+                )
+            }
+    }
+}
 
 /** Live download tracking, plus the reconciliation sweep (started here) that resumes or adopts downloads. */
 private fun buildTracking(
@@ -286,14 +340,9 @@ private fun buildTracking(
     scope: CoroutineScope
 ): Tracking {
     // Only a shared store can coordinate instances; with the in-memory store each instance would just lock itself.
-    val trackingLeases =
-        (infra.stateStore as? ValkeyStateStore)?.let { valkey ->
-            TrackingLeases(
-                valkey,
-                ownerId = trackingOwnerId(),
-                ttlSeconds = trackingLeaseTtlSeconds(config.downloadClient.pollIntervalSeconds)
-            ).also { logger.info("Tracking leases enabled (owner {}, ttl {}s)", it.ownerId, it.ttlSeconds) }
-        }
+    val trackingLeases = Tracking.leasesFor(config, infra)
+    val trackingSharedTrackers = Tracking.sharedFor(config, infra)
+    val dc = config.downloadClient
     val downloadTracker =
         DownloadTrackerEngine(
             downloadClient = infra.downloadClient,
@@ -301,16 +350,17 @@ private fun buildTracking(
             activeTrackerStore = infra.activeTrackerStore,
             config =
                 DownloadTrackerConfig(
-                    pollIntervalSeconds = config.downloadClient.pollIntervalSeconds,
-                    maxPollingMinutes = config.downloadClient.maxPollingMinutes,
-                    stalledTimeoutMinutes = config.downloadClient.stalledTimeoutMinutes,
-                    missingGraceAttempts = config.downloadClient.missingGraceAttempts,
-                    webuiPublicUrl = config.downloadClient.webuiPublicUrl,
-                    tagPrefix = config.downloadClient.tagPrefix
+                    dc.pollIntervalSeconds,
+                    dc.maxPollingMinutes,
+                    dc.stalledTimeoutMinutes,
+                    dc.missingGraceAttempts,
+                    dc.webuiPublicUrl,
+                    dc.tagPrefix
                 ),
             scope = scope,
             leases = trackingLeases
-        )
+        ).apply { sharedTrackers = trackingSharedTrackers }
+    trackingSharedTrackers?.startWatcher(scope, downloadTracker)
     val reconciliation =
         DownloadReconciliationService(
             downloadClient = infra.downloadClient,
@@ -319,14 +369,14 @@ private fun buildTracking(
             notificationPublisher = infra.publisher,
             config =
                 ReconciliationConfig(
-                    intervalMinutes = config.downloadClient.reconciliationIntervalMinutes,
-                    enabled = config.downloadClient.reconciliationEnabled,
-                    tagPrefix = config.downloadClient.tagPrefix,
-                    leaseRetrySeconds = trackingLeases?.let { it.ttlSeconds + LEASE_RETRY_MARGIN_SECONDS }
+                    dc.reconciliationIntervalMinutes,
+                    dc.reconciliationEnabled,
+                    dc.tagPrefix,
+                    trackingLeases?.let { it.ttlSeconds + LEASE_RETRY_MARGIN_SECONDS }
                 )
         )
     reconciliation.start(scope)
-    return Tracking(downloadTracker, reconciliation)
+    return Tracking(downloadTracker, reconciliation, trackingSharedTrackers)
 }
 
 private class MediaAnnouncements(
@@ -354,7 +404,7 @@ private fun buildMediaAnnouncements(
             mediaServerPort = infra.mediaServerPort,
             deduplicator = deduplicator
         )
-    val seasonDebouncer =
+    val baseDebouncer =
         SeasonDebouncer(
             debounceMillis = config.downloadClient.debounceSeconds * 1000L,
             scope = scope,
@@ -363,6 +413,12 @@ private fun buildMediaAnnouncements(
             onDebouncedDownload = { download -> imported.announce(download) },
             onDebouncedAvailable = { item -> available.announce(item) }
         )
+    val seasonDebouncer =
+        if (infra.stateStore is ValkeyStateStore) {
+            baseDebouncer.withDistributedStore(infra.stateStore).also { it.startDistributedSweeper(scope) }
+        } else {
+            baseDebouncer
+        }
     return MediaAnnouncements(imported, available, seasonDebouncer)
 }
 

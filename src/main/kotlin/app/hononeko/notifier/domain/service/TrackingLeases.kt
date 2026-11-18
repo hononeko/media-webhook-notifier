@@ -1,5 +1,6 @@
 package app.hononeko.notifier.domain.service
 
+import app.hononeko.notifier.domain.port.outbound.ClusterStatePort
 import app.hononeko.notifier.domain.port.outbound.LockRenewal
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import org.slf4j.LoggerFactory
@@ -19,7 +20,8 @@ class TrackingLeases(
     private val stateStore: StateStorePort,
     val ownerId: String,
     val ttlSeconds: Long,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val isOwnerAlive: (suspend (String) -> Boolean)? = null
 ) {
     fun keysFor(downloadId: String): List<String> =
         downloadId
@@ -30,17 +32,35 @@ class TrackingLeases(
             .sorted()
             .map { "$KEY_PREFIX$it" }
 
-    /** Takes every hash's lock or none of them. */
+    /**
+     * Takes every hash's lock or none of them, stealing from a crashed owner immediately when [isOwnerAlive] is set.
+     */
     suspend fun acquire(downloadId: String): Boolean {
         val acquired = mutableListOf<String>()
         for (key in keysFor(downloadId)) {
-            if (!stateStore.acquireLock(key, ownerId, ttlSeconds, clock())) {
+            if (!acquireSingle(key)) {
                 acquired.forEach { stateStore.releaseLock(it, ownerId) }
                 return false
             }
             acquired += key
         }
         return true
+    }
+
+    private suspend fun acquireSingle(key: String): Boolean {
+        val now = clock()
+        val acquired = stateStore.acquireLock(key, ownerId, ttlSeconds, now)
+        val liveness = isOwnerAlive
+        val cluster = stateStore as? ClusterStatePort
+        val currentOwner =
+            if (!acquired && liveness != null && cluster != null) stateStore.get(key, now) else null
+        return when {
+            acquired -> true
+            liveness == null || cluster == null -> false
+            currentOwner == null -> stateStore.acquireLock(key, ownerId, ttlSeconds, now)
+            currentOwner == ownerId || liveness(currentOwner) -> false
+            else -> cluster.takeoverLock(key, currentOwner, ownerId, ttlSeconds, now)
+        }
     }
 
     /** [LockRenewal.LOST] if any hash now belongs to someone else; otherwise unavailable if any couldn't be checked. */
@@ -57,7 +77,7 @@ class TrackingLeases(
         keysFor(downloadId).forEach { stateStore.releaseLock(it, ownerId) }
     }
 
-    private companion object {
+    companion object {
         const val KEY_PREFIX = "lock:track:"
     }
 }
