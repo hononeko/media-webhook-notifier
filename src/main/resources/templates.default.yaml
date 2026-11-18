@@ -1,6 +1,14 @@
 # ==============================================================================
 # Built-in Default Templates
 # ==============================================================================
+# Every event is enabled unless a template sets `enabled: false` (or `disabled: true`), e.g.
+#   events:
+#     servarr:
+#       import:
+#         enabled: false
+# The download card is one message edited in place: disabling `servarr.grab` stops download tracking entirely,
+# disabling `download.progress` keeps the grab card until the download ends, and disabling `download.complete` or
+# `download.stalled` leaves the card as it last was.
 theme:
   max_overview_length: 240
   progress_bar_length: 10
@@ -90,6 +98,8 @@ events:
     available:
       silent: false
       image_embed: true
+      # true: use the poster URL instead of the image the media server uploads with the webhook
+      prefer_poster: false
       title: "🍿 {title} now available on {media_server_name}"
       body: |
         ▪ <b>Specs:</b> {specs}

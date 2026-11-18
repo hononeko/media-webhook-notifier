@@ -25,7 +25,11 @@ internal object TemplateConfigMapper {
             "silent",
             "silent_send",
             "disable_notification",
-            "actions"
+            "actions",
+            "enabled",
+            "disabled",
+            "prefer_poster",
+            "use_uploaded_thumb"
         )
 
     @Suppress("UNCHECKED_CAST")
@@ -125,9 +129,19 @@ internal object TemplateConfigMapper {
             imageEmbed = imageEmbed,
             stateText = eventProps["state_text"]?.toString(),
             silent = silent,
-            actions = actionsList
+            actions = actionsList,
+            enabled = parseEnabledFlag(eventProps),
+            preferPoster = parsePreferPosterFlag(eventProps)
         )
     }
+
+    /** `enabled: false`, or its inverse alias `disabled: true`, turns the event off. */
+    private fun parseEnabledFlag(eventProps: Map<String, Any?>): Boolean? =
+        parseBooleanValue(eventProps["enabled"]) ?: parseBooleanValue(eventProps["disabled"])?.not()
+
+    /** `prefer_poster: true`, or its inverse alias `use_uploaded_thumb: false`. */
+    private fun parsePreferPosterFlag(eventProps: Map<String, Any?>): Boolean? =
+        parseBooleanValue(eventProps["prefer_poster"]) ?: parseBooleanValue(eventProps["use_uploaded_thumb"])?.not()
 
     private fun parseBooleanValue(v: Any?): Boolean? {
         if (v == null) return null

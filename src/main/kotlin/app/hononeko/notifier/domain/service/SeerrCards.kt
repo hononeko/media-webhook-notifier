@@ -17,6 +17,10 @@ object SeerrCards {
     ): NotificationCard =
         renderSeerrCard(payload, engine).withAcknowledgeIf(payload.eventType == EventType.REQUEST_FAILED)
 
+    /** The template event a Seerr payload renders with: `issue` for issue events, `request` for the rest. */
+    fun templateEventName(payload: MediaPayload.SeerrEvent): String =
+        if (payload.eventType in SEERR_ISSUE_EVENTS) "issue" else "request"
+
     private fun renderSeerrCard(
         payload: MediaPayload.SeerrEvent,
         engine: TemplateEngine = templateEngine
@@ -26,8 +30,8 @@ object SeerrCards {
         val mediaLabel = resolveSeerrMediaLabel(payload.mediaType)
         val context = buildSeerrContext(payload, meta, appName, mediaLabel)
 
-        val isIssue = payload.eventType in SEERR_ISSUE_EVENTS
-        val eventName = if (isIssue) "issue" else "request"
+        val eventName = templateEventName(payload)
+        val isIssue = eventName == "issue"
         val defaultActions = buildSeerrActions(payload.webUrl, appName, isIssue)
 
         val resolved =

@@ -4,6 +4,7 @@ import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.ActiveTrackerSession
 import app.hononeko.notifier.domain.model.DownloadItemProgress
 import app.hononeko.notifier.domain.model.MediaPayload
+import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.NotificationHandle
 import app.hononeko.notifier.domain.model.TrackerSnapshot
 import app.hononeko.notifier.domain.model.TrackingStart
@@ -48,13 +49,22 @@ class DownloadTrackerEngine(
     private val config: DownloadTrackerConfig = DownloadTrackerConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     // Null with the in-memory state store: locks there can't coordinate separate instances.
-    private val leases: TrackingLeases? = null
+    private val leases: TrackingLeases? = null,
+    // Whether a template event is announced at all (`enabled: false` in the templates turns it off).
+    private val isEventEnabled: (String) -> Boolean = { CardTemplates.templateEngine.isEnabled(it) }
 ) : TrackDownloadUseCase {
     private val pollIntervalSeconds: Long get() = config.pollIntervalSeconds
     private val maxPollingMinutes: Long get() = config.maxPollingMinutes
     private val stalledTimeoutMinutes: Long get() = config.stalledTimeoutMinutes
     private val missingGraceAttempts: Int get() = config.missingGraceAttempts
     private val webuiPublicUrl: String? get() = config.webuiPublicUrl
+
+    private companion object {
+        const val GRAB_EVENT = "grab"
+        const val PROGRESS_EVENT = "download_progress"
+        const val COMPLETE_EVENT = "download_complete"
+        const val STALLED_EVENT = "download_stalled"
+    }
 
     private val logger = LoggerFactory.getLogger(DownloadTrackerEngine::class.java)
     private val trackingTags = TrackingTags(downloadClient, config.tagPrefix)
@@ -67,6 +77,11 @@ class DownloadTrackerEngine(
         val normalizedHash = hash.trim().lowercase()
         if (normalizedHash.isBlank()) {
             return Either.Left(DomainError.WebhookError.MissingTorrentHash)
+        }
+        // The live card starts as the grab card; without it there is nothing to track the download on.
+        if (!isEventEnabled(GRAB_EVENT)) {
+            logger.debug("Not tracking {}: the grab template is disabled", normalizedHash)
+            return Either.Right(TrackingStart.DISABLED)
         }
 
         val mutex = trackingLocks.computeIfAbsent(normalizedHash) { Mutex() }
@@ -210,7 +225,7 @@ class DownloadTrackerEngine(
                         state.lastKnownProgress,
                         webuiPublicUrl
                     )
-                notificationPublisher.cancelProgress(handle, stalledCard)
+                finishCard(handle, stalledCard, STALLED_EVENT)
                 trackingTags.cleanup(hash, handle)
                 activeTrackerStore.cancel(hash)
             }
@@ -284,7 +299,7 @@ class DownloadTrackerEngine(
 
         logger.warn("Torrent {} missing after {} attempts. Halting.", hash, missingCount)
         val stalledCard = DownloadCards.buildStalledCard(payload, lastKnownProgress, webuiPublicUrl)
-        notificationPublisher.cancelProgress(handle, stalledCard)
+        finishCard(handle, stalledCard, STALLED_EVENT)
         trackingTags.cleanup(hash, handle)
         activeTrackerStore.cancel(hash)
         return true
@@ -300,7 +315,7 @@ class DownloadTrackerEngine(
         if (progress.progressPercent >= 100 || progress.state.isComplete) {
             logger.info("Torrent {} reached 100%. Dispatching completion card.", hash)
             val completionCard = DownloadCards.buildCompletionCard(payload, progress, webuiPublicUrl)
-            notificationPublisher.completeProgress(handle, completionCard)
+            finishCard(handle, completionCard, COMPLETE_EVENT)
             trackingTags.cleanup(hash, handle)
             activeTrackerStore.complete(hash)
             state.stalledDurationSeconds = 0L
@@ -320,7 +335,7 @@ class DownloadTrackerEngine(
         if (updatedStalledSeconds >= maxStalledSeconds) {
             logger.warn("Torrent {} stalled for {}s. Halting.", hash, updatedStalledSeconds)
             val stalledCard = DownloadCards.buildStalledCard(payload, progress, webuiPublicUrl)
-            notificationPublisher.cancelProgress(handle, stalledCard)
+            finishCard(handle, stalledCard, STALLED_EVENT)
             trackingTags.cleanup(hash, handle)
             activeTrackerStore.cancel(hash)
             return true
@@ -337,10 +352,30 @@ class DownloadTrackerEngine(
         handle: NotificationHandle,
         progress: DownloadItemProgress
     ) {
+        if (!isEventEnabled(PROGRESS_EVENT)) return
         val update = DownloadCards.buildProgressUpdate(payload, progress, webuiPublicUrl)
         val updateResult = notificationPublisher.updateProgress(handle, update)
         if (updateResult is Either.Left) {
             logger.debug("Dropped progress tick for {}: {}", hash, updateResult.value)
+        }
+    }
+
+    /**
+     * Turns the live card into its final [card] (completion or stall). With that event disabled the card is left as it
+     * is, and tracking still ends normally.
+     */
+    private suspend fun finishCard(
+        handle: NotificationHandle,
+        card: NotificationCard,
+        event: String
+    ) {
+        if (!isEventEnabled(event)) {
+            logger.debug("Leaving the card for '{}' as it is: '{}' is disabled", card.title, event)
+            return
+        }
+        when (event) {
+            COMPLETE_EVENT -> notificationPublisher.completeProgress(handle, card)
+            else -> notificationPublisher.cancelProgress(handle, card)
         }
     }
 

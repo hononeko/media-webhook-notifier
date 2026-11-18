@@ -53,6 +53,7 @@ theme:
 # or in a flat structure (e.g. `grab:`, `request:`). Both work interchangeably.
 #
 # Optional event fields:
+# - `enabled: true|false` (Turn an event off entirely; alias: `disabled: true`)
 # - `image_embed: true|false` (Control photo attachment per event type)
 # - `silent: true|false` (Send without sound/vibration; aliases: `silent_send`, `disable_notification`)
 # - `artwork_url: "{custom_url}"` (Custom artwork image URL)
@@ -134,6 +135,7 @@ events:
   media_server:
     available:
       image_embed: true
+      prefer_poster: false  # true: ignore the image Plex uploads with the webhook, use {poster_url}
       title: "🍿 {title} now available on {media_server_name}"
       body: |
         ▪ <b>Specs:</b> {specs}
@@ -291,6 +293,37 @@ events:
       silent: false
 ```
 
+### 4.4 Turning Events Off (`enabled`)
+Every event is announced unless its template sets `enabled: false` (or the alias `disabled: true`). Leaving it out keeps the event on. This suppresses an event without touching the webhook in Sonarr, Radarr, Plex or Seerr, for example to keep only the media server's "now available" card when both Servarr and Plex webhooks are set up:
+
+```yaml
+events:
+  servarr:
+    import:
+      enabled: false   # "Now available on Plex" follows shortly anyway
+```
+
+Any event can be turned off: `servarr.grab`, `servarr.import`, `servarr.manual_interaction`, `servarr.health`, `media_server.available`, `seerr.request`, `seerr.issue`, `download.progress`, `download.complete` and `download.stalled`. The download events share a single message that is edited in place, so they behave as follows:
+
+| Disabled event | Effect |
+| :--- | :--- |
+| `servarr.grab` | No download card and no download tracking at all; the `download.*` events never happen. |
+| `download.progress` | The grab card stays as it is until the download completes or stalls (no live progress edits). |
+| `download.complete` | Tracking ends normally, but the card isn't turned into the completion card; it keeps its last state. |
+| `download.stalled` | Tracking stops normally, but the card isn't turned into the stall card; it keeps its last state. |
+
+The preview endpoint (section 5) reports `"enabled": false` for a disabled event.
+
+### 4.5 Poster Instead of the Uploaded Thumbnail (`prefer_poster`)
+Plex uploads an image with its webhooks. For an episode without a still, that image is often a blurred, pillarboxed 16:9 composite. Set `prefer_poster: true` (or the alias `use_uploaded_thumb: false`) on `media_server.available` to use the series or season poster (`{poster_url}`) instead. When there is no poster, the uploaded image is still used.
+
+```yaml
+events:
+  media_server:
+    available:
+      prefer_poster: true
+```
+
 ---
 
 ## 5. Stateless Sandbox Preview Endpoint
@@ -330,7 +363,8 @@ curl -X POST http://localhost:8080/api/v1/templates/preview \
     "silent": true
   },
   "telegram_html": "<b>🎯 Grabbing: Breaking Bad - S01E01 - Pilot</b>\n<i>Sonarr-4K</i>\n\n▪ <b>Quality:</b> WEBDL-1080p\n▪ <b>Size:</b> 2.00 GB",
-  "tags_available": ["title", "series_title", "season", "episode_range", "quality", "size", "indexer", "webui_url", "poster_url", "instance_name", "source_name", "download_id"]
+  "tags_available": ["title", "series_title", "season", "episode_range", "quality", "size", "indexer", "webui_url", "poster_url", "instance_name", "source_name", "download_id"],
+  "enabled": true
 }
 ```
 

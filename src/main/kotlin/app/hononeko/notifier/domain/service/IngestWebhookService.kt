@@ -24,13 +24,21 @@ class IngestWebhookService(
     private val announceMediaImportedUseCase: AnnounceMediaImportedUseCase,
     private val announceMediaAvailableUseCase: AnnounceMediaAvailableUseCase,
     private val seasonDebouncer: SeasonDebouncer? = null,
-    private val alertUseCases: AlertUseCases = AlertUseCases()
+    private val alertUseCases: AlertUseCases = AlertUseCases(),
+    // Whether a template event is announced at all (`enabled: false` in the templates turns it off).
+    private val isEventEnabled: (String) -> Boolean = { CardTemplates.templateEngine.isEnabled(it) }
 ) : IngestWebhookUseCase {
     private val logger = LoggerFactory.getLogger(IngestWebhookService::class.java)
 
     override suspend fun execute(payload: MediaPayload): Either<DomainError, Unit> =
         either {
             logger.info("Ingesting webhook payload: {} ({})", payload.eventType, payload.source)
+
+            val templateEvent = templateEventName(payload)
+            if (!isEventEnabled(templateEvent)) {
+                logger.info("Skipping {} from {}: '{}' is disabled", payload.eventType, payload.source, templateEvent)
+                return@either
+            }
 
             when (payload) {
                 is MediaPayload.ArrGrab -> {
@@ -74,3 +82,14 @@ class IngestWebhookService(
             }
         }
 }
+
+/** The template event that announces [payload], whose `enabled` flag decides whether it's announced at all. */
+internal fun templateEventName(payload: MediaPayload): String =
+    when (payload) {
+        is MediaPayload.ArrGrab -> "grab"
+        is MediaPayload.ArrDownload -> "import"
+        is MediaPayload.PlexLibraryNew, is MediaPayload.JellyfinItemAdded -> "media_available"
+        is MediaPayload.ServarrHealth -> "health"
+        is MediaPayload.ServarrManualInteraction -> "manual_interaction"
+        is MediaPayload.SeerrEvent -> SeerrCards.templateEventName(payload)
+    }

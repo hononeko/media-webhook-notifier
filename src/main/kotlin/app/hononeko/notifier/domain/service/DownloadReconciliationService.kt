@@ -206,7 +206,7 @@ class DownloadReconciliationService(
                     totalResumed.incrementAndGet()
                 }
                 TrackingStart.TRACKED_ELSEWHERE -> heldElsewhere++
-                TrackingStart.ALREADY_TRACKED, null -> Unit
+                TrackingStart.ALREADY_TRACKED, TrackingStart.DISABLED, null -> Unit
             }
         }
     }

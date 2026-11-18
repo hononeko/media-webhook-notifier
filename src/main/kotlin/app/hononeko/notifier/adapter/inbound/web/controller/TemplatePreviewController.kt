@@ -39,7 +39,9 @@ data class TemplatePreviewResponseDto(
     @SerialName("telegram_html")
     val telegramHtml: String,
     @SerialName("tags_available")
-    val tagsAvailable: List<String>
+    val tagsAvailable: List<String>,
+    /** False when the templates disable the event (`enabled: false`): it renders, but would never be sent. */
+    val enabled: Boolean = true
 )
 
 @Serializable
@@ -70,6 +72,19 @@ data class ActionLinkDto(
     val url: String,
     val style: String = "DEFAULT"
 )
+
+private val PREVIEW_EVENTS =
+    setOf(
+        "download_progress",
+        "download_complete",
+        "download_stalled",
+        "import",
+        "media_available",
+        "health",
+        "manual_interaction",
+        "issue",
+        "request"
+    )
 
 private const val MOCK_QBIT_URL = "https://qbittorrent.lan:8080"
 
@@ -222,7 +237,8 @@ class TemplatePreviewController {
             }
 
         val eventType = request.eventType.lowercase(Locale.US).trim()
-        val (card, progressUpdate, availableTags) = renderMockEvent(eventType, request.multiTrack, engineFor(request))
+        val engine = engineFor(request)
+        val (card, progressUpdate, availableTags) = renderMockEvent(eventType, request.multiTrack, engine)
         // Exactly one of the two is set: progress events render a live-progress update, all others a card.
         val rendered = card?.toDto() ?: progressUpdate!!.toDto()
         val html =
@@ -236,10 +252,19 @@ class TemplatePreviewController {
                 eventType = eventType,
                 renderedCard = rendered,
                 telegramHtml = html,
-                tagsAvailable = availableTags
+                tagsAvailable = availableTags,
+                enabled = engine.isEnabled(templateEventFor(eventType))
             )
         )
     }
+
+    /** The template event a preview event type renders with; unknown types preview the grab card. */
+    private fun templateEventFor(eventType: String): String =
+        when (eventType) {
+            "download_progress_multi" -> "download_progress"
+            in PREVIEW_EVENTS -> eventType
+            else -> "grab"
+        }
 
     /** The request's own templates on top of the active theme, or the active engine when it brings none. */
     private fun engineFor(request: TemplatePreviewRequestDto): TemplateEngine =
