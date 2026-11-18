@@ -162,33 +162,27 @@ class TelegramPublisherAdapter(
     override suspend fun pinMessage(
         handle: NotificationHandle,
         silent: Boolean
-    ): Either<DomainError.NotificationError, Unit> =
-        when (val msgId = requireTelegramMsgId(handle, "pin")) {
-            is Either.Left -> msgId
-            is Either.Right -> api.pinChatMessage(handle.channelOrChatId.ifBlank { config.chatId }, msgId.value, silent)
-        }
+    ): Either<DomainError.NotificationError, Unit> = controlMessage(handle, "pinChatMessage", "pin", silent)
 
     override suspend fun deleteMessage(handle: NotificationHandle): Either<DomainError.NotificationError, Unit> =
-        when (val msgId = requireTelegramMsgId(handle, "delete")) {
-            is Either.Left -> msgId
-            is Either.Right -> api.deleteMessage(handle.channelOrChatId.ifBlank { config.chatId }, msgId.value)
-        }
+        controlMessage(handle, "deleteMessage", "delete")
 
-    private fun requireTelegramMsgId(
+    private suspend fun controlMessage(
         handle: NotificationHandle,
-        action: String
-    ): Either<DomainError.NotificationError, Long> {
-        val msgId = handle.messageReferenceId.toLongOrNull()
-        return if (msgId != null) {
-            Either.Right(msgId)
-        } else {
-            Either.Left(
-                DomainError.NotificationError.DeliveryFailed(
-                    providerId,
-                    "cannot $action '${handle.messageReferenceId}': not a Telegram message id"
+        endpoint: String,
+        action: String,
+        silent: Boolean? = null
+    ): Either<DomainError.NotificationError, Unit> {
+        val msgId =
+            handle.messageReferenceId.toLongOrNull()
+                ?: return Either.Left(
+                    DomainError.NotificationError.DeliveryFailed(
+                        providerId,
+                        "cannot $action '${handle.messageReferenceId}': not a Telegram message id"
+                    )
                 )
-            )
-        }
+        val chatId = handle.channelOrChatId.ifBlank { config.chatId }
+        return api.controlMessage(endpoint, chatId, msgId, silent)
     }
 
     override suspend fun cancelProgress(

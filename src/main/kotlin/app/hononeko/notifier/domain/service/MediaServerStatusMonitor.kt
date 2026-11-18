@@ -33,7 +33,9 @@ data class MediaServerStatusConfig(
     val graceSeconds: Long = 90,
     /** How often an unchanged card is refreshed (last check time, the running downtime). */
     val refreshSeconds: Long = 300,
-    /** How long after recovery the `"Back up at ... (downtime: ...)"` line is kept before editing back to steady state. */
+    /**
+     * How long after recovery the `"Back up at ... (downtime: ...)"` line is kept before editing back to steady state.
+     */
     val recoverySeconds: Long = 3600,
     val pinEnabled: Boolean = true,
     /** The time zone the card's times are shown in. */

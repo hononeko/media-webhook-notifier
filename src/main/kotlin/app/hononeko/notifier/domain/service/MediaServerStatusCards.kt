@@ -37,7 +37,9 @@ object MediaServerStatusCards {
         val downtimeMillis: Long?,
         val checkedAt: Long,
         val error: String? = null,
-        /** True on a `DOWN -> UP` recovery transition; makes recovery alerts audible by default unless `silent: true`. */
+        /**
+         * True on a `DOWN -> UP` recovery transition; makes recovery alerts audible by default unless `silent: true`.
+         */
         val recovery: Boolean = false
     )
 

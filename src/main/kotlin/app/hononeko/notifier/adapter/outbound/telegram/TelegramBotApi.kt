@@ -178,21 +178,13 @@ internal class TelegramBotApi(
     )
 
     @Serializable
-    private data class PinChatMessageRequest(
+    private data class MessageControlRequest(
         @SerialName("chat_id")
         val chatId: String,
         @SerialName("message_id")
         val messageId: Long,
         @SerialName("disable_notification")
-        val disableNotification: Boolean
-    )
-
-    @Serializable
-    private data class DeleteMessageRequest(
-        @SerialName("chat_id")
-        val chatId: String,
-        @SerialName("message_id")
-        val messageId: Long
+        val disableNotification: Boolean? = null
     )
 
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
@@ -347,42 +339,24 @@ internal class TelegramBotApi(
         }
     }
 
-    /** Pins a message; the bot needs the Pin Messages right in groups and channels. */
-    suspend fun pinChatMessage(
+    /** Sends a message-management call such as `/pinChatMessage` or `/deleteMessage`. */
+    suspend fun controlMessage(
+        endpoint: String,
         chatId: String,
         messageId: Long,
-        silent: Boolean
+        silent: Boolean? = null
     ): Either<DomainError.NotificationError, Unit> {
-        val request = PinChatMessageRequest(chatId = chatId, messageId = messageId, disableNotification = silent)
+        val request = MessageControlRequest(chatId = chatId, messageId = messageId, disableNotification = silent)
         return try {
-            val payload = jsonConfig.encodeToString(PinChatMessageRequest.serializer(), request)
+            val payload = jsonConfig.encodeToString(MessageControlRequest.serializer(), request)
             val response =
-                httpClient.post("$apiBaseUrl/pinChatMessage") {
-                    contentType(ContentType.Application.Json)
-                    setBody(payload)
-                }
-            either { ensureSuccess(response.status, response.bodyAsText(), EDIT_RETRY_AFTER_SECONDS) }
-        } catch (e: IOException) {
-            handleDeliveryException("pin", e)
-        }
-    }
-
-    /** Deletes a message; Telegram rejects deletion in supergroups after 48 hours or without permission. */
-    suspend fun deleteMessage(
-        chatId: String,
-        messageId: Long
-    ): Either<DomainError.NotificationError, Unit> {
-        val request = DeleteMessageRequest(chatId = chatId, messageId = messageId)
-        return try {
-            val payload = jsonConfig.encodeToString(DeleteMessageRequest.serializer(), request)
-            val response =
-                httpClient.post("$apiBaseUrl/deleteMessage") {
+                httpClient.post("$apiBaseUrl/$endpoint") {
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }
             handleEditResponse(response)
         } catch (e: IOException) {
-            handleDeliveryException("delete", e)
+            handleDeliveryException(endpoint, e)
         }
     }
 
