@@ -224,97 +224,15 @@ class HealthController(
         )
     }
 
-    suspend fun buildPrometheusMetrics(): String {
-        val runtime = Runtime.getRuntime()
-        val usedMemory = runtime.totalMemory() - runtime.freeMemory()
-        val uptimeSeconds = (System.currentTimeMillis() - startTimeMillis) / 1000.0
-        val clusterActiveTrackers = sharedTrackers?.allSnapshots()?.size
-        val stateHealthy = stateStore?.healthCheck()
-        val gauges =
-            buildList {
-                add(Triple("process_uptime_seconds", "Process uptime in seconds", uptimeSeconds))
-                add(Triple("jvm_memory_used_bytes", "Used JVM memory in bytes", usedMemory))
-                add(Triple("jvm_memory_free_bytes", "Free JVM memory in bytes", runtime.freeMemory()))
-                add(Triple("jvm_memory_total_bytes", "Total allocated JVM memory in bytes", runtime.totalMemory()))
-                add(Triple("jvm_memory_max_bytes", "Maximum JVM memory limit in bytes", runtime.maxMemory()))
-                add(
-                    Triple(
-                        "media_webhook_active_tracking_jobs",
-                        "Number of active torrent tracking jobs",
-                        downloadTracker?.activeTrackerCount() ?: 0
-                    )
-                )
-                clusterActiveTrackers?.let {
-                    add(
-                        Triple(
-                            "media_webhook_cluster_active_tracking_jobs",
-                            "Active tracking jobs across all replicas",
-                            it
-                        )
-                    )
-                }
-                add(
-                    Triple(
-                        "media_webhook_event_rail_running",
-                        "Event rail running state (1 = running, 0 = stopped)",
-                        if (eventRail?.isRunning == true) 1 else 0
-                    )
-                )
-                add(
-                    Triple(
-                        "media_webhook_event_rail_closed",
-                        "Event rail closed state (1 = closed, 0 = open)",
-                        if (eventRail?.isClosed == true) 1 else 0
-                    )
-                )
-                add(
-                    Triple(
-                        "media_webhook_event_rail_workers",
-                        "Number of active EventRail worker coroutines",
-                        eventRail?.activeWorkersCount ?: 0
-                    )
-                )
-                add(
-                    Triple(
-                        "media_webhook_dead_letter_total",
-                        "Number of items currently in the Dead Letter Buffer",
-                        eventRail?.deadLetterBuffer?.size() ?: 0
-                    )
-                )
-            }
-        return buildString {
-            gauges.forEach { (name, help, value) -> promMetric(name, help, "gauge", value) }
-            promMetric(
-                "media_webhook_reconciliation_runs_total",
-                "Total reconciliation sweeps executed",
-                "counter",
-                reconciliationService?.runCount ?: 0L
+    suspend fun buildPrometheusMetrics(): String =
+        renderPrometheusMetrics(
+            PrometheusMetricsInput(
+                startTimeMillis = startTimeMillis,
+                downloadTracker = downloadTracker,
+                eventRail = eventRail,
+                reconciliationService = reconciliationService,
+                clusterActiveTrackers = sharedTrackers?.allSnapshots()?.size,
+                stateHealthy = stateStore?.healthCheck()
             )
-            promMetric(
-                "media_webhook_reconciliation_resumed_total",
-                "Total downloads resumed by reconciliation",
-                "counter",
-                reconciliationService?.resumedCount ?: 0L
-            )
-            stateHealthy?.let {
-                promMetric(
-                    "media_webhook_state_store_healthy",
-                    "State store health (1 = healthy, 0 = unhealthy)",
-                    "gauge",
-                    if (it) 1 else 0
-                )
-            }
-        }
-    }
-}
-
-private fun StringBuilder.promMetric(
-    name: String,
-    help: String,
-    type: String,
-    value: Any
-) {
-    appendLine("# HELP $name $help")
-    appendLine("# TYPE $name $type")
-    appendLine("$name $value")
+        )
 }
