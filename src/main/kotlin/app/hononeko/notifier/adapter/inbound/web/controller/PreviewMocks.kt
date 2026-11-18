@@ -6,6 +6,7 @@ import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.SwarmStats
+import app.hononeko.notifier.domain.service.MediaServerStatusCards
 
 // Sample payloads the template preview renders cards for.
 
@@ -207,3 +208,28 @@ internal fun mockIssue() =
         webUrl = "https://overseerr.lan:5055/issues/42",
         instanceName = "Overseerr"
     )
+
+/** A server that came back after a 4m 18s outage, or one that has been down for 12 minutes. */
+internal fun mockStatus(online: Boolean): MediaServerStatusCards.StatusView {
+    val now = System.currentTimeMillis()
+    return if (online) {
+        MediaServerStatusCards.StatusView(
+            serverName = "Kerrlab Plex",
+            sourceName = "Plex",
+            online = true,
+            since = now - 60_000L,
+            downtimeMillis = 258_000L,
+            checkedAt = now
+        )
+    } else {
+        MediaServerStatusCards.StatusView(
+            serverName = "Kerrlab Plex",
+            sourceName = "Plex",
+            online = false,
+            since = now - 720_000L,
+            downtimeMillis = 720_000L,
+            checkedAt = now,
+            error = "Connection refused"
+        )
+    }
+}

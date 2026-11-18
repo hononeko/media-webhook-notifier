@@ -153,6 +153,21 @@ class TelegramPublisherAdapter(
     ): Either<DomainError.NotificationError, Unit> =
         editWithCard(handle, finalCard).also { photoMessages.remove(handle) }
 
+    override suspend fun pinMessage(
+        handle: NotificationHandle,
+        silent: Boolean
+    ): Either<DomainError.NotificationError, Unit> {
+        val msgId =
+            handle.messageReferenceId.toLongOrNull()
+                ?: return Either.Left(
+                    DomainError.NotificationError.DeliveryFailed(
+                        providerId,
+                        "cannot pin '${handle.messageReferenceId}': not a Telegram message id"
+                    )
+                )
+        return api.pinChatMessage(handle.channelOrChatId.ifBlank { config.chatId }, msgId, silent)
+    }
+
     override suspend fun cancelProgress(
         handle: NotificationHandle,
         reasonCard: NotificationCard

@@ -112,6 +112,24 @@ events:
           url: "{deep_link_url}"
           style: "PRIMARY"
 
+    # The pinned status message (MEDIA_SERVER_STATUS_MONITOR_ENABLED=true), edited in place. Lines whose tags are
+    # empty are left out, e.g. the outage line before the first outage.
+    status_online:
+      silent: true
+      title: "🟢 {media_server_name} — Online"
+      body: |
+        ▪ <b>Back up at:</b> {since} (downtime: {downtime})
+        ▪ <b>Last checked:</b> {checked_at}
+
+    status_offline:
+      silent: true
+      title: "🔴 {media_server_name} — Offline"
+      body: |
+        ▪ <b>Down since:</b> {since}
+        ▪ <b>Downtime:</b> {downtime}
+        ▪ <b>Error:</b> {error}
+        ▪ <b>Last checked:</b> {checked_at}
+
   seerr:
     request:
       silent: false

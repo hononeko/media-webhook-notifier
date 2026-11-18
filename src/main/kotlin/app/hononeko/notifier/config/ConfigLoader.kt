@@ -143,8 +143,35 @@ object ConfigLoader {
                     "MEDIA_SERVER_MAX_AGE_SECONDS",
                     "mediaServer.maxAvailableAgeSeconds",
                     "mediaServer.maxAgeSeconds"
-                )
+                ),
+            name = reader.get("MEDIA_SERVER_NAME", "mediaServer.name") ?: "",
+            status = loadMediaServerStatusSettings(reader)
         )
+
+    /** Fails boot on a non-positive interval, but only when the monitor is on. */
+    private fun loadMediaServerStatusSettings(reader: EnvReader): MediaServerStatusSettings {
+        val defaults = MediaServerStatusSettings()
+        val settings =
+            MediaServerStatusSettings(
+                enabled = reader.getBoolean(defaults.enabled, "MEDIA_SERVER_STATUS_MONITOR_ENABLED"),
+                pollIntervalSeconds =
+                    reader.getLong(defaults.pollIntervalSeconds, "MEDIA_SERVER_STATUS_POLL_INTERVAL_SECONDS"),
+                graceSeconds =
+                    reader.getLong(
+                        defaults.graceSeconds,
+                        "MEDIA_SERVER_STATUS_GRACE_SECONDS",
+                        "MEDIA_SERVER_HEALTH_GRACE_SECONDS"
+                    ),
+                refreshSeconds = reader.getLong(defaults.refreshSeconds, "MEDIA_SERVER_STATUS_REFRESH_SECONDS"),
+                pinEnabled = reader.getBoolean(defaults.pinEnabled, "MEDIA_SERVER_STATUS_PIN_ENABLED")
+            )
+        if (settings.enabled) {
+            require(settings.pollIntervalSeconds > 0) { "MEDIA_SERVER_STATUS_POLL_INTERVAL_SECONDS must be positive" }
+            require(settings.graceSeconds >= 0) { "MEDIA_SERVER_STATUS_GRACE_SECONDS must not be negative" }
+            require(settings.refreshSeconds > 0) { "MEDIA_SERVER_STATUS_REFRESH_SECONDS must be positive" }
+        }
+        return settings
+    }
 
     private fun loadStateConfig(reader: EnvReader): StateConfig {
         val url =

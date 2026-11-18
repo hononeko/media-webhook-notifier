@@ -17,6 +17,7 @@ Compiled ahead-of-time (AOT) with **GraalVM Native Image** into a static, distro
 * **⏳ Live Download Progress:** Monitors active downloads in **qBittorrent** or **Transmission** and silently edits the Telegram message in-place every few seconds with an ASCII progress bar, real-time speed, ETA, and peer stats.
 * **🛡️ Smart Episode Debouncer:** Automatically groups rapid multi-episode grabs, imports, and quality upgrades into a single clean status card (no chat spam).
 * **🍿 Media Available Cards:** Directly ingests Plex `library.new` and Jellyfin `ItemAdded` events with smart formatting for Seasons (e.g. `Futurama - Season 3` with Season poster), Episodes (`S03E01`), and Movies, complete with instant watch deep links.
+* **🟢 Pinned Server Status:** Optionally polls Plex or Jellyfin and keeps one pinned message up to date: online, or offline since when, with the outage's length once it's back. Short restarts are ignored ([details](docs/CONFIGURATION.md#server-status-message)).
 * **🛎️ Request & Issue Tracking:** Ingests media requests and issue reports from Overseerr, Jellyseerr, and Seerr.
 * **🎨 Fully Customizable Layouts:** Modify card titles, emojis, text, or localization via simple YAML templates.
 * **🔒 Dual Authentication Guard:** Accepts tokens via HTTP Headers (`Authorization: Bearer <token>`, `X-Api-Key: <token>`) or query parameters (`?token=<token>`).

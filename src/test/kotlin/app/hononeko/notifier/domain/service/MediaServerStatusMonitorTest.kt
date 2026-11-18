@@ -1,0 +1,374 @@
+package app.hononeko.notifier.domain.service
+
+import app.hononeko.notifier.adapter.outbound.state.InMemoryStateStore
+import app.hononeko.notifier.domain.error.DomainError
+import app.hononeko.notifier.domain.model.NotificationCard
+import app.hononeko.notifier.domain.model.NotificationHandle
+import app.hononeko.notifier.domain.model.ProgressUpdate
+import app.hononeko.notifier.domain.port.outbound.MediaServerHealthPort
+import app.hononeko.notifier.domain.port.outbound.NotificationPublisherPort
+import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import arrow.core.Either
+import kotlinx.coroutines.test.runTest
+import java.time.ZoneOffset
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/** The pinned media server status message (MWN-36). Checks run every 30 s with a 90 s grace period. */
+class MediaServerStatusMonitorTest {
+    // 2026-11-18 14:00:00 UTC
+    private val start = 1_795_010_400_000L
+    private var now = start
+    private var healthy = true
+    private val store = InMemoryStateStore()
+    private val publisher = StatusPublisher()
+
+    private val unreachable =
+        DomainError.MediaServerError.Unreachable(
+            "http://plex:32400/identity",
+            "Connection refused"
+        )
+
+    private fun monitor(
+        owner: String = "pod-a",
+        stateStore: StateStorePort = store,
+        refreshSeconds: Long = 300,
+        pinEnabled: Boolean = true
+    ) = MediaServerStatusMonitor(
+        healthCheck = MediaServerHealthPort { if (healthy) Either.Right(Unit) else Either.Left(unreachable) },
+        publisher = publisher,
+        stateStore = stateStore,
+        config =
+            MediaServerStatusConfig(
+                serverName = "Kerrlab Plex",
+                sourceName = "Plex",
+                pollIntervalSeconds = 30,
+                graceSeconds = 90,
+                refreshSeconds = refreshSeconds,
+                pinEnabled = pinEnabled
+            ),
+        ownerId = owner,
+        clock = { now },
+        zone = ZoneOffset.UTC,
+        engine = { TemplateEngine() }
+    )
+
+    /** Runs [count] checks, 30 s apart, the first one at the current time. */
+    private suspend fun MediaServerStatusMonitor.checks(count: Int) {
+        repeat(count) {
+            if (it > 0) now += 30_000
+            tick()
+        }
+    }
+
+    @Test
+    fun `the first healthy check sends and pins one silent online message`() =
+        runTest {
+            monitor().tick()
+
+            val card = publisher.sent.single()
+            assertEquals("🟢 Kerrlab Plex — Online", card.title)
+            assertTrue(card.silent)
+            assertEquals(listOf("msg1" to true), publisher.pinned)
+            // Before any outage there is no "back up" line.
+            assertEquals("▪ <b>Last checked:</b> 14:00", card.customBody)
+        }
+
+    @Test
+    fun `a blip shorter than the grace period changes nothing`() =
+        runTest {
+            val monitor = monitor()
+            monitor.tick()
+            healthy = false
+            monitor.checks(3) // 0 s, 30 s, 60 s of failures
+            healthy = true
+            now += 30_000
+            monitor.tick()
+
+            assertEquals(1, publisher.sent.size)
+            assertTrue(publisher.edits.isEmpty())
+        }
+
+    @Test
+    fun `an outage past the grace period edits the message to offline`() =
+        runTest {
+            val monitor = monitor()
+            monitor.tick()
+            now += 30_000
+            healthy = false
+            monitor.checks(4) // the 4th check is 90 s after the first failure
+
+            assertEquals(1, publisher.sent.size)
+            val offline = publisher.edits.single()
+            assertEquals("msg1", offline.first.messageReferenceId)
+            assertEquals("🔴 Kerrlab Plex — Offline", offline.second.title)
+            assertEquals(
+                "▪ <b>Down since:</b> 14:00\n▪ <b>Downtime:</b> 1m 30s\n▪ <b>Error:</b> Connection refused\n" +
+                    "▪ <b>Last checked:</b> 14:02",
+                offline.second.customBody
+            )
+        }
+
+    @Test
+    fun `recovery edits the message back to online with the downtime`() =
+        runTest {
+            val monitor = monitor()
+            monitor.tick()
+            healthy = false
+            now += 10_000 // first failure at 14:00:10
+            monitor.checks(4)
+            now += 168_000 // 14:04:28
+            healthy = true
+            monitor.tick()
+
+            val online = publisher.edits.last().second
+            assertEquals("🟢 Kerrlab Plex — Online", online.title)
+            assertEquals(
+                "▪ <b>Back up at:</b> 14:04 (downtime: 4m 18s)\n▪ <b>Last checked:</b> 14:04",
+                online.customBody
+            )
+            assertEquals(1, publisher.sent.size)
+        }
+
+    @Test
+    fun `an unchanged status is only refreshed every refresh interval`() =
+        runTest {
+            val monitor = monitor(refreshSeconds = 300)
+            monitor.tick()
+            monitor.checks(10) // 270 s later: not due yet
+            assertTrue(publisher.edits.isEmpty())
+
+            now += 30_000
+            monitor.tick()
+            assertEquals(1, publisher.edits.size)
+        }
+
+    @Test
+    fun `a deleted message is replaced by a new pinned one`() =
+        runTest {
+            val monitor = monitor()
+            monitor.tick()
+            publisher.messageGone = true
+            healthy = false
+            monitor.checks(4)
+
+            assertEquals(2, publisher.sent.size)
+            assertEquals("🔴 Kerrlab Plex — Offline", publisher.sent.last().title)
+            assertEquals(listOf("msg1", "msg2"), publisher.pinned.map { it.first })
+        }
+
+    @Test
+    fun `a failed edit of a change is retried on the next check`() =
+        runTest {
+            val monitor = monitor()
+            monitor.tick()
+            healthy = false
+            publisher.editFailures = 1
+            monitor.checks(5) // goes offline at the 4th check, whose edit fails
+
+            assertEquals(1, publisher.edits.size)
+            assertEquals(
+                "🔴 Kerrlab Plex — Offline",
+                publisher.edits
+                    .single()
+                    .second.title
+            )
+        }
+
+    @Test
+    fun `a restarted instance keeps editing the same message`() =
+        runTest {
+            monitor(owner = "pod-a").tick()
+            now += 30_000
+            healthy = false
+            // pod-a is gone; its lock lapses and pod-b picks up the stored message.
+            val podB = monitor(owner = "pod-b")
+            now += 70_000
+            podB.checks(4)
+
+            assertEquals(1, publisher.sent.size)
+            assertEquals(
+                "msg1",
+                publisher.edits
+                    .single()
+                    .first.messageReferenceId
+            )
+        }
+
+    @Test
+    fun `only the instance holding the lock checks the server`() =
+        runTest {
+            val podA = monitor(owner = "pod-a")
+            val podB = monitor(owner = "pod-b")
+            podA.tick()
+            podB.tick()
+
+            assertEquals(1, publisher.sent.size)
+            podA.stop()
+            podB.tick()
+            assertEquals(1, publisher.sent.size)
+            assertTrue(publisher.edits.isEmpty(), "pod-b keeps the stored message instead of sending a new one")
+        }
+
+    @Test
+    fun `the first verdict waits out the grace period when the server starts down`() =
+        runTest {
+            healthy = false
+            val monitor = monitor()
+            monitor.checks(3)
+            assertTrue(publisher.sent.isEmpty())
+
+            now += 30_000
+            monitor.tick()
+            assertEquals("🔴 Kerrlab Plex — Offline", publisher.sent.single().title)
+        }
+
+    @Test
+    fun `failures before a long gap don't count toward the grace period`() =
+        runTest {
+            val monitor = monitor()
+            monitor.tick()
+            healthy = false
+            monitor.checks(2)
+            now += 600_000 // this instance was away for 10 minutes
+            monitor.tick()
+
+            // Only the periodic refresh of the online card.
+            assertTrue(publisher.edits.all { it.second.title.contains("Online") })
+        }
+
+    @Test
+    fun `a pin that isn't allowed still keeps the message up to date`() =
+        runTest {
+            publisher.pinFails = true
+            val monitor = monitor()
+            monitor.tick()
+            healthy = false
+            monitor.checks(4)
+
+            assertEquals(1, publisher.sent.size)
+            assertEquals(1, publisher.edits.size)
+        }
+
+    @Test
+    fun `a message in a chat that is no longer configured is replaced`() =
+        runTest {
+            monitor().tick()
+            publisher.chat = "new-chat"
+            now += 30_000
+            monitor().tick()
+
+            assertEquals(2, publisher.sent.size)
+            assertTrue(publisher.edits.isEmpty())
+        }
+
+    @Test
+    fun `pinning can be turned off`() =
+        runTest {
+            monitor(pinEnabled = false).tick()
+            assertEquals(1, publisher.sent.size)
+            assertTrue(publisher.pinned.isEmpty())
+        }
+
+    @Test
+    fun `the state survives in the store`() =
+        runTest {
+            val monitor = monitor()
+            monitor.tick()
+            healthy = false
+            monitor.checks(4)
+
+            val stored = store.get(MediaServerStatusMonitor.STATE_KEY)
+            assertTrue(stored != null && stored.contains("\"status\":\"DOWN\"") && stored.contains("msg1"), stored)
+        }
+
+    @Test
+    fun `advance moves through up, failing, down and back up`() {
+        val monitor = monitor()
+        val up = monitor.advance(MediaServerStatusState(), Either.Right(Unit), start)
+        assertEquals(ServerStatus.UP, up.status)
+        assertEquals(start, up.since)
+
+        val failing = monitor.advance(up, Either.Left(unreachable), start + 30_000)
+        assertEquals(ServerStatus.UP, failing.status)
+        assertEquals(start + 30_000, failing.firstFailedAt)
+
+        val down = monitor.advance(failing, Either.Left(unreachable), start + 120_000)
+        assertEquals(ServerStatus.DOWN, down.status)
+        assertEquals(start + 30_000, down.since)
+
+        val back = monitor.advance(down, Either.Right(Unit), start + 300_000)
+        assertEquals(ServerStatus.UP, back.status)
+        assertEquals(270_000L, back.lastDowntimeMillis)
+        assertNull(back.firstFailedAt)
+        assertNull(back.lastError)
+    }
+
+    /** Records sends, edits and pins; message ids count up from msg1. */
+    private class StatusPublisher : NotificationPublisherPort {
+        override val providerId = "fake"
+        var chat = "chat"
+        override val defaultChannelOrChatId: String get() = chat
+        val sent = CopyOnWriteArrayList<NotificationCard>()
+        val edits = CopyOnWriteArrayList<Pair<NotificationHandle, NotificationCard>>()
+        val pinned = CopyOnWriteArrayList<Pair<String, Boolean>>()
+        var messageGone = false
+        var editFailures = 0
+        var pinFails = false
+
+        override suspend fun sendCard(
+            card: NotificationCard
+        ): Either<DomainError.NotificationError, NotificationHandle> {
+            sent += card
+            messageGone = false
+            return Either.Right(NotificationHandle(providerId, chat, "msg${sent.size}"))
+        }
+
+        override suspend fun editCard(
+            handle: NotificationHandle,
+            card: NotificationCard,
+            callbackRef: String?
+        ): Either<DomainError.NotificationError, Unit> {
+            if (messageGone) return Either.Left(DomainError.NotificationError.MessageNotFound(providerId, "gone"))
+            if (editFailures > 0) {
+                editFailures--
+                return Either.Left(DomainError.NotificationError.RateLimited(providerId, 5))
+            }
+            edits += handle to card
+            return Either.Right(Unit)
+        }
+
+        override suspend fun pinMessage(
+            handle: NotificationHandle,
+            silent: Boolean
+        ): Either<DomainError.NotificationError, Unit> {
+            if (pinFails) {
+                return Either.Left(
+                    DomainError.NotificationError.DeliveryFailed(providerId, "not enough rights")
+                )
+            }
+            pinned += handle.messageReferenceId to silent
+            return Either.Right(Unit)
+        }
+
+        override suspend fun startLiveProgress(initialCard: NotificationCard) = sendCard(initialCard)
+
+        override suspend fun updateProgress(
+            handle: NotificationHandle,
+            update: ProgressUpdate
+        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
+
+        override suspend fun completeProgress(
+            handle: NotificationHandle,
+            finalCard: NotificationCard
+        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
+
+        override suspend fun cancelProgress(
+            handle: NotificationHandle,
+            reasonCard: NotificationCard
+        ): Either<DomainError.NotificationError, Unit> = Either.Right(Unit)
+    }
+}

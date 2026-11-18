@@ -61,6 +61,25 @@ sealed interface DomainError {
             val url: String,
             val cause: Throwable? = null
         ) : NotificationError
+
+        /** The message to edit no longer exists, e.g. someone deleted it in the chat. */
+        data class MessageNotFound(
+            override val provider: String,
+            val details: String
+        ) : NotificationError
+    }
+
+    /** Failures of the media server's health check (Plex / Jellyfin). */
+    sealed interface MediaServerError : DomainError {
+        data class Unreachable(
+            val url: String,
+            val reason: String
+        ) : MediaServerError
+
+        data class Unhealthy(
+            val url: String,
+            val httpStatus: Int
+        ) : MediaServerError
     }
 
     /** Failures talking to the media request manager (Seerr / Overseerr / Jellyseerr). */

@@ -349,4 +349,27 @@ class TemplatePreviewRoutesTest {
             assertEquals(true, preview("grab").enabled)
             assertEquals(true, preview("media_available").enabled)
         }
+
+    @Test
+    fun `preview endpoint renders the media server status cards`() =
+        withPreviewApp { client ->
+            suspend fun preview(eventType: String): String {
+                val response =
+                    client.post("/api/v1/templates/preview") {
+                        header(HttpHeaders.Authorization, "Bearer $testToken")
+                        contentType(ContentType.Application.Json)
+                        setBody("""{"event_type":"$eventType"}""")
+                    }
+                assertEquals(HttpStatusCode.OK, response.status)
+                return response.bodyAsText()
+            }
+
+            val online = preview("status_online")
+            assertTrue(online.contains("Kerrlab Plex"), online)
+            assertTrue(online.contains("downtime: 4m 18s"), online)
+            assertTrue(online.contains("\"enabled\":true"), online)
+            val offline = preview("media_server.status_offline")
+            assertTrue(offline.contains("Connection refused"), offline)
+            assertTrue(offline.contains("checked_at"), offline)
+        }
 }

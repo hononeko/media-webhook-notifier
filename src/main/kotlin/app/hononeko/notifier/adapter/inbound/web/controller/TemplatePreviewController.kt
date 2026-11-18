@@ -7,6 +7,7 @@ import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.service.CardTemplates
 import app.hononeko.notifier.domain.service.DownloadCards
+import app.hononeko.notifier.domain.service.MediaServerStatusCards
 import app.hononeko.notifier.domain.service.PayloadCards
 import app.hononeko.notifier.domain.service.SeerrCards
 import app.hononeko.notifier.domain.service.ServarrCards
@@ -223,6 +224,22 @@ private val ISSUE_TAGS =
         "source_name"
     )
 
+private val STATUS_EVENTS =
+    setOf("status_online", "media_server.status_online", "status_offline", "media_server.status_offline")
+
+private val STATUS_TAGS =
+    listOf(
+        "media_server_name",
+        "status",
+        "status_icon",
+        "since",
+        "downtime",
+        "checked_at",
+        "error",
+        "instance_name",
+        "source_name"
+    )
+
 class TemplatePreviewController {
     suspend fun handlePreview(call: ApplicationCall) {
         val request =
@@ -253,7 +270,8 @@ class TemplatePreviewController {
                 renderedCard = rendered,
                 telegramHtml = html,
                 tagsAvailable = availableTags,
-                enabled = engine.isEnabled(templateEventFor(eventType))
+                // The status message is switched by MEDIA_SERVER_STATUS_MONITOR_ENABLED, not by a template toggle.
+                enabled = eventType in STATUS_EVENTS || engine.isEnabled(templateEventFor(eventType))
             )
         )
     }
@@ -347,6 +365,14 @@ class TemplatePreviewController {
                 val seerr = mockSeerr()
                 val card = SeerrCards.buildSeerrCard(seerr, engine)
                 Triple(card, null, REQUEST_TAGS)
+            }
+            in STATUS_EVENTS -> {
+                val card =
+                    MediaServerStatusCards.build(
+                        mockStatus(online = eventType.endsWith("online")),
+                        engine = engine
+                    )
+                Triple(card, null, STATUS_TAGS)
             }
             else -> {
                 val grab = mockGrab()

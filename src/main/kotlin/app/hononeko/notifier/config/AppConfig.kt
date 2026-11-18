@@ -76,7 +76,25 @@ data class MediaServerConfig(
     val type: String = "plex",
     val url: String = "",
     val publicUrl: String = "",
-    val maxAvailableAgeSeconds: Long = 86_400L
+    val maxAvailableAgeSeconds: Long = 86_400L,
+    /** Shown on the status card; defaults to the server type's name. */
+    val name: String = "",
+    val status: MediaServerStatusSettings = MediaServerStatusSettings()
+) {
+    /** The display name of the server type: Plex or Jellyfin. */
+    val typeName: String
+        get() = if (type.trim().equals("jellyfin", ignoreCase = true)) "Jellyfin" else "Plex"
+
+    val displayName: String get() = name.ifBlank { typeName }
+}
+
+/** The pinned media server status message (`MEDIA_SERVER_STATUS_*`); durations in seconds. */
+data class MediaServerStatusSettings(
+    val enabled: Boolean = false,
+    val pollIntervalSeconds: Long = 30,
+    val graceSeconds: Long = 90,
+    val refreshSeconds: Long = 300,
+    val pinEnabled: Boolean = true
 )
 
 enum class DownloadClientType(

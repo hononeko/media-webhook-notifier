@@ -65,6 +65,7 @@ internal class TelegramBotApi(
         private const val NETWORK_ERROR_MSG = "Network error"
         private const val SEND_RETRY_AFTER_SECONDS = 30
         private const val EDIT_RETRY_AFTER_SECONDS = 5
+        private val MESSAGE_GONE = listOf("message to edit not found", "MESSAGE_ID_INVALID")
     }
 
     // Logged under the publisher's name, where these calls used to live.
@@ -169,6 +170,16 @@ internal class TelegramBotApi(
         val parseMode: String = "HTML",
         @SerialName("reply_markup")
         val replyMarkup: InlineKeyboardMarkup? = null
+    )
+
+    @Serializable
+    private data class PinChatMessageRequest(
+        @SerialName("chat_id")
+        val chatId: String,
+        @SerialName("message_id")
+        val messageId: Long,
+        @SerialName("disable_notification")
+        val disableNotification: Boolean
     )
 
     private val telegramResponseSerializer = TelegramResponse.serializer(MessageResult.serializer())
@@ -323,6 +334,26 @@ internal class TelegramBotApi(
         }
     }
 
+    /** Pins a message; the bot needs the Pin Messages right in groups and channels. */
+    suspend fun pinChatMessage(
+        chatId: String,
+        messageId: Long,
+        silent: Boolean
+    ): Either<DomainError.NotificationError, Unit> {
+        val request = PinChatMessageRequest(chatId = chatId, messageId = messageId, disableNotification = silent)
+        return try {
+            val payload = jsonConfig.encodeToString(PinChatMessageRequest.serializer(), request)
+            val response =
+                httpClient.post("$apiBaseUrl/pinChatMessage") {
+                    contentType(ContentType.Application.Json)
+                    setBody(payload)
+                }
+            either { ensureSuccess(response.status, response.bodyAsText(), EDIT_RETRY_AFTER_SECONDS) }
+        } catch (e: IOException) {
+            handleDeliveryException("pin", e)
+        }
+    }
+
     private fun <T> handleDeliveryException(
         operation: String,
         e: Throwable
@@ -366,7 +397,14 @@ internal class TelegramBotApi(
             val unchanged =
                 response.status != HttpStatusCode.TooManyRequests &&
                     raw.contains("message is not modified", ignoreCase = true)
-            if (!unchanged) ensureSuccess(response.status, raw, EDIT_RETRY_AFTER_SECONDS)
+            if (unchanged) return@either
+            // Deleted in the chat (or never there): a distinct error, so callers can send a new message instead.
+            if (response.status == HttpStatusCode.BadRequest &&
+                MESSAGE_GONE.any { raw.contains(it, ignoreCase = true) }
+            ) {
+                raise(DomainError.NotificationError.MessageNotFound(providerId, raw))
+            }
+            ensureSuccess(response.status, raw, EDIT_RETRY_AFTER_SECONDS)
         }
 
     /**
