@@ -233,4 +233,93 @@ class CrossSeedCardsTest {
             assertEquals("cross_seed.match", templateEventName(injected))
             assertEquals("cross_seed.failure", templateEventName(failed))
         }
+
+    @Test
+    fun `disabling cross_seed match suppresses injected and saved across aliases while failure sends`() =
+        runTest {
+            val saved = injected.copy(eventType = EventType.CROSS_SEED_SAVED, paused = true)
+            val matchDisabledYamls =
+                listOf(
+                    "events:\n  cross_seed:\n    match:\n      enabled: false",
+                    "events:\n  cross_seed:\n    match:\n      disabled: true",
+                    "events:\n  cross_seed.match:\n    enabled: false",
+                    "events:\n  \"cross_seed.match\":\n    enabled: false",
+                    "events:\n  cross_seed_match:\n    enabled: false",
+                    "events:\n  cross-seed:\n    match:\n      enabled: false",
+                    "events:\n  cross-seed.match:\n    enabled: false",
+                    "events:\n  crossseed:\n    match:\n      enabled: false",
+                    "events:\n  crossseed.match:\n    enabled: false"
+                )
+
+            for (yaml in matchDisabledYamls) {
+                val loadedEngine = engine(yaml)
+                assertFalse(loadedEngine.isEnabled(CrossSeedCards.MATCH_EVENT), "Expected match disabled:\n$yaml")
+                assertTrue(loadedEngine.isEnabled(CrossSeedCards.FAILURE_EVENT), "Expected failure enabled:\n$yaml")
+
+                val publisher = RecordingPublisher()
+                val service =
+                    IngestWebhookService(
+                        trackDownloadUseCase = TrackDownloadUseCase { _, _ -> error("not a download") },
+                        announceMediaImportedUseCase = AnnounceMediaImportedUseCase { error("not an import") },
+                        announceMediaAvailableUseCase = AnnounceMediaAvailableUseCase { error("not available media") },
+                        alertUseCases = AlertUseCases(crossSeed = CrossSeedService(publisher)),
+                        isEventEnabled = { loadedEngine.isEnabled(it) }
+                    )
+
+                assertEquals(Either.Right(Unit), service.execute(injected))
+                assertEquals(Either.Right(Unit), service.execute(saved))
+                assertTrue(publisher.sentCards.isEmpty(), "Expected no match cards sent for:\n$yaml")
+
+                assertEquals(Either.Right(Unit), service.execute(failed))
+                assertEquals(
+                    listOf(CrossSeedCards.FAILURE_EVENT),
+                    publisher.sentCards.map { it.eventType },
+                    "Expected failure card sent for:\n$yaml"
+                )
+            }
+        }
+
+    @Test
+    fun `disabling cross_seed failure suppresses failure across aliases while match sends`() =
+        runTest {
+            val failureDisabledYamls =
+                listOf(
+                    "events:\n  cross_seed:\n    failure:\n      enabled: false",
+                    "events:\n  cross_seed.failure:\n    enabled: false",
+                    "events:\n  cross_seed_failure:\n    enabled: false",
+                    "events:\n  cross-seed:\n    failure:\n      enabled: false",
+                    "events:\n  cross-seed.failure:\n    enabled: false",
+                    "events:\n  crossseed:\n    failure:\n      enabled: false",
+                    "events:\n  crossseed.failure:\n    enabled: false"
+                )
+
+            for (yaml in failureDisabledYamls) {
+                val loadedEngine = engine(yaml)
+                assertTrue(loadedEngine.isEnabled(CrossSeedCards.MATCH_EVENT), "Expected match enabled:\n$yaml")
+                assertFalse(
+                    loadedEngine.isEnabled(CrossSeedCards.FAILURE_EVENT),
+                    "Expected failure disabled:\n$yaml"
+                )
+
+                val publisher = RecordingPublisher()
+                val service =
+                    IngestWebhookService(
+                        trackDownloadUseCase = TrackDownloadUseCase { _, _ -> error("not a download") },
+                        announceMediaImportedUseCase = AnnounceMediaImportedUseCase { error("not an import") },
+                        announceMediaAvailableUseCase = AnnounceMediaAvailableUseCase { error("not available media") },
+                        alertUseCases = AlertUseCases(crossSeed = CrossSeedService(publisher)),
+                        isEventEnabled = { loadedEngine.isEnabled(it) }
+                    )
+
+                assertEquals(Either.Right(Unit), service.execute(failed))
+                assertTrue(publisher.sentCards.isEmpty(), "Expected no failure card sent for:\n$yaml")
+
+                assertEquals(Either.Right(Unit), service.execute(injected))
+                assertEquals(
+                    listOf(CrossSeedCards.MATCH_EVENT),
+                    publisher.sentCards.map { it.eventType },
+                    "Expected match card sent for:\n$yaml"
+                )
+            }
+        }
 }

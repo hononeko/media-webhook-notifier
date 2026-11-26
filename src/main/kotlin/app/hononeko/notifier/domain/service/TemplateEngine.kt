@@ -44,65 +44,102 @@ class TemplateEngine(
 ) {
     companion object {
         private val TAG_PATTERN: Pattern = Pattern.compile("\\{([a-zA-Z0-9_-]+)}")
-        private val EVENT_ALIASES: Map<String, List<String>> =
-            mapOf(
-                "grab" to
-                    listOf(
-                        "servarr.grab",
-                        "servarr_grab",
-                        "arr.grab",
-                        "download.grab",
-                        "download_grab",
-                        "torrent.grab"
-                    ),
-                "download_progress" to listOf("download_progress", "download.progress", "progress"),
-                "progress" to listOf("download_progress", "download.progress", "progress"),
-                "download_complete" to listOf("download_complete", "download.complete", "complete"),
-                "complete" to listOf("download_complete", "download.complete", "complete"),
-                "download_stalled" to listOf("download_stalled", "download.stalled", "stalled"),
-                "stalled" to listOf("download_stalled", "download.stalled", "stalled"),
-                "import" to listOf("import", "servarr.import", "arr.import"),
-                "manual_interaction" to
-                    listOf("manual_interaction", "servarr.manual_interaction", "arr.manual_interaction"),
-                "health" to listOf("health", "servarr.health", "system.health"),
-                "media_available" to
-                    listOf(
-                        "media_available",
-                        "media_server.available",
-                        "media.available",
-                        "available"
-                    ),
-                "available" to
-                    listOf(
-                        "media_available",
-                        "media_server.available",
-                        "media.available",
-                        "available"
-                    ),
-                "request" to listOf("request", "seerr.request", "seerr_request"),
-                "media_server.status_online" to listOf("media_server_status_online", "status_online"),
-                "media_server.status_offline" to listOf("media_server_status_offline", "status_offline"),
-                "cross_seed.match" to listOf("cross_seed_match", "cross-seed.match", "crossseed.match"),
-                "cross_seed.failure" to listOf("cross_seed_failure", "cross-seed.failure", "crossseed.failure"),
-                "issue" to
-                    listOf(
-                        "issue",
-                        "seerr.issue",
-                        "seerr_issue",
-                        "request",
-                        "seerr.request",
-                        "seerr_request"
-                    )
+        private val EVENT_ALIAS_GROUPS: List<List<String>> =
+            listOf(
+                listOf(
+                    "grab",
+                    "servarr.grab",
+                    "servarr_grab",
+                    "arr.grab",
+                    "arr_grab",
+                    "download.grab",
+                    "download_grab",
+                    "torrent.grab",
+                    "torrent_grab"
+                ),
+                listOf(
+                    "download_progress",
+                    "download.progress",
+                    "progress",
+                    "torrent.progress",
+                    "torrent_progress"
+                ),
+                listOf(
+                    "download_complete",
+                    "download.complete",
+                    "complete",
+                    "torrent.complete",
+                    "torrent_complete"
+                ),
+                listOf(
+                    "download_stalled",
+                    "download.stalled",
+                    "stalled",
+                    "torrent.stalled",
+                    "torrent_stalled"
+                ),
+                listOf("import", "servarr.import", "servarr_import", "arr.import", "arr_import"),
+                listOf(
+                    "manual_interaction",
+                    "servarr.manual_interaction",
+                    "servarr_manual_interaction",
+                    "arr.manual_interaction",
+                    "arr_manual_interaction"
+                ),
+                listOf("health", "servarr.health", "servarr_health", "system.health", "system_health"),
+                listOf(
+                    "media_available",
+                    "media_server.available",
+                    "media_server_available",
+                    "media.available",
+                    "available"
+                ),
+                listOf("request", "seerr.request", "seerr_request"),
+                listOf("issue", "seerr.issue", "seerr_issue"),
+                listOf("media_server.status_online", "media_server_status_online", "status_online"),
+                listOf("media_server.status_offline", "media_server_status_offline", "status_offline"),
+                listOf(
+                    "cross_seed.match",
+                    "cross_seed_match",
+                    "cross-seed.match",
+                    "cross-seed_match",
+                    "crossseed.match",
+                    "crossseed_match",
+                    "match"
+                ),
+                listOf(
+                    "cross_seed.failure",
+                    "cross_seed_failure",
+                    "cross-seed.failure",
+                    "cross-seed_failure",
+                    "crossseed.failure",
+                    "crossseed_failure",
+                    "failure"
+                )
             )
+
+        private val EVENT_ALIASES_BY_KEY: Map<String, List<String>> =
+            buildMap {
+                for (group in EVENT_ALIAS_GROUPS) {
+                    for (key in group) {
+                        put(key, group)
+                    }
+                }
+            }
+
+        private val EVENT_FALLBACKS: Map<String, List<String>> =
+            mapOf("issue" to listOf("request", "seerr.request", "seerr_request"))
+
+        /** All equivalent template keys for [eventName], or `[eventName]` itself for custom event names. */
+        fun eventAliasesFor(eventName: String): List<String> = EVENT_ALIASES_BY_KEY[eventName] ?: listOf(eventName)
     }
 
     val theme get() = config.theme
 
-    fun getEventTemplate(eventName: String): EventTemplate? {
-        val direct = config.events[eventName]
-        val aliases = EVENT_ALIASES[eventName]
-        return direct ?: aliases?.firstNotNullOfOrNull { config.events[it] }
-    }
+    fun getEventTemplate(eventName: String): EventTemplate? =
+        config.events[eventName]
+            ?: eventAliasesFor(eventName).firstNotNullOfOrNull { config.events[it] }
+            ?: EVENT_FALLBACKS[eventName]?.firstNotNullOfOrNull { config.events[it] }
 
     fun interpolate(
         template: String?,
