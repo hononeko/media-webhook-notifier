@@ -300,6 +300,16 @@ class ConfigLoaderTest {
     }
 
     @Test
+    fun `CROSS_SEED_DEBOUNCE_SECONDS defaults to 30 seconds independently of DEBOUNCE_SECONDS`() {
+        assertEquals(30L, ConfigLoader.load(emptyMap()).crossSeed.debounceSeconds)
+        val withDownloadDebounce =
+            ConfigLoader.load(mapOf("DOWNLOAD_CLIENT_DEBOUNCE_SECONDS" to "10")).crossSeed.debounceSeconds
+        assertEquals(30L, withDownloadDebounce)
+        assertEquals(45L, ConfigLoader.load(mapOf("CROSS_SEED_DEBOUNCE_SECONDS" to "45")).crossSeed.debounceSeconds)
+        assertEquals(0L, ConfigLoader.load(mapOf("CROSS_SEED_DEBOUNCE_SECONDS" to "-5")).crossSeed.debounceSeconds)
+    }
+
+    @Test
     fun `the default templates include the cross-seed events`() {
         val events = ConfigLoader.load(emptyMap()).templates.events
 

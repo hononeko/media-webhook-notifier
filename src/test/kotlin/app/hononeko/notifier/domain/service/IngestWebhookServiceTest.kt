@@ -1,6 +1,7 @@
 package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.model.AppSource
+import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.model.TrackingStart
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaAvailableUseCase
@@ -379,5 +380,80 @@ class IngestWebhookServiceTest {
             assertTrue(serviceA.execute(download).isRight())
             assertTrue(serviceB.execute(download).isRight())
             assertEquals(1, importCount)
+        }
+
+    @Test
+    fun `should route cross-seed matches through CrossSeedDebouncer while sending failures immediately`() =
+        runTest {
+            val debounced = Collections.synchronizedList(mutableListOf<MediaPayload.CrossSeedResult>())
+            val immediate = Collections.synchronizedList(mutableListOf<MediaPayload.CrossSeedResult>())
+
+            val debouncer =
+                CrossSeedDebouncer(
+                    debounceMillis = 100L,
+                    scope = this,
+                    onDebouncedResult = { debounced.add(it) }
+                )
+
+            val service =
+                IngestWebhookService(
+                    trackDownloadUseCase = { _, _ -> Either.Right(TrackingStart.STARTED) },
+                    announceMediaImportedUseCase = { Either.Right(Unit) },
+                    announceMediaAvailableUseCase = { Either.Right(Unit) },
+                    alertUseCases =
+                        AlertUseCases(
+                            crossSeed = { payload ->
+                                immediate.add(payload)
+                                Either.Right(Unit)
+                            }
+                        ),
+                    crossSeedDebouncer = debouncer
+                )
+
+            val injectedA =
+                MediaPayload.CrossSeedResult(
+                    eventType = EventType.CROSS_SEED_INJECTED,
+                    name = "Dune.Part.Two.2024.1080p",
+                    trackers = listOf("TorrentLeech"),
+                    decisions = listOf("MATCH"),
+                    infoHashes = listOf("hash-a"),
+                    instanceName = "cross-seed"
+                )
+            val injectedB =
+                injectedA.copy(
+                    trackers = listOf("seedpool (API)"),
+                    decisions = listOf("MATCH_PARTIAL"),
+                    infoHashes = listOf("hash-b")
+                )
+            val saved =
+                injectedA.copy(
+                    eventType = EventType.CROSS_SEED_SAVED,
+                    paused = true,
+                    trackers = listOf("BLU")
+                )
+            val failed =
+                injectedA.copy(
+                    eventType = EventType.CROSS_SEED_FAILED,
+                    trackers = listOf("PTP")
+                )
+
+            assertEquals(Either.Right(Unit), service.execute(injectedA))
+            assertEquals(Either.Right(Unit), service.execute(injectedB))
+            assertEquals(Either.Right(Unit), service.execute(saved))
+            assertEquals(Either.Right(Unit), service.execute(failed))
+
+            // Failure bypassed the debouncer immediately; the injected pair and saved event stay buffered.
+            assertEquals(listOf(failed), immediate)
+            assertEquals(2, debouncer.activeBufferCount)
+            assertEquals(0, debounced.size)
+
+            debouncer.flushAll()
+
+            assertEquals(2, debounced.size)
+            assertEquals(0, debouncer.activeBufferCount)
+            val mergedInjected = debounced.first { it.eventType == EventType.CROSS_SEED_INJECTED }
+            assertEquals(listOf("TorrentLeech", "seedpool (API)"), mergedInjected.trackers)
+            assertEquals(listOf("MATCH", "MATCH_PARTIAL"), mergedInjected.decisions)
+            assertEquals(listOf("hash-a", "hash-b"), mergedInjected.infoHashes)
         }
 }

@@ -24,6 +24,7 @@ import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.service.AlertUseCases
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
 import app.hononeko.notifier.domain.service.CardTemplates
+import app.hononeko.notifier.domain.service.CrossSeedDebouncer
 import app.hononeko.notifier.domain.service.CrossSeedService
 import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
@@ -84,13 +85,15 @@ data class AppDependencies(
     val seerrClient: SeerrClientAdapter? = null,
     val mediaServerStatus: MediaServerStatus? = null,
     val podHeartbeat: PodHeartbeat? = null,
-    val sharedTrackers: SharedTrackerRegistry? = null
+    val sharedTrackers: SharedTrackerRegistry? = null,
+    val crossSeedDebouncer: CrossSeedDebouncer? = null
 ) {
     fun close() {
         logger.info("Closing application dependencies and draining queues...")
         eventRail.close()
         runBlocking {
             seasonDebouncer.flushAll()
+            crossSeedDebouncer?.flushAll()
             deadLetterPersistence?.flush()
             // Before the state store closes: stopping loops release their tracking leases.
             downloadTracker.stopAll()
@@ -191,7 +194,7 @@ fun buildDependencies(
     val infra = buildInfrastructure(config, telegramApiEngine, scope)
     val tracking = buildTracking(config, infra, scope)
     val media = buildMediaAnnouncements(config, infra, tracking, scope)
-    val alerts = buildAlerts(config, infra)
+    val alerts = buildAlerts(config, infra, scope)
 
     val ingestWebhookService =
         IngestWebhookService(
@@ -199,7 +202,8 @@ fun buildDependencies(
             announceMediaImportedUseCase = media.imported,
             announceMediaAvailableUseCase = media.available,
             seasonDebouncer = media.seasonDebouncer,
-            alertUseCases = alerts.useCases
+            alertUseCases = alerts.useCases,
+            crossSeedDebouncer = alerts.crossSeedDebouncer
         ).withDeduplicator(EventDeduplicator(infra.stateStore))
 
     val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)
@@ -243,7 +247,8 @@ fun buildDependencies(
         seerrClient = alerts.seerrClient,
         mediaServerStatus = buildMediaServerStatus(config, infra, scope),
         podHeartbeat = infra.podHeartbeat,
-        sharedTrackers = tracking.sharedTrackers
+        sharedTrackers = tracking.sharedTrackers,
+        crossSeedDebouncer = alerts.crossSeedDebouncer
     )
 }
 
@@ -428,6 +433,7 @@ private class Alerts(
     val manualInteraction: ManualInteractionService,
     val mediaRequest: MediaRequestService,
     val crossSeed: CrossSeedService,
+    val crossSeedDebouncer: CrossSeedDebouncer,
     val seerrClient: SeerrClientAdapter?,
     val healthSnoozes: HealthSnoozes?
 ) {
@@ -437,7 +443,8 @@ private class Alerts(
 /** Health, manual-interaction, Seerr and cross-seed cards; with interactions on, admins get the actionable ones. */
 private fun buildAlerts(
     config: AppConfig,
-    infra: Infrastructure
+    infra: Infrastructure,
+    scope: CoroutineScope
 ): Alerts {
     val interactive = infra.callbackRefs != null
     // Cards that need someone to act go privately to the admins, once interactions are on and admins are listed.
@@ -452,6 +459,21 @@ private fun buildAlerts(
     // Snoozes only exist with interactions on: they're created by a button press.
     val healthSnoozes = if (interactive) HealthSnoozes(infra.stateStore) else null
     val seerrClient = seerrClientFor(config, interactive)
+    val crossSeed = CrossSeedService(notificationPublisher = infra.publisher)
+    val baseCrossSeedDebouncer =
+        CrossSeedDebouncer(
+            debounceMillis = config.crossSeed.debounceSeconds * 1000L,
+            scope = scope,
+            onDebouncedResult = { result -> crossSeed.announce(result) }
+        )
+    val crossSeedDebouncer =
+        if (infra.stateStore is ValkeyStateStore) {
+            baseCrossSeedDebouncer.withDistributedStore(infra.stateStore).also {
+                if (config.features.crossSeed) it.startDistributedSweeper(scope)
+            }
+        } else {
+            baseCrossSeedDebouncer
+        }
     return Alerts(
         systemHealth = SystemHealthService(infra.publisher, adminRecipients, healthSnoozes),
         manualInteraction = ManualInteractionService(notificationPublisher = infra.publisher),
@@ -460,7 +482,8 @@ private fun buildAlerts(
                 notificationPublisher = infra.publisher,
                 decisionRecipients = if (seerrClient != null) adminRecipients else emptyList()
             ),
-        crossSeed = CrossSeedService(notificationPublisher = infra.publisher),
+        crossSeed = crossSeed,
+        crossSeedDebouncer = crossSeedDebouncer,
         seerrClient = seerrClient,
         healthSnoozes = healthSnoozes
     )

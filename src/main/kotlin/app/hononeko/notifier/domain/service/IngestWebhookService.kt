@@ -1,6 +1,7 @@
 package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.error.DomainError
+import app.hononeko.notifier.domain.model.EventType
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.inbound.AnnounceCrossSeedResultUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceManualInteractionUseCase
@@ -29,7 +30,8 @@ class IngestWebhookService(
     private val seasonDebouncer: SeasonDebouncer? = null,
     private val alertUseCases: AlertUseCases = AlertUseCases(),
     // Whether a template event is announced at all (`enabled: false` in the templates turns it off).
-    private val isEventEnabled: (String) -> Boolean = { CardTemplates.templateEngine.isEnabled(it) }
+    private val isEventEnabled: (String) -> Boolean = { CardTemplates.templateEngine.isEnabled(it) },
+    private val crossSeedDebouncer: CrossSeedDebouncer? = null
 ) : IngestWebhookUseCase {
     private val logger = LoggerFactory.getLogger(IngestWebhookService::class.java)
     private var eventDeduplicator: EventDeduplicator? = null
@@ -79,7 +81,17 @@ class IngestWebhookService(
                 is MediaPayload.ServarrHealth -> alertUseCases.systemHealth?.announce(payload)?.bind()
                 is MediaPayload.ServarrManualInteraction -> alertUseCases.manualInteraction?.announce(payload)?.bind()
                 is MediaPayload.SeerrEvent -> alertUseCases.mediaRequest?.announce(payload)?.bind()
-                is MediaPayload.CrossSeedResult -> alertUseCases.crossSeed?.announce(payload)?.bind()
+                is MediaPayload.CrossSeedResult -> dispatchCrossSeed(payload).bind()
+            }
+        }
+
+    private suspend fun dispatchCrossSeed(payload: MediaPayload.CrossSeedResult): Either<DomainError, Unit> =
+        either {
+            if (crossSeedDebouncer != null && payload.eventType != EventType.CROSS_SEED_FAILED) {
+                logger.debug("Routing {} to CrossSeedDebouncer for: {}", payload.eventType, payload.name)
+                crossSeedDebouncer.submit(payload)
+            } else {
+                alertUseCases.crossSeed?.announce(payload)?.bind()
             }
         }
 
