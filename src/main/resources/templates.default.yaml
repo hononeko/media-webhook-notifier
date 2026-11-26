@@ -159,3 +159,30 @@ events:
         - label: "⚠️ View Issue in {source_name}"
           url: "{web_url}/issues"
           style: "PRIMARY"
+
+  # cross-seed webhooks (CROSS_SEED_ENABLED=true). `match` covers injected and saved torrents, `failure` failed
+  # injections. Route them elsewhere with `chat_id` / `topic_id`, or turn either off with `enabled: false`.
+  cross_seed:
+    match:
+      silent: true
+      image_embed: false
+      title: "{result_icon} {result_action}: {name}"
+      subtitle: "{instance_name} • {trigger}"
+      body: |
+        ▪ <b>Trackers:</b> {trackers}
+        ▪ <b>Match:</b> {decisions}
+        ▪ <b>Status:</b> {status}
+        ▪ <b>Size:</b> {size}
+        ▪ <b>Category:</b> {category}
+
+    failure:
+      silent: false
+      image_embed: false
+      title: "{result_icon} {result_action}: {name}"
+      subtitle: "{instance_name} • {trigger}"
+      body: |
+        ▪ <b>Trackers:</b> {trackers}
+        ▪ <b>Match:</b> {decisions}
+        ▪ <b>Size:</b> {size}
+        ▪ <b>Category:</b> {category}
+        ▪ <b>Client:</b> {client_host}

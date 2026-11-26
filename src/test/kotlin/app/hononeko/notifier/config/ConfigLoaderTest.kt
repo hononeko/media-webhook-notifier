@@ -291,4 +291,20 @@ class ConfigLoaderTest {
         assertNull(config.templates.events["media_available"]?.chatId)
         assertNull(config.templates.events["media_available"]?.topicId)
     }
+
+    @Test
+    fun `CROSS_SEED_ENABLED turns the cross-seed webhook on and is off by default`() {
+        assertEquals(false, ConfigLoader.load(emptyMap()).features.crossSeed)
+        assertEquals(true, ConfigLoader.load(mapOf("CROSS_SEED_ENABLED" to "true")).features.crossSeed)
+        assertEquals(false, ConfigLoader.load(mapOf("CROSS_SEED_ENABLED" to "false")).features.crossSeed)
+    }
+
+    @Test
+    fun `the default templates include the cross-seed events`() {
+        val events = ConfigLoader.load(emptyMap()).templates.events
+
+        assertEquals(true, events["cross_seed.match"]?.silent)
+        assertEquals(false, events["cross_seed.failure"]?.silent)
+        assertEquals(false, events["cross_seed.match"]?.imageEmbed)
+    }
 }

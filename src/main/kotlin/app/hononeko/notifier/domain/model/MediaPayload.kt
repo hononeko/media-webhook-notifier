@@ -242,4 +242,31 @@ sealed interface MediaPayload {
         /** Seerr's numeric issue id (`{{issue_id}}`), when the event is about an issue. */
         val issueId: Long? = null
     ) : MediaPayload
+
+    /**
+     * A cross-seed `RESULTS` notification: [name] was matched on [trackers] and injected into the client
+     * ([EventType.CROSS_SEED_INJECTED]), saved to the output directory ([EventType.CROSS_SEED_SAVED]), or failed to
+     * inject ([EventType.CROSS_SEED_FAILED]).
+     */
+    @Serializable
+    @SerialName("cross_seed_result")
+    data class CrossSeedResult(
+        override val source: AppSource = AppSource.CROSS_SEED,
+        override val eventType: EventType,
+        val name: String,
+        val trackers: List<String> = emptyList(),
+        /** cross-seed's decision per tracker: `MATCH`, `MATCH_SIZE_ONLY` or `MATCH_PARTIAL`. */
+        val decisions: List<String> = emptyList(),
+        /** What found the match: `search`, `rss`, `announce`, `webhook` or `inject`. */
+        val trigger: String? = null,
+        /** Whether the torrents went into the client paused; saved torrents always count as paused. */
+        val paused: Boolean = false,
+        val category: String? = null,
+        val sizeBytes: Long? = null,
+        val infoHashes: List<String> = emptyList(),
+        /** Where the original came from: `torrentClient`, `torrentFile`, `dataDir` or `virtual`. */
+        val searcheeSource: String? = null,
+        val clientHost: String? = null,
+        override val instanceName: String? = null
+    ) : MediaPayload
 }

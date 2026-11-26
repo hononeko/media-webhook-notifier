@@ -15,6 +15,7 @@ enum class AppSource(
     SEERR("Seerr"),
     OVERSEERR("Overseerr"),
     JELLYSEERR("Jellyseerr"),
+    CROSS_SEED("cross-seed"),
     UNKNOWN("Unknown")
 }
 
@@ -36,6 +37,9 @@ enum class EventType {
     ISSUE_COMMENT,
     ISSUE_RESOLVED,
     ISSUE_REOPENED,
+    CROSS_SEED_INJECTED,
+    CROSS_SEED_SAVED,
+    CROSS_SEED_FAILED,
     TEST,
     UNKNOWN
 }

@@ -6,6 +6,7 @@ import app.hononeko.notifier.domain.model.DownloadState
 import app.hononeko.notifier.domain.model.NotificationCard
 import app.hononeko.notifier.domain.model.ProgressUpdate
 import app.hononeko.notifier.domain.service.CardTemplates
+import app.hononeko.notifier.domain.service.CrossSeedCards
 import app.hononeko.notifier.domain.service.DownloadCards
 import app.hononeko.notifier.domain.service.MediaServerStatusCards
 import app.hononeko.notifier.domain.service.PayloadCards
@@ -90,6 +91,39 @@ private val PREVIEW_EVENTS =
         "manual_interaction",
         "issue",
         "request"
+    )
+
+/** Preview event types for the cross-seed cards, in both spellings, and the template event each renders with. */
+private val CROSS_SEED_PREVIEW_EVENTS =
+    mapOf(
+        "cross_seed.match" to CrossSeedCards.MATCH_EVENT,
+        "cross_seed_match" to CrossSeedCards.MATCH_EVENT,
+        "cross_seed.failure" to CrossSeedCards.FAILURE_EVENT,
+        "cross_seed_failure" to CrossSeedCards.FAILURE_EVENT
+    )
+
+private val CROSS_SEED_TAGS =
+    listOf(
+        "title",
+        "name",
+        "release_name",
+        "result_icon",
+        "result_action",
+        "status",
+        "paused",
+        "trackers",
+        "tracker_count",
+        "decisions",
+        "trigger",
+        "size",
+        "total_size",
+        "category",
+        "info_hash",
+        "info_hashes",
+        "searchee_source",
+        "client_host",
+        "instance_name",
+        "source_name"
     )
 
 private const val MOCK_QBIT_URL = "https://qbittorrent.lan:8080"
@@ -286,6 +320,7 @@ class TemplatePreviewController {
         when (eventType) {
             "download_progress_multi" -> "download_progress"
             in PREVIEW_EVENTS -> eventType
+            in CROSS_SEED_PREVIEW_EVENTS -> CROSS_SEED_PREVIEW_EVENTS.getValue(eventType)
             else -> "grab"
         }
 
@@ -373,6 +408,7 @@ class TemplatePreviewController {
                 val card = SeerrCards.buildSeerrCard(seerr, engine)
                 Triple(card, null, REQUEST_TAGS)
             }
+            in CROSS_SEED_PREVIEW_EVENTS -> renderMockCrossSeedEvent(eventType, engine)
             in STATUS_EVENTS -> {
                 val card =
                     MediaServerStatusCards.build(
@@ -426,6 +462,15 @@ private fun renderMockCompleteEvent(
             engine
         )
     return Triple(card, null, GRAB_TAGS)
+}
+
+private fun renderMockCrossSeedEvent(
+    eventType: String,
+    engine: TemplateEngine
+): Triple<NotificationCard?, ProgressUpdate?, List<String>> {
+    val failed = CROSS_SEED_PREVIEW_EVENTS[eventType] == CrossSeedCards.FAILURE_EVENT
+    val card = CrossSeedCards.buildCard(if (failed) mockCrossSeedFailure else mockCrossSeedMatch, engine)
+    return Triple(card, null, CROSS_SEED_TAGS)
 }
 
 /** A server that came back after a 4m 18s outage, or one that has been down for 12 minutes. */

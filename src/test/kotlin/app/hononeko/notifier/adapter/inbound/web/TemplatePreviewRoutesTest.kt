@@ -10,6 +10,7 @@ import app.hononeko.notifier.config.YamlParser
 import app.hononeko.notifier.domain.service.CardTemplates
 import app.hononeko.notifier.domain.service.TemplateEngine
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -393,5 +394,32 @@ class TemplatePreviewRoutesTest {
             val dto = testJson.decodeFromString<TemplatePreviewResponseDto>(response.bodyAsText())
             assertEquals("-1004451040571", dto.renderedCard.chatId)
             assertEquals(42L, dto.renderedCard.topicId)
+        }
+
+    @Test
+    fun `preview renders the cross-seed match and failure cards`() =
+        withPreviewApp { client ->
+            for ((eventType, expected) in listOf(
+                "cross_seed.match" to "Cross-Seed Injected: Dune.Part.Two",
+                "cross_seed_failure" to "Cross-Seed Failed: Dune.Part.Two"
+            )) {
+                val response =
+                    client.post("/api/v1/templates/preview") {
+                        header(HttpHeaders.Authorization, "Bearer $testToken")
+                        contentType(ContentType.Application.Json)
+                        setBody(
+                            TemplatePreviewRequestDto(
+                                eventType = eventType,
+                                templateYaml = "events:\n  cross_seed:\n    failure:\n      enabled: false"
+                            )
+                        )
+                    }
+
+                assertEquals(HttpStatusCode.OK, response.status)
+                val preview = response.body<TemplatePreviewResponseDto>()
+                assertTrue(preview.renderedCard.title.contains(expected), preview.renderedCard.title)
+                assertTrue("trackers" in preview.tagsAvailable)
+                assertEquals(eventType == "cross_seed.match", preview.enabled)
+            }
         }
 }
