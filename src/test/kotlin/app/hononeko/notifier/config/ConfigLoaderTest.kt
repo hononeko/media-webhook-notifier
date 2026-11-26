@@ -307,4 +307,29 @@ class ConfigLoaderTest {
         assertEquals(false, events["cross_seed.failure"]?.silent)
         assertEquals(false, events["cross_seed.match"]?.imageEmbed)
     }
+
+    @Test
+    fun `dotted and aliased event overrides preserve defaults and apply to canonical event keys`() {
+        val env =
+            mapOf(
+                "TEMPLATES_YAML" to
+                    """
+                    events:
+                      servarr.grab:
+                        enabled: false
+                      cross-seed.match:
+                        enabled: false
+                    """.trimIndent()
+            )
+        val config = ConfigLoader.load(env)
+        val grab = assertNotNull(config.templates.events["grab"])
+        assertEquals(false, grab.enabled)
+        assertEquals("⏳ Downloading {title} from {indexer}", grab.title)
+
+        val match = assertNotNull(config.templates.events["cross_seed.match"])
+        assertEquals(false, match.enabled)
+        assertEquals(true, match.silent)
+        assertEquals(false, match.imageEmbed)
+        assertEquals("{result_icon} {result_action}: {name}", match.title)
+    }
 }

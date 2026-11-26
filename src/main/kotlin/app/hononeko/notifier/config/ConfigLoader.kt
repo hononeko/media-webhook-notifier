@@ -2,6 +2,7 @@ package app.hononeko.notifier.config
 
 import app.hononeko.notifier.adapter.outbound.notification.NotificationUrlParser
 import app.hononeko.notifier.domain.model.TemplateConfig
+import app.hononeko.notifier.domain.service.TemplateEngine
 import java.io.File
 import java.net.URI
 
@@ -108,8 +109,12 @@ object ConfigLoader {
     ): TemplateConfig {
         val mergedEvents = base.events.toMutableMap()
         for ((key, tpl) in override.events) {
-            val baseTpl = mergedEvents[key]
-            mergedEvents[key] = if (baseTpl != null) tpl.withDefaults(baseTpl) else tpl
+            val targetKeys = TemplateEngine.eventAliasesFor(key)
+            val baseTpl = targetKeys.firstNotNullOfOrNull { mergedEvents[it] }
+            val resolved = if (baseTpl != null) tpl.withDefaults(baseTpl) else tpl
+            for (targetKey in targetKeys) {
+                mergedEvents[targetKey] = resolved
+            }
         }
         return TemplateConfig(theme = override.theme, events = mergedEvents)
     }
