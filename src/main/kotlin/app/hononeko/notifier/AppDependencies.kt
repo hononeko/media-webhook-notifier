@@ -202,9 +202,9 @@ fun buildDependencies(
             announceMediaImportedUseCase = media.imported,
             announceMediaAvailableUseCase = media.available,
             seasonDebouncer = media.seasonDebouncer,
-            alertUseCases = alerts.useCases,
-            crossSeedDebouncer = alerts.crossSeedDebouncer
+            alertUseCases = alerts.useCases
         ).withDeduplicator(EventDeduplicator(infra.stateStore))
+            .withCrossSeedDebouncer(alerts.crossSeed.debouncer)
 
     val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)
     val deadLetterPersistence =
@@ -248,7 +248,7 @@ fun buildDependencies(
         mediaServerStatus = buildMediaServerStatus(config, infra, scope),
         podHeartbeat = infra.podHeartbeat,
         sharedTrackers = tracking.sharedTrackers,
-        crossSeedDebouncer = alerts.crossSeedDebouncer
+        crossSeedDebouncer = alerts.crossSeed.debouncer
     )
 }
 
@@ -428,16 +428,20 @@ private fun buildMediaAnnouncements(
     return MediaAnnouncements(imported, available, seasonDebouncer)
 }
 
+private class CrossSeedAlerts(
+    val service: CrossSeedService,
+    val debouncer: CrossSeedDebouncer
+)
+
 private class Alerts(
     val systemHealth: SystemHealthService,
     val manualInteraction: ManualInteractionService,
     val mediaRequest: MediaRequestService,
-    val crossSeed: CrossSeedService,
-    val crossSeedDebouncer: CrossSeedDebouncer,
+    val crossSeed: CrossSeedAlerts,
     val seerrClient: SeerrClientAdapter?,
     val healthSnoozes: HealthSnoozes?
 ) {
-    val useCases: AlertUseCases get() = AlertUseCases(systemHealth, manualInteraction, mediaRequest, crossSeed)
+    val useCases: AlertUseCases get() = AlertUseCases(systemHealth, manualInteraction, mediaRequest, crossSeed.service)
 }
 
 /** Health, manual-interaction, Seerr and cross-seed cards; with interactions on, admins get the actionable ones. */
@@ -459,12 +463,12 @@ private fun buildAlerts(
     // Snoozes only exist with interactions on: they're created by a button press.
     val healthSnoozes = if (interactive) HealthSnoozes(infra.stateStore) else null
     val seerrClient = seerrClientFor(config, interactive)
-    val crossSeed = CrossSeedService(notificationPublisher = infra.publisher)
+    val crossSeedService = CrossSeedService(notificationPublisher = infra.publisher)
     val baseCrossSeedDebouncer =
         CrossSeedDebouncer(
             debounceMillis = config.crossSeed.debounceSeconds * 1000L,
             scope = scope,
-            onDebouncedResult = { result -> crossSeed.announce(result) }
+            onDebouncedResult = { result -> crossSeedService.announce(result) }
         )
     val crossSeedDebouncer =
         if (infra.stateStore is ValkeyStateStore) {
@@ -482,8 +486,7 @@ private fun buildAlerts(
                 notificationPublisher = infra.publisher,
                 decisionRecipients = if (seerrClient != null) adminRecipients else emptyList()
             ),
-        crossSeed = crossSeed,
-        crossSeedDebouncer = crossSeedDebouncer,
+        crossSeed = CrossSeedAlerts(crossSeedService, crossSeedDebouncer),
         seerrClient = seerrClient,
         healthSnoozes = healthSnoozes
     )

@@ -406,9 +406,8 @@ class IngestWebhookServiceTest {
                                 immediate.add(payload)
                                 Either.Right(Unit)
                             }
-                        ),
-                    crossSeedDebouncer = debouncer
-                )
+                        )
+                ).withCrossSeedDebouncer(debouncer)
 
             val injectedA =
                 MediaPayload.CrossSeedResult(

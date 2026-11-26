@@ -146,6 +146,10 @@ class CrossSeedDebouncerTest {
             assertEquals(EventType.CROSS_SEED_FAILED, flushed.single().eventType)
             assertEquals(5, debouncer.activeBufferCount)
 
+            debouncer.flush(debounceKey(base))
+            assertEquals(2, flushed.size)
+            assertEquals(4, debouncer.activeBufferCount)
+
             debouncer.flushAll()
             assertEquals(6, flushed.size)
             assertEquals(0, debouncer.activeBufferCount)
@@ -278,9 +282,8 @@ class CrossSeedDebouncerTest {
                     announceMediaImportedUseCase = imported,
                     announceMediaAvailableUseCase = available,
                     seasonDebouncer = seasonDebouncer,
-                    alertUseCases = AlertUseCases(health, manual, request, crossSeedService),
-                    crossSeedDebouncer = crossSeedDebouncer
-                )
+                    alertUseCases = AlertUseCases(health, manual, request, crossSeedService)
+                ).withCrossSeedDebouncer(crossSeedDebouncer)
             val eventRail = EventRail()
             val dependencies =
                 AppDependencies(

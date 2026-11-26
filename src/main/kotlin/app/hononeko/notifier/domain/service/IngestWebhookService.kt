@@ -30,15 +30,20 @@ class IngestWebhookService(
     private val seasonDebouncer: SeasonDebouncer? = null,
     private val alertUseCases: AlertUseCases = AlertUseCases(),
     // Whether a template event is announced at all (`enabled: false` in the templates turns it off).
-    private val isEventEnabled: (String) -> Boolean = { CardTemplates.templateEngine.isEnabled(it) },
-    private val crossSeedDebouncer: CrossSeedDebouncer? = null
+    private val isEventEnabled: (String) -> Boolean = { CardTemplates.templateEngine.isEnabled(it) }
 ) : IngestWebhookUseCase {
     private val logger = LoggerFactory.getLogger(IngestWebhookService::class.java)
     private var eventDeduplicator: EventDeduplicator? = null
+    private var crossSeedDebouncer: CrossSeedDebouncer? = null
 
     fun withDeduplicator(deduplicator: EventDeduplicator): IngestWebhookService =
         apply {
             this.eventDeduplicator = deduplicator
+        }
+
+    fun withCrossSeedDebouncer(debouncer: CrossSeedDebouncer): IngestWebhookService =
+        apply {
+            this.crossSeedDebouncer = debouncer
         }
 
     override suspend fun execute(payload: MediaPayload): Either<DomainError, Unit> =
@@ -87,9 +92,10 @@ class IngestWebhookService(
 
     private suspend fun dispatchCrossSeed(payload: MediaPayload.CrossSeedResult): Either<DomainError, Unit> =
         either {
-            if (crossSeedDebouncer != null && payload.eventType != EventType.CROSS_SEED_FAILED) {
+            val debouncer = crossSeedDebouncer
+            if (debouncer != null && payload.eventType != EventType.CROSS_SEED_FAILED) {
                 logger.debug("Routing {} to CrossSeedDebouncer for: {}", payload.eventType, payload.name)
-                crossSeedDebouncer.submit(payload)
+                debouncer.submit(payload)
             } else {
                 alertUseCases.crossSeed?.announce(payload)?.bind()
             }
