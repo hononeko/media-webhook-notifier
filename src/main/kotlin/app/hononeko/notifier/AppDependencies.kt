@@ -24,6 +24,7 @@ import app.hononeko.notifier.domain.port.outbound.StateStorePort
 import app.hononeko.notifier.domain.service.AlertUseCases
 import app.hononeko.notifier.domain.service.CallbackRefRegistry
 import app.hononeko.notifier.domain.service.CardTemplates
+import app.hononeko.notifier.domain.service.CrossSeedService
 import app.hononeko.notifier.domain.service.DownloadReconciliationService
 import app.hononeko.notifier.domain.service.DownloadTrackerConfig
 import app.hononeko.notifier.domain.service.DownloadTrackerEngine
@@ -198,7 +199,7 @@ fun buildDependencies(
             announceMediaImportedUseCase = media.imported,
             announceMediaAvailableUseCase = media.available,
             seasonDebouncer = media.seasonDebouncer,
-            alertUseCases = AlertUseCases(alerts.systemHealth, alerts.manualInteraction, alerts.mediaRequest)
+            alertUseCases = alerts.useCases
         ).withDeduplicator(EventDeduplicator(infra.stateStore))
 
     val eventRail = EventRail(standardCapacity = 1000, urgentCapacity = 200)
@@ -234,7 +235,7 @@ fun buildDependencies(
         ingestWebhookService = ingestWebhookService,
         eventRail = eventRail,
         rateLimiter = InboundRateLimiter(limitPerMinute = config.server.rateLimitPerMinute),
-        providerRegistry = WebhookProviderRegistry(),
+        providerRegistry = webhookProviderRegistry(config),
         healthController = healthController,
         stateStore = infra.stateStore,
         deadLetterPersistence = deadLetterPersistence,
@@ -426,11 +427,14 @@ private class Alerts(
     val systemHealth: SystemHealthService,
     val manualInteraction: ManualInteractionService,
     val mediaRequest: MediaRequestService,
+    val crossSeed: CrossSeedService,
     val seerrClient: SeerrClientAdapter?,
     val healthSnoozes: HealthSnoozes?
-)
+) {
+    val useCases: AlertUseCases get() = AlertUseCases(systemHealth, manualInteraction, mediaRequest, crossSeed)
+}
 
-/** Health, manual-interaction and Seerr cards; with interactions on, the ones needing action go to the admins. */
+/** Health, manual-interaction, Seerr and cross-seed cards; with interactions on, admins get the actionable ones. */
 private fun buildAlerts(
     config: AppConfig,
     infra: Infrastructure
@@ -456,9 +460,17 @@ private fun buildAlerts(
                 notificationPublisher = infra.publisher,
                 decisionRecipients = if (seerrClient != null) adminRecipients else emptyList()
             ),
+        crossSeed = CrossSeedService(notificationPublisher = infra.publisher),
         seerrClient = seerrClient,
         healthSnoozes = healthSnoozes
     )
+}
+
+/** The webhook providers; cross-seed's only with `CROSS_SEED_ENABLED=true`. */
+private fun webhookProviderRegistry(config: AppConfig): WebhookProviderRegistry {
+    val crossSeed = config.features.crossSeed
+    if (crossSeed) logger.info("cross-seed webhooks enabled at /api/v1/webhook/cross-seed")
+    return WebhookProviderRegistry(WebhookProviderRegistry.defaultProviders(crossSeedEnabled = crossSeed))
 }
 
 /** The Telegram button listener, started here; null with interactions off. */

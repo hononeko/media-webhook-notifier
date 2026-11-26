@@ -54,6 +54,13 @@ class DeadLetterPersistenceTest {
                 notificationType = "MEDIA_PENDING",
                 subject = "Arcane",
                 extra = mapOf("Requested Seasons" to "1, 2")
+            ),
+            MediaPayload.CrossSeedResult(
+                eventType = EventType.CROSS_SEED_INJECTED,
+                name = "Movie.2024.1080p",
+                trackers = listOf("TorrentLeech"),
+                decisions = listOf("MATCH"),
+                sizeBytes = 1024L
             )
         )
 

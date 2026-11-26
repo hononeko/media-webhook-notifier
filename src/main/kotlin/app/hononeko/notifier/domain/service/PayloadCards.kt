@@ -29,5 +29,6 @@ object PayloadCards {
             is MediaPayload.ServarrHealth -> buildHealthCard(payload, engine)
             is MediaPayload.ServarrManualInteraction -> buildManualInteractionCard(payload, engine)
             is MediaPayload.SeerrEvent -> buildSeerrCard(payload, engine)
+            is MediaPayload.CrossSeedResult -> CrossSeedCards.buildCard(payload, engine)
         }
 }

@@ -20,7 +20,7 @@ object ConfigLoader {
             notifications = notifications,
             state = loadStateConfig(reader),
             templates = loadTemplatesConfig(reader),
-            features = features,
+            features = features.copy(crossSeed = reader.getBoolean(false, "CROSS_SEED_ENABLED", "crossSeed.enabled")),
             telegramInteraction = telegramInteraction,
             seerr = loadSeerrConfig(reader)
         )

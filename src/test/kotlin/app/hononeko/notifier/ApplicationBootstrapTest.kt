@@ -1,6 +1,7 @@
 package app.hononeko.notifier
 
 import app.hononeko.notifier.config.AppConfig
+import app.hononeko.notifier.config.FeatureFlags
 import app.hononeko.notifier.config.ServerConfig
 import app.hononeko.notifier.config.StateConfig
 import io.ktor.client.HttpClient
@@ -184,6 +185,21 @@ class ApplicationBootstrapTest {
             assertNull(dependencies.sharedTrackers)
         } finally {
             dependencies.close()
+        }
+    }
+
+    @Test
+    fun `the cross-seed provider is registered only with CROSS_SEED_ENABLED`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val off = buildDependencies(AppConfig(), scope)
+        val on = buildDependencies(AppConfig(features = FeatureFlags(crossSeed = true)), scope)
+        try {
+            assertNull(off.providerRegistry.get("cross-seed"))
+            assertNotNull(on.providerRegistry.get("cross-seed"))
+            assertNotNull(on.providerRegistry.get("sonarr"))
+        } finally {
+            off.close()
+            on.close()
         }
     }
 }

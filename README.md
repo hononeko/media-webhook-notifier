@@ -19,6 +19,7 @@ Compiled ahead-of-time (AOT) with **GraalVM Native Image** into a static, distro
 * **🍿 Media Available Cards:** Directly ingests Plex `library.new` and Jellyfin `ItemAdded` events with smart formatting for Seasons (e.g. `Futurama - Season 3` with Season poster), Episodes (`S03E01`), and Movies, complete with instant watch deep links.
 * **🟢 Pinned Server Status:** Optionally polls Plex or Jellyfin and keeps one pinned message up to date: online, or offline since when, with the outage's length once it's back. Short restarts are ignored ([details](docs/CONFIGURATION.md#server-status-message)).
 * **🛎️ Request & Issue Tracking:** Ingests media requests and issue reports from Overseerr, Jellyseerr, and Seerr.
+* **🌱 cross-seed Matches:** Optionally announces torrents [cross-seed](https://www.cross-seed.org) injects, saves or fails to inject, with the trackers, match type and size ([setup](docs/CONFIGURATION.md#cross-seed)).
 * **🎨 Fully Customizable Layouts:** Modify card titles, emojis, text, or localization via simple YAML templates.
 * **🔒 Dual Authentication Guard:** Accepts tokens via HTTP Headers (`Authorization: Bearer <token>`, `X-Api-Key: <token>`) or query parameters (`?token=<token>`).
 
@@ -72,6 +73,7 @@ Add webhook endpoints in each application's notification settings:
 | **Plex** | `http://<host>:8080/api/v1/webhook/plex?token=your-secret-token` | `library.new` (New media added) |
 | **Jellyfin / Emby** | `http://<host>:8080/api/v1/webhook/jellyfin?token=your-secret-token` | `ItemAdded` (via Webhook Plugin) |
 | **Overseerr / Jellyseerr** | `http://<host>:8080/api/v1/webhook/seerr?token=your-secret-token` | Request Pending, Approved, Available, Issues |
+| **cross-seed** (v7, `CROSS_SEED_ENABLED=true`) | `http://<host>:8080/api/v1/webhook/cross-seed?token=your-secret-token` | Injected, Saved, Failed to inject, Test |
 
 ---
 
@@ -114,7 +116,7 @@ Every other option (download client tuning, the Valkey / Redis state store, card
   * With the Valkey state store enabled, dead letters persist across restarts under `<STATE_KEY_PREFIX>dlq:snapshot`. Instances that share a key prefix also share one snapshot, so give each instance its own prefix.
 * **Kubernetes Probes:** `GET /livez`, `GET /readyz`, `GET /startupz`, `GET /health`
 * **Telemetry & Telemetry Metrics:** `GET /metrics` (JVM/native memory, uptime, active trackers, event queue state)
-* **Provider JSON Schemas:** `GET /schema/{provider}` (`sonarr`, `radarr`, `servarr`, `plex`, `jellyfin`, `seerr`)
+* **Provider JSON Schemas:** `GET /schema/{provider}` (`sonarr`, `radarr`, `servarr`, `plex`, `jellyfin`, `seerr`, and `cross-seed` when enabled)
 
 ---
 

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cross-seed Webhook Payload",
+  "description": "cross-seed v7 push notification sent to each notificationWebhookUrls entry.",
+  "type": "object",
+  "required": ["extra"],
+  "properties": {
+    "title": { "type": "string" },
+    "body": { "type": "string" },
+    "extra": {
+      "type": "object",
+      "required": ["event"],
+      "properties": {
+        "event": { "type": "string", "enum": ["TEST", "RESULTS"] },
+        "name": { "type": "string" },
+        "infoHashes": { "type": "array", "items": { "type": "string" } },
+        "trackers": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string", "enum": ["search", "rss", "announce", "webhook", "inject"] },
+        "result": { "type": "string", "enum": ["INJECTED", "SAVED", "FAILURE"] },
+        "paused": { "type": "boolean" },
+        "decisions": { "type": "array", "items": { "type": "string" } },
+        "searchee": {
+          "type": "object",
+          "properties": {
+            "category": { "type": ["string", "null"] },
+            "tags": { "type": ["array", "null"], "items": { "type": "string" } },
+            "trackers": { "type": ["array", "null"], "items": { "type": "string" } },
+            "length": { "type": "integer" },
+            "clientHost": { "type": ["string", "null"] },
+            "infoHash": { "type": ["string", "null"] },
+            "path": { "type": ["string", "null"] },
+            "source": { "type": "string", "enum": ["torrentClient", "torrentFile", "dataDir", "virtual"] }
+          }
+        }
+      }
+    }
+  }
+}

@@ -82,6 +82,8 @@ class TemplateEngine(
                 "request" to listOf("request", "seerr.request", "seerr_request"),
                 "media_server.status_online" to listOf("media_server_status_online", "status_online"),
                 "media_server.status_offline" to listOf("media_server_status_offline", "status_offline"),
+                "cross_seed.match" to listOf("cross_seed_match", "cross-seed.match", "crossseed.match"),
+                "cross_seed.failure" to listOf("cross_seed_failure", "cross-seed.failure", "crossseed.failure"),
                 "issue" to
                     listOf(
                         "issue",

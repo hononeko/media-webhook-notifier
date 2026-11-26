@@ -38,6 +38,26 @@ With Telegram interactions on and at least one `TELEGRAM_ADMIN_USERS` entry, pen
 | `SEERR_URL` | — | Base URL of Seerr as this service reaches it, e.g. `http://jellyseerr:5055`. Set it together with `SEERR_API_KEY`: one without the other fails startup |
 | `SEERR_API_KEY` | — | Seerr API key (*Settings → General → API Key*). Supports `SEERR_API_KEY_FILE` |
 
+## cross-seed
+Off by default. With `CROSS_SEED_ENABLED=true`, `POST /api/v1/webhook/cross-seed` accepts [cross-seed](https://www.cross-seed.org) v7 notifications; while it's off, that path answers `404` like any unknown provider.
+
+| Variable | Default | Description |
+|---|---|---|
+| `CROSS_SEED_ENABLED` | `false` | Accept cross-seed webhooks. Matches that were injected or saved post a silent `cross_seed.match` card, failed injections an audible `cross_seed.failure` card; test notifications are acknowledged with `200` and post nothing |
+
+Point `notificationWebhookUrls` in cross-seed's config at the service, with the token in a header:
+
+```js
+notificationWebhookUrls: [
+  {
+    url: "http://media-webhook-notifier:8080/api/v1/webhook/cross-seed",
+    headers: { Authorization: "Bearer <SERVER_AUTH_TOKEN>" },
+  },
+],
+```
+
+Run `cross-seed test-notification` to check the connection. To route the cards to another chat or topic, or turn one of them off, see [TEMPLATES.md](TEMPLATES.md#46-per-event-destination-routing-chat_id-topic_id).
+
 ## Download Client & Live Tracking
 Pick the client with `DOWNLOAD_CLIENT_TYPE` or the scheme of `DOWNLOAD_CLIENT_URL`. With neither set, qBittorrent is used, so existing `QBITTORRENT_*` setups keep working unchanged.
 

@@ -17,14 +17,16 @@ class WebhookProviderRegistry(
     fun supportedProviders(): Set<String> = providerMap.keys
 
     companion object {
-        fun defaultProviders(): List<WebhookProviderStrategy> =
-            listOf(
+        /** Every built-in provider; cross-seed only with [crossSeedEnabled] (`CROSS_SEED_ENABLED`), else it's a 404. */
+        fun defaultProviders(crossSeedEnabled: Boolean = false): List<WebhookProviderStrategy> =
+            listOfNotNull(
                 SonarrWebhookProvider(),
                 RadarrWebhookProvider(),
                 ServarrWebhookProvider(),
                 PlexWebhookProvider(),
                 JellyfinWebhookProvider(),
-                SeerrWebhookProvider()
+                SeerrWebhookProvider(),
+                CrossSeedWebhookProvider().takeIf { crossSeedEnabled }
             )
     }
 }

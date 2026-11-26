@@ -179,6 +179,32 @@ events:
         - label: "⚠️ View Issue in {source_name}"
           url: "{web_url}"
           style: "PRIMARY"
+
+  # cross-seed (CROSS_SEED_ENABLED=true): `match` for injected and saved torrents, `failure` for failed injections
+  cross_seed:
+    match:
+      silent: true
+      image_embed: false
+      title: "{result_icon} {result_action}: {name}"
+      subtitle: "{instance_name} • {trigger}"
+      body: |
+        ▪ <b>Trackers:</b> {trackers}
+        ▪ <b>Match:</b> {decisions}
+        ▪ <b>Status:</b> {status}
+        ▪ <b>Size:</b> {size}
+        ▪ <b>Category:</b> {category}
+
+    failure:
+      silent: false
+      image_embed: false
+      title: "{result_icon} {result_action}: {name}"
+      subtitle: "{instance_name} • {trigger}"
+      body: |
+        ▪ <b>Trackers:</b> {trackers}
+        ▪ <b>Match:</b> {decisions}
+        ▪ <b>Size:</b> {size}
+        ▪ <b>Category:</b> {category}
+        ▪ <b>Client:</b> {client_host}
 ```
 
 ---
@@ -249,6 +275,21 @@ Tags are placeholders surrounded by `{curly_braces}`. Below is the comprehensive
 | `{request_action}` | Request | Action verb | `Approved`, `Available`, `Declined` |
 | `{request_icon}` | Request | Action emoji | `🛎️`, `✅`, `🍿`, `❌` |
 | `{requested_by}` | Request | Username who initiated request | `alice` |
+| `---` | `---` | `---` | `---` |
+| **cross-seed** | | | |
+| `{name}` / `{release_name}` | cross-seed | Matched release name (also `{title}`) | `Movie.Name.2024.1080p.BluRay.x264-GRP` |
+| `{result_icon}` | cross-seed | Result emoji: injected `🌱`, injected paused `⏸️`, saved `💾`, failed `❌` | `🌱` |
+| `{result_action}` | cross-seed | Result in the title | `Cross-Seed Injected`, `Cross-Seed Saved`, `Cross-Seed Failed` |
+| `{status}` | cross-seed | What happened to the torrent | `Injected`, `Injected (paused)`, `Saved`, `Failed to inject` |
+| `{paused}` | cross-seed | Whether the torrent went into the client paused | `Yes`, `No` |
+| `{trackers}` / `{tracker_count}` | cross-seed | Trackers matched on, and how many | `seedpool (API), TorrentLeech` / `2` |
+| `{decisions}` | cross-seed | Match types, without duplicates | `Exact`, `Size only`, `Partial` |
+| `{trigger}` | cross-seed | What found the match | `Search`, `RSS`, `Announce`, `Webhook`, `Inject` |
+| `{size}` / `{total_size}` | cross-seed | Size of the original torrent or data | `1.15 GB` |
+| `{category}` | cross-seed | Client category of the original | `movies` |
+| `{info_hash}` / `{info_hashes}` | cross-seed | Info hash of the first new torrent / all of them | `3f1c9a7e2b...` |
+| `{searchee_source}` | cross-seed | Where the original came from | `torrentClient`, `torrentFile`, `dataDir` |
+| `{client_host}` | cross-seed | Torrent client host of the original | `qbittorrent:8080` |
 
 ---
 
@@ -282,6 +323,8 @@ Control whether notifications are sent silently (without alert tones or vibratio
 - `media_server.available`: `silent: false` (Audible)
 - `seerr.request`: `silent: false` (Audible)
 - `seerr.issue`: `silent: false` (Audible)
+- `cross_seed.match`: `silent: true`
+- `cross_seed.failure`: `silent: false` (Audible)
 
 You can override any event's delivery mode in your `templates.yaml`:
 ```yaml
@@ -305,7 +348,7 @@ events:
       enabled: false   # "Now available on Plex" follows shortly anyway
 ```
 
-Any event can be turned off: `servarr.grab`, `servarr.import`, `servarr.manual_interaction`, `servarr.health`, `media_server.available`, `seerr.request`, `seerr.issue`, `download.progress`, `download.complete` and `download.stalled`. The download events share a single message that is edited in place, so they behave as follows:
+Any event can be turned off: `servarr.grab`, `servarr.import`, `servarr.manual_interaction`, `servarr.health`, `media_server.available`, `seerr.request`, `seerr.issue`, `cross_seed.match`, `cross_seed.failure`, `download.progress`, `download.complete` and `download.stalled`. The download events share a single message that is edited in place, so they behave as follows:
 
 | Disabled event | Effect |
 | :--- | :--- |
@@ -370,6 +413,8 @@ curl -X POST http://localhost:8080/api/v1/templates/preview \
     "template_yaml": "events:\n  grab:\n    title: \"🎯 Grabbing: {title}\"\n    body: \"▪ <b>Quality:</b> {quality}\n▪ <b>Size:</b> {size}\""
   }'
 ```
+
+Preview the cross-seed cards with `"event_type": "cross_seed.match"` or `"cross_seed.failure"`.
 
 #### Sample Response:
 ```json

@@ -2,6 +2,7 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.error.DomainError
 import app.hononeko.notifier.domain.model.MediaPayload
+import app.hononeko.notifier.domain.port.inbound.AnnounceCrossSeedResultUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceManualInteractionUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaAvailableUseCase
 import app.hononeko.notifier.domain.port.inbound.AnnounceMediaImportedUseCase
@@ -13,10 +14,12 @@ import arrow.core.Either
 import arrow.core.raise.either
 import org.slf4j.LoggerFactory
 
+/** The cards sent straight to the publisher, without download tracking or debouncing. */
 data class AlertUseCases(
     val systemHealth: AnnounceSystemHealthUseCase? = null,
     val manualInteraction: AnnounceManualInteractionUseCase? = null,
-    val mediaRequest: AnnounceMediaRequestUseCase? = null
+    val mediaRequest: AnnounceMediaRequestUseCase? = null,
+    val crossSeed: AnnounceCrossSeedResultUseCase? = null
 )
 
 class IngestWebhookService(
@@ -76,6 +79,7 @@ class IngestWebhookService(
                 is MediaPayload.ServarrHealth -> alertUseCases.systemHealth?.announce(payload)?.bind()
                 is MediaPayload.ServarrManualInteraction -> alertUseCases.manualInteraction?.announce(payload)?.bind()
                 is MediaPayload.SeerrEvent -> alertUseCases.mediaRequest?.announce(payload)?.bind()
+                is MediaPayload.CrossSeedResult -> alertUseCases.crossSeed?.announce(payload)?.bind()
             }
         }
 
@@ -119,4 +123,5 @@ internal fun templateEventName(payload: MediaPayload): String =
         is MediaPayload.ServarrHealth -> "health"
         is MediaPayload.ServarrManualInteraction -> "manual_interaction"
         is MediaPayload.SeerrEvent -> SeerrCards.templateEventName(payload)
+        is MediaPayload.CrossSeedResult -> CrossSeedCards.templateEventName(payload)
     }

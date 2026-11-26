@@ -18,7 +18,9 @@ data class AppConfig(
 
 /** Boot-time feature flags. Each one switches a whole feature on or off; nothing is toggled at runtime. */
 data class FeatureFlags(
-    val telegramInteractive: Boolean = false
+    val telegramInteractive: Boolean = false,
+    /** `CROSS_SEED_ENABLED`: accept cross-seed webhooks at `/api/v1/webhook/cross-seed` (404 while off). */
+    val crossSeed: Boolean = false
 )
 
 enum class TelegramUpdatesMode(

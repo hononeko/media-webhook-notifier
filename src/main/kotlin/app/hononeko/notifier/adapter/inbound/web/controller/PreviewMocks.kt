@@ -207,3 +207,29 @@ internal fun mockIssue() =
         webUrl = "https://overseerr.lan:5055/issues/42",
         instanceName = "Overseerr"
     )
+
+// Properties rather than functions: this file is at detekt's function limit.
+internal val mockCrossSeedMatch =
+    MediaPayload.CrossSeedResult(
+        eventType = EventType.CROSS_SEED_INJECTED,
+        name = "Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.HDR.HEVC.TrueHD.Atmos-FLUX",
+        trackers = listOf("seedpool (API)", "TorrentLeech"),
+        decisions = listOf("MATCH", "MATCH"),
+        trigger = "rss",
+        paused = false,
+        category = "movies",
+        sizeBytes = 45097156608L,
+        infoHashes = listOf("3f1c9a7e2b", "8d0e4b6a1c"),
+        searcheeSource = "torrentClient",
+        clientHost = "qbittorrent.lan:8080",
+        instanceName = "cross-seed"
+    )
+
+internal val mockCrossSeedFailure =
+    mockCrossSeedMatch.copy(
+        eventType = EventType.CROSS_SEED_FAILED,
+        trackers = listOf("TorrentLeech"),
+        decisions = listOf("MATCH_PARTIAL"),
+        trigger = "search",
+        infoHashes = listOf("8d0e4b6a1c")
+    )
