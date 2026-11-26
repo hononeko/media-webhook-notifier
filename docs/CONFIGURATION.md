@@ -44,6 +44,7 @@ Off by default. With `CROSS_SEED_ENABLED=true`, `POST /api/v1/webhook/cross-seed
 | Variable | Default | Description |
 |---|---|---|
 | `CROSS_SEED_ENABLED` | `false` | Accept cross-seed webhooks. Matches that were injected or saved post a silent `cross_seed.match` card, failed injections an audible `cross_seed.failure` card; test notifications are acknowledged with `200` and post nothing |
+| `CROSS_SEED_DEBOUNCE_SECONDS` | `30` | Sliding window (in seconds) to group `INJECTED` and `SAVED` cross-seed matches for the same release across trackers (`FAILURE` always sends immediately) |
 
 Point `notificationWebhookUrls` in cross-seed's config at the service, with the token in a header:
 

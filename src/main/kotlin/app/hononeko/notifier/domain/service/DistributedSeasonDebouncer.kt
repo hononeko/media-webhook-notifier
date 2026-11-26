@@ -3,16 +3,11 @@ package app.hononeko.notifier.domain.service
 import app.hononeko.notifier.domain.model.MediaPayload
 import app.hononeko.notifier.domain.port.outbound.ClusterStatePort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 
 private val sweeperLogger = LoggerFactory.getLogger(SeasonDebouncer::class.java)
-private const val MIN_SWEEP_INTERVAL_MILLIS = 2000L
 
 /**
  * Switches [SeasonDebouncer] to shared [StateStorePort] buffers when [stateStore] supports [ClusterStatePort],
@@ -79,24 +74,14 @@ fun SeasonDebouncer.withDistributedStore(
 }
 
 /** Sweeps expired distributed debounce buffers so entries from a crashed replica still flush promptly. */
-@Suppress("TooGenericExceptionCaught")
 fun SeasonDebouncer.startDistributedSweeper(
     sweepScope: CoroutineScope = scope,
-    intervalMillis: Long = maxOf(MIN_SWEEP_INTERVAL_MILLIS, debounceMillis)
+    intervalMillis: Long = maxOf(MIN_DISTRIBUTED_SWEEP_INTERVAL_MILLIS, debounceMillis)
 ): Job =
-    sweepScope.launch {
-        while (isActive) {
-            delay(intervalMillis)
-            try {
-                grabs.sweepExpired()
-                downloads.sweepExpired()
-                available.sweepExpired()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                sweeperLogger.debug("Distributed debounce sweep failed: {}", e.message)
-            }
-        }
+    launchDebounceSweeper(sweepScope, intervalMillis, sweeperLogger) {
+        grabs.sweepExpired()
+        downloads.sweepExpired()
+        available.sweepExpired()
     }
 
 suspend fun SeasonDebouncer.distributedBufferCount(): Int =

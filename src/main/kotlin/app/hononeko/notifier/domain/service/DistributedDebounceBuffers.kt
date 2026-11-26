@@ -2,16 +2,19 @@ package app.hononeko.notifier.domain.service
 
 import app.hononeko.notifier.domain.port.outbound.ClusterStatePort
 import app.hononeko.notifier.domain.port.outbound.StateStorePort
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
@@ -224,3 +227,26 @@ internal class DistributedDebounceBuffers<P>(
             .onFailure { logger.warn("Ignoring unreadable debounce buffer entry: {}", it.message) }
             .getOrNull()
 }
+
+internal const val MIN_DISTRIBUTED_SWEEP_INTERVAL_MILLIS = 2000L
+
+/** Launches a periodic sweep loop that flushes expired distributed debounce buffers left behind by crashed pods. */
+@Suppress("TooGenericExceptionCaught")
+internal fun launchDebounceSweeper(
+    sweepScope: CoroutineScope,
+    intervalMillis: Long,
+    logger: Logger,
+    sweep: suspend () -> Unit
+): Job =
+    sweepScope.launch {
+        while (isActive) {
+            delay(intervalMillis)
+            try {
+                sweep()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.debug("Distributed debounce sweep failed: {}", e.message)
+            }
+        }
+    }

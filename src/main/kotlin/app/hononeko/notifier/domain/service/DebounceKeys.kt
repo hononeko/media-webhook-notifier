@@ -66,3 +66,10 @@ internal fun debounceKey(jellyfin: MediaPayload.JellyfinItemAdded): String {
         "jellyfin:$instance:movie:$title:$year"
     }
 }
+
+internal fun debounceKey(crossSeed: MediaPayload.CrossSeedResult): String {
+    val name = crossSeed.name.trim().lowercase()
+    val instance = (crossSeed.instanceName ?: "").trim().lowercase()
+    val event = crossSeed.eventType.name.lowercase()
+    return "$instance:$event:${crossSeed.paused}:$name"
+}

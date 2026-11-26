@@ -23,8 +23,20 @@ object ConfigLoader {
             templates = loadTemplatesConfig(reader),
             features = features.copy(crossSeed = reader.getBoolean(false, "CROSS_SEED_ENABLED", "crossSeed.enabled")),
             telegramInteraction = telegramInteraction,
-            seerr = loadSeerrConfig(reader)
+            seerr = loadSeerrConfig(reader),
+            crossSeed = loadCrossSeedConfig(reader)
         )
+    }
+
+    private fun loadCrossSeedConfig(reader: EnvReader): CrossSeedConfig {
+        val debounceSeconds =
+            reader
+                .getLong(
+                    CrossSeedConfig.DEFAULT_DEBOUNCE_SECONDS,
+                    "CROSS_SEED_DEBOUNCE_SECONDS",
+                    "crossSeed.debounceSeconds"
+                ).coerceAtLeast(0L)
+        return CrossSeedConfig(debounceSeconds = debounceSeconds)
     }
 
     /** Both or neither: a URL without a key (or the reverse) is a half-done setup and fails boot. */

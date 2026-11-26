@@ -13,8 +13,18 @@ data class AppConfig(
     val templates: TemplateConfig = TemplateConfig(),
     val features: FeatureFlags = FeatureFlags(),
     val telegramInteraction: TelegramInteractionConfig = TelegramInteractionConfig(),
-    val seerr: SeerrConfig = SeerrConfig()
+    val seerr: SeerrConfig = SeerrConfig(),
+    val crossSeed: CrossSeedConfig = CrossSeedConfig()
 )
+
+/** cross-seed debounce settings (`CROSS_SEED_*`). */
+data class CrossSeedConfig(
+    val debounceSeconds: Long = DEFAULT_DEBOUNCE_SECONDS
+) {
+    companion object {
+        const val DEFAULT_DEBOUNCE_SECONDS = 30L
+    }
+}
 
 /** Boot-time feature flags. Each one switches a whole feature on or off; nothing is toggled at runtime. */
 data class FeatureFlags(
