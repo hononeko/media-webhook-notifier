@@ -10,7 +10,7 @@ logback = "1.6.8"
 hoplite = "2.9.0"
 mockk = "1.14.12"
 ktlint-plugin = "14.2.0"
-jedis = "8.0.2"
+jedis = "8.1.0"
 testcontainers = "2.0.5"
 
 [libraries]
